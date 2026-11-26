@@ -213,20 +213,6 @@ describe('two withdrawals — open what was scoped', () => {
     })
   })
 
-  describe('a retired grant column refuses nothing', () => {
-    it('a message lands whatever the retired can_message column holds', async () => {
-      const { readerTools, writer } = await twoConversations()
-      db.prepare(`UPDATE agent_identity SET can_message = 'none' WHERE slug = 'inspector'`).run()
-      const said = await callOn(readerTools, 'message_agent', {
-        agent: writer,
-        text: 'what did you find?',
-        kind: 'note',
-      })
-      expect(said.outcome, JSON.stringify(said)).toBe('ok')
-      expect(reached(writer, 'what did you find?')).toBe(true)
-    })
-  })
-
   describe('cross-conversation withdrawal uses the existing work ending', () => {
     it('message and withdrawal are admitted while the interrupt rule still holds', async () => {
       await personOpens('desk')

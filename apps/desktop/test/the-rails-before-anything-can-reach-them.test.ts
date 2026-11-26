@@ -344,24 +344,6 @@ describe('341 · the rails, before anything can reach them', () => {
       expect(sessionIdsOf()).toHaveLength(before)
     })
 
-    it('gives to an existing or new conversation with the retired flag set to off', async () => {
-      await host.closeAll()
-      db.prepare("UPDATE app_policy SET spawning_enabled = 0 WHERE id = 'policy'").run()
-      const savedPolicy = db.prepare("SELECT spawning_enabled FROM app_policy WHERE id = 'policy'")
-      expect(savedPolicy.get()).toEqual({ spawning_enabled: 0 })
-      store = createSessionStore(db, tick)
-      host = buildHost()
-
-      const parent = await ready()
-      const first = admitted(await give(aPiece('worker'), as(parent)))
-      await bringIdentityIntoBeing('second')
-      expect((await give(aPiece('second'), as(parent))).ok).toBe(true)
-      expect(sessionIdsOf()).toContain(first.owner)
-      const continued = admitted(await give(aPiece('worker', { to: first.label }), as(parent)))
-      expect(continued.owner).toBe(first.owner)
-      expect(savedPolicy.get()).toEqual({ spawning_enabled: 0 })
-    })
-
     it('a give can start a conversation when there is no policy row', async () => {
       const parent = await ready()
       db.prepare('DELETE FROM app_policy').run()

@@ -271,17 +271,6 @@ describe('500 · the setting he should only ever make once', () => {
       expect(() => NULL_SESSION_STORE.setDefaultApprovalMode('auto')).not.toThrow()
       expect(NULL_SESSION_STORE.defaultApprovalMode()).toBe('ask')
     })
-
-    it('setting the default leaves the retired spawning column alone', () => {
-      db.prepare("UPDATE app_policy SET spawning_enabled = 0 WHERE id = 'policy'").run()
-      store.setDefaultApprovalMode('auto')
-      expect(store.defaultApprovalMode()).toBe('auto')
-      expect(
-        db.prepare("SELECT spawning_enabled FROM app_policy WHERE id = 'policy'").get(),
-      ).toEqual({
-        spawning_enabled: 0,
-      })
-    })
   })
 
   // ───────────────────────────────────────────────────────────────────────────────────────────

@@ -342,44 +342,21 @@ describe('419 · creating an agent, and the provider it runs on', () => {
     it.each([
       { when: 'running conversation', name: 'Explorer', profile: 'explorer' },
       { when: 'new conversation', name: DEFAULT_PROFILE_ID, profile: DEFAULT_PROFILE_ID },
-    ])(
-      'a $when creates with the retired grant set to none and records its folded profile',
-      async ({ when, name, profile }) => {
-        await personOpens(name)
-        db.prepare("UPDATE agent_identity SET can_create_agents = 'none' WHERE slug = ?").run(
-          profile,
-        )
-        if (when === 'new conversation') await personOpens(name)
-        expect(identityRow(profile)?.['can_create_agents']).toBe('none')
+    ])('a $when creates and records its folded profile', async ({ when, name, profile }) => {
+      await personOpens(name)
+      if (when === 'new conversation') await personOpens(name)
 
-        const tools = toolsOfLastLaunch()
-        const answer = await callOn(tools, 'create_agent', { profile_slug: 'archivist' })
-        expect(answer['outcome'], JSON.stringify(answer)).toBe('ok')
-        expect(store.agentIdentityOf('archivist')?.createdBy).toEqual({
-          by: 'an-agent',
-          agent: profile,
-        })
-        const roster = await callOn(tools, 'list_profiles', {})
-        expect(roster['profiles']).toEqual(
-          expect.arrayContaining([expect.objectContaining({ profile: 'archivist' })]),
-        )
-      },
-    )
-
-    it('creates an agent when the retired spawning column still holds off', async () => {
-      await host.closeAll()
-      db.prepare("UPDATE app_policy SET spawning_enabled = 0 WHERE id = 'policy'").run()
-      const savedPolicy = db.prepare("SELECT spawning_enabled FROM app_policy WHERE id = 'policy'")
-      expect(savedPolicy.get()).toEqual({ spawning_enabled: 0 })
-      store = createSessionStore(db, tick)
-      host = buildHost()
-
-      const tools = await anAgentThatMayCreate()
-      expect((await callOn(tools, 'create_agent', { profile_slug: 'archivist' }))['outcome']).toBe(
-        'ok',
+      const tools = toolsOfLastLaunch()
+      const answer = await callOn(tools, 'create_agent', { profile_slug: 'archivist' })
+      expect(answer['outcome'], JSON.stringify(answer)).toBe('ok')
+      expect(store.agentIdentityOf('archivist')?.createdBy).toEqual({
+        by: 'an-agent',
+        agent: profile,
+      })
+      const roster = await callOn(tools, 'list_profiles', {})
+      expect(roster['profiles']).toEqual(
+        expect.arrayContaining([expect.objectContaining({ profile: 'archivist' })]),
       )
-      expect(identityRow('archivist')).toBeDefined()
-      expect(savedPolicy.get()).toEqual({ spawning_enabled: 0 })
     })
 
     it('⚑ a toolset that outlives its conversation creates as the profile that conversation’s record names', async () => {

@@ -1004,29 +1004,6 @@ describe('393 · a reply, and its absence', () => {
       expect(ledger(worker).some((event) => event.type === 'message_sent')).toBe(false)
     })
 
-    /**
-     * ⚑ **710 · `707` F-5 — the app delivers the answer**, which is `deliverReply`'s stated
-     * property, so a value left in the retired `can_message` column changes nothing about it.
-     */
-    it('⚑ a child is heard whatever the retired can_message column holds — the app delivers its answer', async () => {
-      const { pm, worker, siblings, task } = await workWasGiven()
-      db.prepare(`UPDATE agent_identity SET can_message = 'none' WHERE slug = ?`).run(
-        siblings[0] as string,
-      )
-      const landed = await reply(worker, {
-        piece: task,
-        outcome: 'done',
-        summary: 'heard despite the narrowing',
-      })
-      expect(landed.delivered).toBe('sent')
-      expect(
-        ledger(pm).some(
-          (event) =>
-            event.type === 'user_turn' && event.text.includes('heard despite the narrowing'),
-        ),
-      ).toBe(true)
-    })
-
     it('⚠️ a busy parent HOLDS it — and, since D-010, holds a second child’s reply beside it', async () => {
       const { pm, worker, pmTools, siblings, task } = await workWasGiven('first')
       // ⛔ **Busy for real**: a turn the app started and parked on a card.
