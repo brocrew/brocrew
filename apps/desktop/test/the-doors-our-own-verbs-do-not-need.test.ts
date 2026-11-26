@@ -268,11 +268,9 @@ describe('486 · the doors our own verbs do not need', () => {
   })
 
   describe('§3 · creating an agent', () => {
-    it('🔴 the tool tells a taken name from a free one, and a stored can_create_agents stops nothing', async () => {
+    it('🔴 the tool tells a taken name from a free one', async () => {
       await bringIdentityIntoBeing('taken')
       const worker = await anAgentRunning('worker')
-      // The retired column is no longer read.
-      db.prepare(`UPDATE agent_identity SET can_create_agents = 'none' WHERE slug = 'worker'`).run()
       const tools = toolsOf(worker)
       expect((await tools.call('create_agent', { profile_slug: 'taken' }))['rail']).toBe(
         'agent-name-taken',
