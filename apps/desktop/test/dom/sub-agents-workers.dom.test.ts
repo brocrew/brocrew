@@ -1,3 +1,4 @@
+import { chooseIdle } from './sub-agents-idle-fixture'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import WorkingTogether from '../../src/renderer/src/components/WorkingTogether.vue'
@@ -243,12 +244,12 @@ describe('Sub agents view preferences', () => {
     await settle()
     expect(order()).toEqual(original)
     m.q('cast-latest-first').click()
-    m.q('cast-show-idle').click()
+    chooseIdle(m.host, 'false')
     await settle()
     m.unmount()
     const again = await band()
     expect(again.q('cast-latest-first').getAttribute('aria-pressed')).toBe('true')
-    expect(again.q('cast-show-idle').getAttribute('aria-pressed')).toBe('false')
+    expect((again.q('cast-show-idle') as HTMLSelectElement).value).toBe('false')
   })
   it('hides every idle card, including the owner and a worker with an unfinished piece; questions stay', async () => {
     const rows = panelRows().map((row) => ({
@@ -276,7 +277,7 @@ describe('Sub agents view preferences', () => {
           : piece,
       )
     const m = await band(360, panelReading(work))
-    m.q('cast-show-idle').click()
+    chooseIdle(m.host, 'false')
     await settle()
     expect(m.all('cast-tile-name-ada-worker-2')).toHaveLength(0)
     expect(m.all('cast-tile-name-' + OWNER)).toHaveLength(0)
@@ -317,7 +318,7 @@ describe('Sub agents view preferences', () => {
       .filter((piece) => piece.to === OWNER)
       .map((piece) => ({ ...piece, state: 'answered' as const, endedAt: 1800000000000 }))
     const m = await band(360, panelReading(ownerWork))
-    m.q('cast-show-idle').click()
+    chooseIdle(m.host, 'false')
     await settle()
     expect(m.all('cast-tile-name-ada-worker-2')).toHaveLength(1)
     assertDrawn(m.q('cast-tile-name-ada-worker-2'), 'worker retained by its facets', m.host)

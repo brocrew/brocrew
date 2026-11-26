@@ -102,3 +102,9 @@ export function idlePanel(ordinary = 3, workers = 0) {
   }
   return { rows, identities, reading, rail, telemetry, state }
 }
+
+export function chooseIdle(host: HTMLElement, value: string) {
+  const choice = host.querySelector<HTMLSelectElement>('[data-cy="cast-show-idle"]')!
+  choice.value = value
+  choice.dispatchEvent(new Event('change', { bubbles: true }))
+}

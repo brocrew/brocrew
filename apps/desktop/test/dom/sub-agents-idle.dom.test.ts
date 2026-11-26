@@ -5,10 +5,11 @@ import { railFacts, screenFacts } from '../../src/renderer/src/composables/useWh
 import { conversationList } from '../../src/renderer/src/lib/conversation-list'
 import { mount, unmountAll } from './harness'
 import { assertDrawn, drawnReady } from './drawn'
-import { idlePanel, OWNER } from './sub-agents-idle-fixture'
+import { chooseIdle, idlePanel, OWNER } from './sub-agents-idle-fixture'
 
 afterEach(() => {
   unmountAll()
+  vi.restoreAllMocks()
   localStorage.removeItem('brobot2.subAgents.showIdle')
   localStorage.removeItem('brobot2.subAgents.latestFirst')
   screenFacts().update({ railSays: null })
@@ -60,7 +61,13 @@ it.each([true, false])(
   'hides all ordinary idle cards with navigation enabled %s and keeps an honest total through toggles',
   async (canOpen) => {
     localStorage.setItem('brobot2.subAgents.showIdle', 'false')
-    const view = show(idlePanel(), canOpen)
+    const now = Date.now()
+    vi.spyOn(Date, 'now').mockReturnValue(now)
+    const data = idlePanel()
+    data.rows.forEach((row, index) => {
+      data.rows[index] = { ...row, updatedAt: now - [0.5, 6, 24][index]! * 60 * 60_000 }
+    })
+    const view = show(data, canOpen)
     await settle()
     expect(count(view)).toBe('(3)')
     expect(totals(view)).toBe('0 active 3 idle')
@@ -75,14 +82,35 @@ it.each([true, false])(
       return
     }
     assertDrawn(view.q('cast-show-idle'), 'the idle toggle remains available', view.host)
-    view.q('cast-show-idle').click()
+    chooseIdle(view.host, 'true')
     await settle()
     expect(cards(view)).toEqual(['fictional-reader-1', 'fictional-reader-2', 'fictional-reader-3'])
     expect(count(view)).toBe('(3)')
     expect(totals(view)).toBe('0 active 3 idle')
     expect(view.all('cast-idle-hidden')).toEqual([])
     expect(view.all('cast-idle-empty')).toEqual([])
-    view.q('cast-show-idle').click()
+    expect(
+      [...view.q('cast-show-idle').querySelectorAll('option')].map((one) =>
+        one.textContent?.trim(),
+      ),
+    ).toEqual(['Off', '1 h', '6 h', '24 h', 'All'])
+    for (const [range, visible] of [
+      ['1h', 1],
+      ['6h', 2],
+      ['24h', 3],
+    ] as const) {
+      chooseIdle(view.host, range)
+      await settle()
+      expect(cards(view)).toEqual(data.rows.slice(0, visible).map((row) => row.sessionId))
+    }
+    data.rows[2] = { ...data.rows[2]!, updatedAt: now - 25 * 60 * 60_000 }
+    supply(data)
+    await settle()
+    expect(cards(view)).toEqual(data.rows.slice(0, 2).map((row) => row.sessionId))
+    chooseIdle(view.host, 'true')
+    await settle()
+    expect(cards(view)).toEqual(data.rows.map((row) => row.sessionId))
+    chooseIdle(view.host, 'false')
     await settle()
     expect(cards(view)).toEqual([])
     expect(view.opened).not.toHaveBeenCalled()
@@ -93,6 +121,9 @@ it.each([true, false])(
 it('keeps active, needs-you and both kinds of wait while hiding exactly the idle conversations', async () => {
   localStorage.setItem('brobot2.subAgents.showIdle', 'false')
   const data = idlePanel(6)
+  data.rows.forEach((row, index) => {
+    data.rows[index] = { ...row, updatedAt: Date.now() - 25 * 60 * 60_000 }
+  })
   data.state(1, { is: 'active' })
   data.state(2, { is: 'needs-you' })
   data.state(3, { is: 'waiting-on-an-answer', from: 'Maple' })
@@ -102,16 +133,23 @@ it('keeps active, needs-you and both kinds of wait while hiding exactly the idle
   }
   const view = show(data)
   await settle()
+  for (const range of ['false', '1h', '6h', '24h'] as const) {
+    chooseIdle(view.host, range)
+    await settle()
+    expect(cards(view)).toEqual(data.rows.slice(1, 5).map((row) => row.sessionId))
+  }
+  chooseIdle(view.host, 'false')
+  await settle()
   expect(cards(view)).toEqual(data.rows.slice(1, 5).map((row) => row.sessionId))
   expect(count(view)).toBe('(6)')
   expect(totals(view)).toBe('4 active 2 idle')
   expect(view.q('cast-idle-hidden').textContent).toBe('2 idle hidden')
   expect(view.q('cast-tile-word-fictional-reader-5').textContent).toBe('waiting on purpose')
-  view.q('cast-show-idle').click()
+  chooseIdle(view.host, 'true')
   await settle()
   expect(cards(view)).toEqual(data.rows.map((row) => row.sessionId))
   expect(totals(view)).toBe('4 active 2 idle')
-  view.q('cast-show-idle').click()
+  chooseIdle(view.host, 'false')
   await settle()
   data.state(0, { is: 'active' })
   supply(data)
@@ -130,7 +168,7 @@ it('counts fifteen ordinary conversations and twenty-four parallel workers in th
   expect(totals(view)).toBe('0 active 39 idle')
   expect(cards(view)).toEqual([])
   expect(view.q('cast-idle-hidden').textContent).toBe('39 idle hidden')
-  view.q('cast-show-idle').click()
+  chooseIdle(view.host, 'true')
   await settle()
   expect(cards(view)).toEqual(data.rows.map((row) => row.sessionId))
   expect(new Set(cards(view)).size).toBe(39)
@@ -138,7 +176,7 @@ it('counts fifteen ordinary conversations and twenty-four parallel workers in th
   expect(count(view)).toBe('(39)')
   expect(totals(view)).toBe('0 active 39 idle')
   expect(view.all('cast-idle-hidden')).toEqual([])
-  view.q('cast-show-idle').click()
+  chooseIdle(view.host, 'false')
   await settle()
   expect(cards(view)).toEqual([])
   expect(view.q('cast-idle-hidden').textContent).toBe('39 idle hidden')

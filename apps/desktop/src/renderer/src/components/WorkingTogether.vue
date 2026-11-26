@@ -8,7 +8,7 @@ import type { Provider } from '@brobot2/shared'
 import type { AgentIdentity, ProviderCapabilityMap } from '../../../shared/runtime-ipc'
 import type { WorkEdge } from '../../../shared/who-called-whom'
 import { TASK_IS_OPEN } from '../../../shared/tasks'
-import { usePersistentToggle } from '../composables/usePersistentToggle'
+import { usePersistentChoice, usePersistentToggle } from '../composables/usePersistentToggle'
 import { onPurposeSaid, workerName, workerState } from '../lib/conversation-list'
 import { useMinuteClock } from '../composables/useMinuteClock'
 import { useWhoCalledWhom } from '../composables/useWhoCalledWhom'
@@ -146,7 +146,22 @@ const allAgents = computed(() =>
 )
 
 const latestFirst = usePersistentToggle('brobot2.subAgents.latestFirst', false)
-const showIdle = usePersistentToggle('brobot2.subAgents.showIdle', true)
+const idleChoices = [
+  { value: 'false', label: 'Off', hours: 0 },
+  { value: '1h', label: '1 h', hours: 1 },
+  { value: '6h', label: '6 h', hours: 6 },
+  { value: '24h', label: '24 h', hours: 24 },
+  { value: 'true', label: 'All', hours: Infinity },
+] as const
+const idleRange = usePersistentChoice(
+  'brobot2.subAgents.showIdle',
+  'true' as (typeof idleChoices)[number]['value'],
+  (value): value is (typeof idleChoices)[number]['value'] =>
+    idleChoices.some((choice) => choice.value === value),
+)
+const idleHours = computed(
+  () => idleChoices.find((choice) => choice.value === idleRange.value)!.hours,
+)
 function listedCard(card: CastCard) {
   return listedById.value.get(card.conversation)
 }
@@ -165,15 +180,25 @@ function hiddenWhenIdle(card: CastCard): boolean {
 const idleAgents = computed(
   () => new Set(allAgents.value.filter(hiddenWhenIdle).map((card) => card.conversation)),
 )
+function showsIdle(card: CastCard): boolean {
+  if (idleRange.value === 'false') return false
+  if (idleRange.value === 'true') return true
+  const at = listedCard(card)?.updatedAt
+  return at === undefined || at >= minute.value - idleHours.value * 60 * 60_000
+}
 const agents = computed(() => {
   const rows = allAgents.value.filter(
-    (card) => showIdle.value || !idleAgents.value.has(card.conversation),
+    (card) => !idleAgents.value.has(card.conversation) || showsIdle(card),
   )
   return latestFirst.value
     ? rows.sort((a, b) => (listedCard(b)?.updatedAt ?? 0) - (listedCard(a)?.updatedAt ?? 0))
     : rows
 })
-const hiddenIdleCount = computed(() => (showIdle.value ? 0 : idleAgents.value.size))
+const hiddenIdleCount = computed(
+  () =>
+    allAgents.value.filter((card) => idleAgents.value.has(card.conversation) && !showsIdle(card))
+      .length,
+)
 /** The card's one task line: its newest piece, label first, and how many more it holds. */
 function taskLine(
   card: CastCard,
@@ -391,16 +416,14 @@ function chipWord(card: CastCard): string | undefined {
           >
             Latest first
           </button>
-          <button
-            v-if="canOpen"
-            type="button"
-            class="cast-toggle"
-            :aria-pressed="showIdle"
-            data-cy="cast-show-idle"
-            @click="showIdle = !showIdle"
-          >
+          <label v-if="canOpen" class="cast-idle-choice">
             Show idle
-          </button>
+            <select v-model="idleRange" class="bb-input" data-cy="cast-show-idle">
+              <option v-for="choice in idleChoices" :key="choice.value" :value="choice.value">
+                {{ choice.label }}
+              </option>
+            </select>
+          </label>
           <span v-if="hiddenIdleCount" class="quiet" data-cy="cast-idle-hidden"
             >{{ hiddenIdleCount }} idle hidden</span
           >
@@ -936,6 +959,14 @@ function chipWord(card: CastCard): string | undefined {
 .gap strong {
   display: block;
   color: var(--text-soft);
+}
+.cast-idle-choice {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+.cast-idle-choice select {
+  width: auto;
 }
 .cast-controls {
   display: flex;
