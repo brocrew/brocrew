@@ -1,4 +1,4 @@
-import { neutralHostDeps } from './lib/host-fixture'
+import { neutralHostDeps, RecordingSink } from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -418,34 +418,6 @@ const ANSWERED_DURING_A_QUIT: ReadonlySet<RuntimeCommandKind> = new Set([
 
 const KINDS = Object.keys(SAMPLES) as RuntimeCommandKind[]
 
-class RecordingSink implements RuntimeEventSink {
-  // ⚠️ Annotated rather than inferred, so `WindowSink` below can override it — an inferred `false`
-  // is the literal type and nothing may be assigned to it.
-  readonly aPersonIsBehindIt: boolean = false
-  readonly alive = true
-  readonly ownerId = 'owner:1'
-  send(): void {}
-  sendLiveness(): void {}
-}
-
-/**
- * ⛔ **The same sink, declaring what a real window declares** (355, on 349).
- *
- * The identity verbs are refused at the door unless the channel they arrived on says a
- * person is behind it — the first reader of `RuntimeEventSink.aPersonIsBehindIt` at the IPC layer.
- * ⚠️ **The refusal is not this file's subject**, and the test below would otherwise fail for a
- * reason that has nothing to do with a quit: *"changes nothing at all while the app is running"* is
- * about the SHUTDOWN door, and the only channel these commands really arrive on is a window, which
- * declares `true`.
- *
- * ⚑ **Two sinks rather than flipping the one**, so the difference stays visible: every other verb is
- * still driven by a sink that claims nothing, and the person gate itself is performed — refused and
- * allowed at the same moment — in `the-grant-nobody-can-give.test.ts` §2.
- */
-class WindowSink extends RecordingSink {
-  override readonly aPersonIsBehindIt = true
-}
-
 /** The verbs `ipc.ts` refuses unless a person is asking. */
 const NEEDS_A_PERSON = new Set<RuntimeCommandKind>([
   'skills',
@@ -557,8 +529,22 @@ const NEEDS_A_PERSON = new Set<RuntimeCommandKind>([
   'closeWork',
 ])
 
+/**
+ * ⛔ **The same sink, declaring what a real window declares** (355, on 349).
+ *
+ * The identity verbs are refused at the door unless the channel they arrived on says a
+ * person is behind it — the first reader of `RuntimeEventSink.aPersonIsBehindIt` at the IPC layer.
+ * ⚠️ **The refusal is not this file's subject**, and the test below would otherwise fail for a
+ * reason that has nothing to do with a quit: *"changes nothing at all while the app is running"* is
+ * about the SHUTDOWN door, and the only channel these commands really arrive on is a window, which
+ * declares `true`.
+ *
+ * ⚑ **Two sinks rather than flipping the one**, so the difference stays visible: every other verb is
+ * still driven by a sink that claims nothing, and the person gate itself is performed — refused and
+ * allowed at the same moment — in `the-grant-nobody-can-give.test.ts` §2.
+ */
 const sinkFor = (kind: RuntimeCommandKind): RuntimeEventSink =>
-  NEEDS_A_PERSON.has(kind) ? new WindowSink() : new RecordingSink()
+  NEEDS_A_PERSON.has(kind) ? new RecordingSink() : new RecordingSink('owner:1', false)
 
 /**
  * A host that records which method the boundary reached and answers nothing.
@@ -635,9 +621,9 @@ describe('the shutdown door (273)', () => {
       )
         continue
       const { host, touched } = recordingHost(true)
-      await expect(executeRuntimeCommand(host, new RecordingSink(), SAMPLES[kind])).rejects.toThrow(
-        refusedDuringAQuit(kind),
-      )
+      await expect(
+        executeRuntimeCommand(host, new RecordingSink('owner:1', false), SAMPLES[kind]),
+      ).rejects.toThrow(refusedDuringAQuit(kind))
       // 273 §1: *"A try/catch around the query is not the fix — it hides the call instead of
       // stopping it."* So the host is not asked, at all, and that is what is asserted.
       expect(touched, `${kind} reached the host during a quit`).toEqual([])
@@ -646,21 +632,25 @@ describe('the shutdown door (273)', () => {
 
   it('refuses the stamped queue during a quit with its stamp, reading nothing', async () => {
     const { host, touched } = recordingHost(true)
-    await executeRuntimeCommand(host, new RecordingSink(), SAMPLES.personsQueue)
+    await executeRuntimeCommand(host, new RecordingSink('owner:1', false), SAMPLES.personsQueue)
     // Only the refusal is built: what this run is called and its sequence, no store and no queue.
     expect(touched).toEqual(['personsQueueRefused'])
   })
 
   it('refuses the stamped listing during a quit with its stamp, reading nothing', async () => {
     const { host, touched } = recordingHost(true)
-    await executeRuntimeCommand(host, new RecordingSink(), SAMPLES.listConversations)
+    await executeRuntimeCommand(
+      host,
+      new RecordingSink('owner:1', false),
+      SAMPLES.listConversations,
+    )
     expect(touched).toEqual(['listingRefused'])
   })
 
   it('still answers the nine that touch no database, or refuse themselves better', async () => {
     for (const kind of ANSWERED_DURING_A_QUIT) {
       const { host, touched } = recordingHost(true)
-      await executeRuntimeCommand(host, new RecordingSink(), SAMPLES[kind])
+      await executeRuntimeCommand(host, new RecordingSink('owner:1', false), SAMPLES[kind])
       expect(touched, `${kind} was refused at the door`).not.toEqual([])
     }
   })
@@ -670,7 +660,7 @@ describe('the shutdown door (273)', () => {
     // been checked, and "we are shutting down" is a worse answer than "that is not a command".
     const { host } = recordingHost(true)
     await expect(
-      executeRuntimeCommand(host, new RecordingSink(), { kind: 'nonsense' }),
+      executeRuntimeCommand(host, new RecordingSink('owner:1', false), { kind: 'nonsense' }),
     ).rejects.toThrow(/invalid runtime command/)
   })
 

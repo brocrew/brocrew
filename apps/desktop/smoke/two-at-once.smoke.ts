@@ -5,8 +5,8 @@ import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { NULL_SESSION_STORE } from '../src/main/db/session-store'
 import { findClaudeProgramHere } from '../src/main/providers/claude/program'
 import { createProviderRuntime } from '../src/main/connections/homes'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
+import { RecordingSink as WindowSink } from '../test/lib/host-fixture'
 import { runEvidence, runScratch } from '../../../packages/runtime/smoke/run-paths'
 
 /**
@@ -63,15 +63,8 @@ function ask(marker: string): string {
 }
 
 /** A sink that keeps everything it was handed, which is the whole instrument. */
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = false
-  readonly alive = true
-  readonly messages: RuntimeEventMessage[] = []
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
+class RecordingSink extends WindowSink {
+  override readonly aPersonIsBehindIt = false
 
   /**
    * When this session first said `working`, and when its turn terminalized — epoch ms, or null.
