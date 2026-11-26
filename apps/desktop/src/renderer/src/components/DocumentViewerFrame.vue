@@ -9,21 +9,24 @@
  * limits under it (a cut file, unreadable lines); `refusal` says why there is nothing to show. The
  * default slot is the body; a `.stage` there is the one scroller.
  *
+ * `fill` takes the whole allowed width, for a body whose content would shrink-wrap the panel.
+ *
  * Esc, the backdrop, the focus trap and returning focus belong to `OverlayHost`, which wraps this.
  */
 withDefaults(
   defineProps<{
     notes?: readonly { text: string; cy: string }[]
     refusal?: { text: string; cy: string } | null
+    fill?: boolean
   }>(),
-  { notes: () => [], refusal: null },
+  { notes: () => [], refusal: null, fill: false },
 )
 
 const emit = defineEmits<{ close: [] }>()
 </script>
 
 <template>
-  <div class="viewer-frame">
+  <div class="viewer-frame" :class="{ fill }">
     <header class="viewer-head">
       <slot name="head" />
       <div class="head-end">
@@ -56,6 +59,11 @@ const emit = defineEmits<{ close: [] }>()
   border: var(--border-width) solid var(--line);
   border-radius: var(--radius);
   background: var(--drawer-solid);
+}
+
+/* A tool's whole answer is short JSON lines, which would shrink-wrap the panel to about 400 px. */
+.fill {
+  width: min(900px, 92vw);
 }
 
 .viewer-head {

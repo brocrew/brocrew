@@ -13,6 +13,9 @@ import {
 } from '../lib/tool-answer'
 import type { ToolItem, TranscriptItem } from '../lib/transcript'
 import ToolEntry from './ToolEntry.vue'
+import DocumentViewerFrame from './DocumentViewerFrame.vue'
+import SegmentedControl from './SegmentedControl.vue'
+import PaperSheet from './PaperSheet.vue'
 import MarkdownWords from './MarkdownWords.vue'
 import type { PathsHere } from '../composables/useMessagePaths'
 
@@ -87,6 +90,10 @@ const emit = defineEmits<{ close: [] }>()
 const absence = computed(() => answerAbsence(props.answer, props.canAsk))
 const parts = computed(() => props.answer?.parts ?? [])
 const view = ref<'readable' | 'raw'>('readable')
+const VIEWS = [
+  { value: 'readable', label: 'Readable', cy: 'tool-answer-view-readable' },
+  { value: 'raw', label: 'Raw', cy: 'tool-answer-view-raw' },
+] as const
 
 /**
  * ⚠️ **Computed per part rather than per render**, and the `null` is what decides the FACE the part
@@ -116,19 +123,10 @@ const frame = computed(() =>
 </script>
 
 <template>
-  <div class="tool-answer" data-cy="tool-answer-viewer">
-    <header class="viewer-head">
+  <DocumentViewerFrame fill data-cy="tool-answer-viewer" @close="emit('close')">
+    <template #head>
       <span class="what">what it answered</span>
-      <button
-        class="icon-button"
-        type="button"
-        aria-label="Close"
-        data-cy="close-overlay"
-        @click="emit('close')"
-      >
-        <svg class="icon"><use href="#i-x" /></svg>
-      </button>
-    </header>
+    </template>
 
     <!-- ⛔ **The gap, DRAWN** (462 §2.2). These answers are memory held by a live adapter and
          nothing persists them, so a conversation reopened from the ledger has every row and none of
@@ -156,31 +154,12 @@ const frame = computed(() =>
 
           <template v-if="!absence">
             <div class="seg-bar">
-              <span class="seg-group">
-                <button
-                  class="seg"
-                  :class="{ on: view === 'readable' }"
-                  type="button"
-                  data-cy="tool-answer-view-readable"
-                  @click="view = 'readable'"
-                >
-                  Readable
-                </button>
-                <button
-                  class="seg"
-                  :class="{ on: view === 'raw' }"
-                  type="button"
-                  data-cy="tool-answer-view-raw"
-                  @click="view = 'raw'"
-                >
-                  Raw
-                </button>
-              </span>
+              <SegmentedControl v-model="view" :options="VIEWS" />
             </div>
             <!-- `data-on-white` for `DocumentBody`'s reason, in its own words: a white island whatever the
                  theme, and deliberately NOT a second `data-chat-theme` carrier (091). -->
             <div class="view" :data-view="view">
-              <div class="paper" data-on-white data-cy="tool-answer-paper">
+              <PaperSheet data-cy="tool-answer-paper">
                 <template v-if="view === 'readable'">
                   <section
                     v-for="(part, index) in parts"
@@ -238,44 +217,16 @@ const frame = computed(() =>
                   </p>
                   <pre class="part-body json" data-cy="tool-answer-raw">{{ raw }}</pre>
                 </template>
-              </div>
+              </PaperSheet>
             </div>
           </template>
         </template>
       </component>
     </div>
-  </div>
+  </DocumentViewerFrame>
 </template>
 
 <style scoped>
-/* `--drawer-solid` rather than `--panel` or `--paper-bg`, on `ChildWorkViewer`'s measured ruling:
-   it already means "the opaque fill when something floats over the transcript", it has both theme
-   values, and `--paper-bg` has no dark value and would put near-white header ink on white. */
-/* ⛔ **`width` and not `max-width`, and that is a MEASUREMENT rather than a preference** (462, found
-   by this dispatch's own dom test). `ChildWorkViewer` next door writes `max-width` and fills the
-   room anyway, because a transcript's content is wide. This panel's content is a `<pre>` with
-   `overflow-wrap: anywhere`, whose max-content width is its longest LINE — and
-   `JSON.stringify(…, 2)` produces short lines. ⚠️ Measured inside `OverlayHost`'s flex centring at a
-   1200 px viewport: **400 px**, against the 900 it is allowed. A panel that shrink-wraps to 400 px
-   is the row's problem again in a bigger box, so the width is stated. */
-.tool-answer {
-  display: flex;
-  width: min(900px, 92vw);
-  max-height: 88vh;
-  flex-direction: column;
-  border: var(--border-width) solid var(--line);
-  border-radius: var(--radius);
-  background: var(--drawer-solid);
-}
-
-.viewer-head {
-  display: flex;
-  align-items: center;
-  padding: var(--space-4) var(--space-5);
-  border-bottom: var(--border-width) solid var(--line);
-  gap: var(--space-4);
-}
-
 .name {
   display: block;
   margin-bottom: var(--space-4);
@@ -291,53 +242,9 @@ const frame = computed(() =>
   font-size: var(--type-caption);
 }
 
-.icon-button {
-  margin-left: auto;
-}
-
 .seg-bar {
   display: flex;
   justify-content: flex-end;
-}
-
-.seg-group {
-  display: inline-flex;
-  padding: var(--space-1);
-  border: var(--border-width) solid var(--line);
-  border-radius: var(--radius-seg-group);
-  background: var(--wash-2);
-}
-
-.seg {
-  display: inline-flex;
-  height: 22px;
-  align-items: center;
-  padding: 0 var(--space-5);
-  border: 0;
-  border-radius: var(--radius-seg);
-  background: transparent;
-  color: var(--muted);
-  font-size: var(--type-caption);
-  font-weight: var(--fw-semibold);
-}
-
-.seg:hover {
-  color: var(--text-soft);
-}
-
-/* `--accent-ink` on `--accent`, and NOT `--badge-ink` — the trap `DocumentBody`'s identical control
-   records: this is ink on a solid accent fill, not a badge. */
-.seg.on {
-  background: var(--accent-solid-bg);
-  color: var(--accent-ink);
-}
-
-/* ⛔ **One scroller** (462): an answer is a document a person scrolls, and nested scrollers make the
-   wheel land on whichever one the pointer is over. The card and its paper grow; this clips them. */
-.stage {
-  min-height: 0;
-  padding: var(--space-5);
-  overflow: auto;
 }
 
 .stage > .tool-entry {
@@ -347,19 +254,6 @@ const frame = computed(() =>
 
 .view {
   padding: var(--space-4) 0 0;
-}
-
-.paper {
-  padding: var(--space-6);
-  border: var(--border-width) solid var(--paper-line);
-  border-radius: var(--radius-paper);
-  background: var(--paper-bg);
-  box-shadow: var(--paper-shadow);
-  color: var(--paper-ink);
-  /* `scrollbar-color` inherits as an ALREADY-SUBSTITUTED value, so an ancestor's dark thumb would
-     ride onto white paper — `DocumentBody` records the measurement. Re-declared inside the island so
-     the var resolves here, and inherited by the wide `pre` below, which is what actually scrolls. */
-  scrollbar-color: var(--scrollbar-thumb) transparent;
 }
 
 .part + .part {
