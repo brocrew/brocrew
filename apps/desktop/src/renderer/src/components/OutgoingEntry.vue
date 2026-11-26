@@ -426,6 +426,7 @@ async function takeItBack(piece: string): Promise<void> {
               kind: card.mark || 'message',
               label: give ? null : (card.facts?.heading ?? card.piece),
               text: (give ? card.title : null) ?? card.body ?? card.title ?? '',
+              hidePreviewWhenExpanded: give !== null,
               at: item.at,
               where: card.where,
               state: give

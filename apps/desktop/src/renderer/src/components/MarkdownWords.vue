@@ -65,20 +65,20 @@ function clicked(event: MouseEvent): void {
   white-space: normal;
 }
 
-.compact .md-chat,
-.compact :deep(.md-chat :is(p, pre, ul, ol, li, blockquote, hr)),
-.compact :deep(.md-chat :is(h1, h2, h3, h4, h5, h6)),
-.compact :deep(.md-chat :is(table, thead, tbody, tr, th, td)) {
+.markdown-words.compact .md-chat,
+.markdown-words.compact :deep(.md-chat :is(p, pre, ul, ol, li, blockquote, hr)),
+.markdown-words.compact :deep(.md-chat :is(h1, h2, h3, h4, h5, h6)),
+.markdown-words.compact :deep(.md-chat :is(table, thead, tbody, tr, th, td)) {
   display: inline;
 }
 
 .markdown-words.compact,
-.compact .md-chat,
-.compact :deep(.md-chat *) {
+.markdown-words.compact .md-chat,
+.markdown-words.compact :deep(.md-chat *) {
   white-space: nowrap;
 }
 
-.compact :deep(br) {
+.markdown-words.compact :deep(br) {
   display: none;
 }
 </style>

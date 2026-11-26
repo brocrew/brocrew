@@ -155,6 +155,7 @@ const view = ref<'readable' | 'raw'>('readable')
             kind: item.opened ? 'work' : item.says ? MESSAGE_KIND_WORD[item.says] : 'message',
             label: item.opened?.label,
             text: item.text,
+            hidePreviewWhenExpanded: opened !== null,
             at: item.at,
             where: workIsWith({ owner: item.relayedFrom }, props.held ?? null),
           }
