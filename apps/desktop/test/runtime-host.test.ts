@@ -1,4 +1,4 @@
-import { neutralHostDeps } from './lib/host-fixture'
+import { neutralHostDeps, RecordingSink } from './lib/host-fixture'
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -20,7 +20,7 @@ import {
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { NOTHING_TO_SEND } from '../src/shared/runtime-ipc'
 import type { CreateSessionInput } from '../src/shared/runtime-ipc'
-import { RecordingSink, waitFor } from './lib/runtime-host-sink-fixture'
+import { waitFor } from './lib/runtime-host-sink-fixture'
 
 /**
  * The host, driven end to end against `FakeRuntime` — the conformance double that

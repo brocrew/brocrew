@@ -1,5 +1,4 @@
-import { neutralHostDeps } from './lib/host-fixture'
-import type { TranscriptEvent } from '../src/shared/conversation-events'
+import { neutralHostDeps, RecordingSink as WindowSink } from './lib/host-fixture'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -10,34 +9,16 @@ import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { describeUnavailable } from '../src/main/runtime/session-unavailable'
-import type {
-  RuntimeCommand,
-  RuntimeEventMessage,
-  SessionLiveness,
-  SessionLivenessMessage,
-} from '../src/shared/runtime-ipc'
+import type { RuntimeCommand } from '../src/shared/runtime-ipc'
 
 const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 
-class RecordingSink implements RuntimeEventSink {
+class RecordingSink extends WindowSink {
   // 349 · this double stands in for a WINDOW — the tests below answer for a person through it.
-  get aPersonIsBehindIt() {
-    return this.ownerId.startsWith('webContents:')
-  }
-  readonly messages: RuntimeEventMessage[] = []
-  readonly liveness: SessionLiveness[] = []
-  readonly alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(message: SessionLivenessMessage): void {
-    this.liveness.push(message.liveness)
-  }
-  events(): TranscriptEvent[] {
-    return this.messages.map((message) => message.event)
+  constructor(ownerId: string) {
+    super(ownerId, ownerId.startsWith('webContents:'))
   }
 }
 

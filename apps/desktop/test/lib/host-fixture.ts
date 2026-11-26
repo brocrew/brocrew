@@ -43,6 +43,8 @@ import type {
 export class RecordingSink implements RuntimeEventSink {
   readonly messages: RuntimeEventMessage[] = []
   readonly liveness: SessionLiveness[] = []
+  /** The same liveness changes, each with the session it was addressed to. */
+  readonly livenessMessages: SessionLivenessMessage[] = []
   alive = true
   constructor(
     readonly ownerId = 'owner:1',
@@ -53,12 +55,23 @@ export class RecordingSink implements RuntimeEventSink {
   }
   sendLiveness(message: SessionLivenessMessage): void {
     this.liveness.push(message.liveness)
+    this.livenessMessages.push(message)
   }
   events(): TranscriptEvent[] {
     return this.messages.map((message) => message.event)
   }
   types(): string[] {
     return this.events().map((event) => event.type)
+  }
+  ordinals(): number[] {
+    return this.messages.map((message) => message.ordinal)
+  }
+  find<T extends TranscriptEvent['type']>(
+    type: T,
+  ): Extract<TranscriptEvent, { type: T }> | undefined {
+    return this.events().find(
+      (event): event is Extract<TranscriptEvent, { type: T }> => event.type === type,
+    )
   }
 }
 
