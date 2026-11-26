@@ -1,6 +1,7 @@
 import type { PromptUpdateBaseline } from '../../shared/human-answer-contracts'
 import {
   WHAT_IS_OPEN_IS_SAID_AGAIN_AFTER_MS,
+  currentWorkLine,
   type AHelperInTheTurn,
   type CurrentWorkInTheTurn,
   type ExtraTurnFacts,
@@ -198,9 +199,9 @@ export function turnBlockChanges(
     input.replyQuestionTurn !== null &&
     input.replyQuestionTurn !== before.hintedTurn
   if (hint) extra.replyQuestion = true
-  // The current work is said when it or its conversation changes, and again once it has gone
-  // unsaid for a while; an unchanged turn leaves it out.
-  const currentWork = JSON.stringify([input.current, input.conversation])
+  // The current work is said when the line it makes changes, and again once it has gone unsaid
+  // for a while; an unchanged turn leaves it out.
+  const currentWork = currentWorkLine(input.current, input.conversation)
   const currentDue =
     before.currentWork === null ||
     currentWork !== before.currentWork.signature ||

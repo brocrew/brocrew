@@ -190,6 +190,30 @@ function currentLabel(current?: CurrentWorkInTheTurn): string | null {
     : null
 }
 
+/** The current-work line as the footer says it, which is also what decides whether it changed. */
+export function currentWorkLine(current: CurrentWorkInTheTurn, conversation?: string): string {
+  if (
+    (current.kind === 'piece' && currentLabel(current) === null) ||
+    (current.kind === 'ambiguous' &&
+      current.labels.some((label) => [...label].length > TURN_LABEL_POINTS))
+  )
+    return TURN_BLOCK_WORDS.currentUnavailable
+  if (current.kind === 'piece')
+    return TURN_BLOCK_WORDS.current(
+      current.label,
+      oneLine(current.title ?? TURN_BLOCK_WORDS.untitled, 200),
+      conversation ?? 'this conversation',
+    )
+  if (current.kind === 'ambiguous')
+    return TURN_BLOCK_WORDS.currentAmbiguous(
+      current.labels.slice(0, 5),
+      current.more + Math.max(0, current.labels.length - 5),
+    )
+  return current.kind === 'none'
+    ? TURN_BLOCK_WORDS.currentNone
+    : TURN_BLOCK_WORDS.currentUnavailable
+}
+
 function extraLines(facts: ExtraTurnFacts, now: number): string[] {
   const lines: string[] = []
   let nudged = false
@@ -237,32 +261,9 @@ function extraLines(facts: ExtraTurnFacts, now: number): string[] {
   if (facts.replyQuestion === true) lines.push(TURN_BLOCK_WORDS.replyQuestion)
   const current = facts.currentWork
   if (current !== undefined) {
-    if (
-      (current.kind === 'piece' && currentLabel(current) === null) ||
-      (current.kind === 'ambiguous' &&
-        current.labels.some((label) => [...label].length > TURN_LABEL_POINTS))
-    )
-      lines.push(TURN_BLOCK_WORDS.currentUnavailable)
-    else if (current.kind === 'piece') {
-      lines.push(
-        TURN_BLOCK_WORDS.current(
-          current.label,
-          oneLine(current.title ?? TURN_BLOCK_WORDS.untitled, 200),
-          facts.conversation ?? 'this conversation',
-        ),
-      )
-      if (!nudged) lines.push(TURN_BLOCK_WORDS.updateGivenWork)
-    } else
-      lines.push(
-        current.kind === 'none'
-          ? TURN_BLOCK_WORDS.currentNone
-          : current.kind === 'ambiguous'
-            ? TURN_BLOCK_WORDS.currentAmbiguous(
-                current.labels.slice(0, 5),
-                current.more + Math.max(0, current.labels.length - 5),
-              )
-            : TURN_BLOCK_WORDS.currentUnavailable,
-      )
+    lines.push(currentWorkLine(current, facts.conversation))
+    if (current.kind === 'piece' && currentLabel(current) !== null && !nudged)
+      lines.push(TURN_BLOCK_WORDS.updateGivenWork)
   }
   lines.push(...currentRulesLines(facts.currentRules, now))
   const count = facts.openHeldCount ?? 0
