@@ -1,4 +1,5 @@
 import type { VerifyCopy } from './copy-check'
+import { prepareDatabaseSnapshot } from '../database/recovery'
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import type { OfferedCheckpoint, ProgressListener } from '../../shared/recovery'
@@ -19,7 +20,6 @@ import {
   hasPendingMigrations,
   isLineagePrefix,
   sameMigrations,
-  prepareDatabaseSnapshot,
   type BuildMigration,
   type MigrationsRead,
 } from './database-facts'
@@ -312,18 +312,9 @@ async function capture(
       fs,
       signal: options.signal,
       expectedMigrations: options.expectedMigrations,
-      beforeWrite: (bytes) => checkFreeSpace(userData, bytes, options.freeBytes ?? freeBytesOn),
-      verifySource: verifySource
-        ? async () => {
-            const checked = await verifySource(databaseFile(userData), true)
-            if (checked.kind === 'damaged')
-              throw new CheckpointFailed(
-                `The live database did not pass SQLite's own check (${checked.check}).`,
-                false,
-              )
-            if (checked.kind === 'failed') throw new Error(checked.message)
-          }
-        : undefined,
+      userData,
+      freeBytes: (path) => (options.freeBytes ?? freeBytesOn)(path),
+      verifySource,
     })
     await options.beforeCopy?.(copyDatabase.bytes)
     options.signal?.throwIfAborted()
