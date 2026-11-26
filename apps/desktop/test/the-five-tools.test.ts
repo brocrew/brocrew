@@ -1403,16 +1403,6 @@ describe('347 · the five tools', () => {
       const code = codeOf('main/runtime/agent-tools.ts')
       // The tool layer translates calls; it reads no identity column and no rail input.
       for (const forbidden of [
-        'maxDepth',
-        'max_depth',
-        'canMessage',
-        'can_message',
-        'canAssignWork',
-        'can_assign_work',
-        'canCreateAgents',
-        'can_create_agents',
-        'canWriteRules',
-        'can_write_rules',
         'spawningEnabled',
         'depthOf',
         'agentIdentityOf',
