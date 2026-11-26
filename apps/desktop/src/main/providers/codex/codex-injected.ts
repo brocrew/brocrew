@@ -1,7 +1,7 @@
 export const REQUEST_MARKER = '## My request for Codex:'
 
 /** The tail the CLI appends to a preamble it sends without a request. */
-export const ENVIRONMENT_CLOSE = '</environment_context>'
+const ENVIRONMENT_CLOSE = '</environment_context>'
 
 /**
  * A message that is one wrapped element, whole (`<skill>…</skill>`, `<heartbeat>…</heartbeat>`).

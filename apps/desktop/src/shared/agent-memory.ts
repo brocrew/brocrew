@@ -148,7 +148,7 @@ export const AMENDMENT_MEANS: Readonly<Record<MemoryAmendmentAct, string>> = {
  * is, and the controls are not offered** — which is `HO-029` §3's rule read forwards: a surface
  * must not offer a gesture that cannot land.
  */
-export const MEMORY_IS_SOMEWHERE_ELSE =
+const MEMORY_IS_SOMEWHERE_ELSE =
   'This entry’s file lives outside BroCrew’s own folders, so BroCrew will not change it here. The ' +
   'path it really leads to is shown beside it.'
 

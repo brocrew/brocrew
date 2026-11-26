@@ -13,8 +13,7 @@ export type BundlePublish =
   | { readonly ok: true; readonly path: string; readonly bytes: number }
   | { readonly ok: false; readonly path: string; readonly reason: 'unmanaged-override' }
 
-export type InstructionRefusal =
-  'symlink' | 'not-a-regular-file' | 'too-large' | 'not-utf8' | 'unreadable'
+type InstructionRefusal = 'symlink' | 'not-a-regular-file' | 'too-large' | 'not-utf8' | 'unreadable'
 
 export type InstructionRead =
   | {

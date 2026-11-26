@@ -127,7 +127,7 @@ export function describeBuild(
  * packaged release) is not a combination, and naming branches it never meant to hold would be a
  * false alarm. ⛔ Never fails a build: anything git will not answer is `null`, *"not known"*.
  */
-export const COMBINED_BRANCH = 'develop'
+const COMBINED_BRANCH = 'develop'
 /** The branches the follower combines, in the order it merges them. */
 const COMBINED_FROM = ['dev', 'prompts', 'ui'] as const
 

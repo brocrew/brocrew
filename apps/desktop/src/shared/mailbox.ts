@@ -37,7 +37,7 @@ import type { MailboxKind, PersistedEventInfo } from './conversation-events'
 /** How a held message stopped being held — `UnqueuedMessageEvent.reason`, as this fold reads it. */
 export const MAILBOX_ENDINGS = ['sent', 'cancelled', 'retracted', 'abandoned', 'handover'] as const
 
-export type MailboxEnding = (typeof MAILBOX_ENDINGS)[number]
+type MailboxEnding = (typeof MAILBOX_ENDINGS)[number]
 
 /** One message this conversation was handed to read, as derived. */
 export interface MailboxEntry {

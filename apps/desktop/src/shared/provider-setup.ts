@@ -1,6 +1,6 @@
 import type { Provider } from '@brobot2/shared'
 
-export type ProviderSetupPhase =
+type ProviderSetupPhase =
   | 'idle'
   | 'installing'
   | 'signing-in'

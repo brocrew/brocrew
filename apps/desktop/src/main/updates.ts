@@ -76,7 +76,7 @@ export function theAutoUpdaterOf(exported: unknown): AppUpdater {
   return autoUpdater
 }
 
-export function nothingWouldStop(stops: WhatARestartWouldStop): boolean {
+function nothingWouldStop(stops: WhatARestartWouldStop): boolean {
   return stops.conversations.length === 0 && stops.otherWorkspaces === 0
 }
 

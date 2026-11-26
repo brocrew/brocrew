@@ -34,7 +34,7 @@ interface Block {
   readonly isText: boolean
 }
 
-export const TEXT_BLOCKS = new Set(['text', 'input_text', 'output_text'])
+const TEXT_BLOCKS = new Set(['text', 'input_text', 'output_text'])
 
 /** A message's content, block by block, as sent. */
 export function blocksIn(content: unknown): Block[] {

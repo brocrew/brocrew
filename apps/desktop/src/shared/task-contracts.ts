@@ -638,7 +638,7 @@ export interface ConversationWaiting {
  * piece open, it asked no question about it and handed none of it out, it isn't parked on purpose,
  * and nothing is on its way to it (no start, no running turn, no words held for it).
  */
-export interface StoppedWork {
+interface StoppedWork {
   /** The piece's id. */
   readonly piece: string
   /** Its label, such as `W6.4.1`. */

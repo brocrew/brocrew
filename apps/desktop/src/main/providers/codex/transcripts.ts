@@ -34,7 +34,7 @@ function eventForDisplay(event: TranscriptEvent): TranscriptEvent {
   return knownEmpty ? { ...event, category: 'activity' } : event
 }
 
-export const CODEX_ROLLOUT_JSONL = 'codex-rollout-jsonl'
+const CODEX_ROLLOUT_JSONL = 'codex-rollout-jsonl'
 export const transcripts: TranscriptPolicy = {
   eventForDisplay,
   splitToolName: (name) =>

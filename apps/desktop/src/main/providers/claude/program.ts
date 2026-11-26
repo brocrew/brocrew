@@ -184,7 +184,7 @@ interface Candidate {
 }
 
 /** The places, in the order they are tried: each installer's own, then `PATH`. */
-export function installedCandidates(context: ClaudeProgramContext): Candidate[] {
+function installedCandidates(context: ClaudeProgramContext): Candidate[] {
   const path = pathsFor(context.platform)
   const env = context.env
   const onPath = (env.PATH ?? env.Path ?? '')

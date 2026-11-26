@@ -98,7 +98,7 @@ export function isAbsent(error: unknown): boolean {
   return (error as NodeJS.ErrnoException | null)?.code === 'ENOENT'
 }
 
-export function isSymlinkError(error: unknown): boolean {
+function isSymlinkError(error: unknown): boolean {
   const code = (error as NodeJS.ErrnoException | null)?.code
   return code === 'ELOOP' || code === 'EMLINK'
 }

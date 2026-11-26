@@ -119,7 +119,7 @@ const isFields = (value: unknown): value is Record<string, unknown> =>
  * The planner's scope for one life of a conversation. ⚑ A life is named by the row that began it
  * (its moment and ordinal), so the same rows name it the same way however many came before them.
  */
-export function scheduleScope(conversation: string, life: string, childId?: string): ScheduleScope {
+function scheduleScope(conversation: string, life: string, childId?: string): ScheduleScope {
   return {
     conversationId: conversation,
     providerId: PROVIDER,
@@ -725,7 +725,7 @@ export function noticesWorthTelling(
 }
 
 /** How long ago a job must have left the listing for its leaving to be old news. */
-export const AN_ABSENCE_IS_OLD_AFTER_MS = 24 * 60 * 60_000
+const AN_ABSENCE_IS_OLD_AFTER_MS = 24 * 60 * 60_000
 
 /**
  * Whether a job the newest listing leaves out is old news ({@link noticesWorthTelling}). ⚑ Its age

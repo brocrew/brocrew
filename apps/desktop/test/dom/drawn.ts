@@ -95,7 +95,7 @@ import { visible as shown } from './harness'
  */
 
 /** The axis a cut happened on. */
-export type Axis = 'x' | 'y'
+type Axis = 'x' | 'y'
 
 /**
  * ⛔ **Whether any gesture brings the rest of the string on screen.** `hidden`/`clip` is `never` —
@@ -117,7 +117,7 @@ export type Reach = 'never' | 'by-scrolling'
  *   `clip-path`. ⚑ That is the accessible-name pattern (`.only-for-a-reader`), where nothing being
  *   drawn is the entire point.
  */
-export type ClipKind = 'cut' | 'out-of-view' | 'for-a-reader-only'
+type ClipKind = 'cut' | 'out-of-view' | 'for-a-reader-only'
 
 export interface Clip {
   /** The axis the ink ran off. */

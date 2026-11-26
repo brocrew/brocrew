@@ -63,7 +63,7 @@ export type ForestParent =
  * {@link ForestTask} may hold ONLY this one and a wide {@link ForestParent} there would admit a
  * piece hanging off the person, which nothing can produce.
  */
-export interface UnderAConversation {
+interface UnderAConversation {
   readonly is: 'a-conversation'
   /** ⛔ **A conversation in {@link TheWholeForest.nodes}** — never a slug and never a profile id. */
   readonly conversation: string

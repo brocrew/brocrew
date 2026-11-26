@@ -153,7 +153,7 @@ export function whereItWent(event: RequestRoutedEvent): WhereARequestWent {
  * nobody spawned the asker. ⛔ The one check {@link deriveRoutedRequests} folds a routing by, so a
  * routing every reader leaves out is one a counted reader counts.
  */
-export function aWellFormedRouting(event: RequestRoutedEvent): boolean {
+function aWellFormedRouting(event: RequestRoutedEvent): boolean {
   const routing = event as unknown as Readonly<Record<string, unknown>>
   const aName = (value: unknown): value is string => typeof value === 'string' && value !== ''
   if (!aName(routing['requestId'])) return false
