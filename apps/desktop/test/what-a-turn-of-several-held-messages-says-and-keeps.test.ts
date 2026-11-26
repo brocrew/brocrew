@@ -21,12 +21,7 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { classifyHandedPath } from '../src/main/runtime/handed-path'
-import {
-  isGiverStallNotice,
-  RuntimeHost,
-  THE_APP_ITSELF,
-  type RuntimeEventSink,
-} from './helpers/giver-notice-host'
+import { isGiverStallNotice, RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
@@ -39,14 +34,10 @@ import { sinkOwnerId } from '../src/main/runtime/window-caller'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
 import { exchangePreviewLines, whatATurnDelivered } from '../src/shared/last-exchange'
-import {
-  MAX_TURN_PARTS,
-  theMessagesOf,
-  type RuntimeEventMessage,
-  type SessionLivenessMessage,
-} from '../src/shared/runtime-ipc'
+import { MAX_TURN_PARTS, theMessagesOf } from '../src/shared/runtime-ipc'
 import { derivePieces, theDriveOfTheTurn } from '../src/shared/tasks'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
+import { RecordingSink as WindowSink } from './lib/host-fixture'
 import { withoutWhatThisAppAdds } from './lib/what-this-app-adds'
 
 // The pure readers are checked with no host; the flush and the doors run a real host over a real
@@ -401,21 +392,10 @@ const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 
 /** ⚑ A window: the one surface a person's words come through. */
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  readonly liveness: SessionLivenessMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(message: SessionLivenessMessage): void {
-    this.liveness.push(message)
-  }
+class RecordingSink extends WindowSink {
   /** What a window was last told this conversation holds, in the order it is held. */
   held(sessionId: string): string[] {
-    const last = this.liveness.filter((one) => one.sessionId === sessionId).at(-1)
+    const last = this.livenessMessages.filter((one) => one.sessionId === sessionId).at(-1)
     return (last?.liveness.queued ?? []).map((one) => one.text)
   }
 }

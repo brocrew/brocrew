@@ -2,6 +2,7 @@ import {
   hostsOverAScratchDatabase,
   oneRuntimePerProvider,
 } from './lib/hosts-over-a-scratch-database'
+import { RecordingSink as WindowSink } from './lib/host-fixture'
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
@@ -38,23 +39,19 @@ function typedTurn(text: string, baseline?: PromptUpdateBaseline) {
 }
 
 /** Records what the renderer was told, and when — so ordering against the DB is checkable. */
-class RecordingSink implements RuntimeEventSink {
-  // 349 · this double stands in for a WINDOW — the tests below answer for a person through it.
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  readonly alive = true
+class RecordingSink extends WindowSink {
   constructor(
     // The host uses the owner ID to recognise a window and attribute its turns to the person.
-    readonly ownerId = sinkOwnerId({ id: 1 }),
+    ownerId = sinkOwnerId({ id: 1 }),
     private readonly log: string[] = [],
-  ) {}
-
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-    this.log.push(`publish:${message.ordinal}`)
+  ) {
+    super(ownerId)
   }
 
-  sendLiveness(): void {}
+  override send(message: RuntimeEventMessage): void {
+    super.send(message)
+    this.log.push(`publish:${message.ordinal}`)
+  }
 }
 
 async function waitFor(predicate: () => boolean, what: string, timeoutMs = 2_000): Promise<void> {

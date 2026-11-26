@@ -1,4 +1,8 @@
-import { fixtureProviderConfig, neutralHostDeps } from './lib/host-fixture'
+import {
+  fixtureProviderConfig,
+  neutralHostDeps,
+  RecordingSink as WindowSink,
+} from './lib/host-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -18,10 +22,8 @@ import {
   mayCommand,
   mayControl,
   type CallerIdentity,
-  type RuntimeEventSink,
 } from '../src/main/runtime/runtime-host'
 import { describeUnavailable } from '../src/main/runtime/session-unavailable'
-import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
@@ -66,28 +68,15 @@ class CapturingRuntime extends FakeRuntime {
   }
 }
 
-class RecordingSink implements RuntimeEventSink {
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
+class RecordingSink extends WindowSink {
   /**
    * ⛔ **Both parameters are required, and in THIS file that is the subject rather than caution**
    * (349). Every other suite's double is a window or is not; this one holds one of each on purpose —
    * `one` and `two` are windows, `pretender` is a caller with the commander's own id — and a
    * default would let the file's whole question be answered by whichever value happened to be it.
    */
-  constructor(
-    readonly ownerId: string,
-    readonly aPersonIsBehindIt: boolean,
-  ) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-  events(): TranscriptEvent[] {
-    return this.messages.map((message) => message.event)
-  }
-  ordinals(): number[] {
-    return this.messages.map((message) => message.ordinal)
+  constructor(ownerId: string, aPersonIsBehindIt: boolean) {
+    super(ownerId, aPersonIsBehindIt)
   }
 }
 

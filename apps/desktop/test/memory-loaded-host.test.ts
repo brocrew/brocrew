@@ -10,9 +10,9 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import type { RuntimeEventMessage } from '../src/shared/runtime-ipc'
-import { neutralHostDeps } from './lib/host-fixture'
+import { neutralHostDeps, RecordingSink as WindowSink } from './lib/host-fixture'
 
 const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 
@@ -41,18 +41,8 @@ const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '../src/m
  *     ⚠️ The reader's own half is in `when-we-looked-is-not-when-it-was-loaded.test.ts`.
  */
 
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = false
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId = 'owner:1') {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-  events(): TranscriptEvent[] {
-    return this.messages.map((message) => message.event)
-  }
+class RecordingSink extends WindowSink {
+  override readonly aPersonIsBehindIt = false
   loaded(): RuntimeEventMessage[] {
     return this.messages.filter((message) => message.event.type === 'memory_loaded')
   }

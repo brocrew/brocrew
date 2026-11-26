@@ -14,14 +14,10 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import {
-  RuntimeHost,
-  THE_APP_ITSELF,
-  type RuntimeEventSink,
-} from '../src/main/runtime/runtime-host'
+import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
 import { describeUnavailable } from '../src/main/runtime/session-unavailable'
-import type { ResumedSession, RuntimeEventMessage } from '../src/shared/runtime-ipc'
-import { neutralHostDeps } from './lib/host-fixture'
+import type { ResumedSession } from '../src/shared/runtime-ipc'
+import { neutralHostDeps, RecordingSink as WindowSink } from './lib/host-fixture'
 
 const migrationsFolder = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 
@@ -64,22 +60,7 @@ class CapturingRuntime extends FakeRuntime {
   }
 }
 
-class RecordingSink implements RuntimeEventSink {
-  // 349 · this double stands in for a WINDOW — the tests below answer for a person through it.
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-  events(): TranscriptEvent[] {
-    return this.messages.map((message) => message.event)
-  }
-  ordinals(): number[] {
-    return this.messages.map((message) => message.ordinal)
-  }
+class RecordingSink extends WindowSink {
   /** Every marker this window was told, so one can be looked for by its words. */
   said(): string[] {
     return this.events().flatMap(markerIn)
