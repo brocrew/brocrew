@@ -28,7 +28,7 @@ const eventTriggers = operations.map((operation) => `window_read_event_${operati
 const generationTriggers = operations.map((operation) => `window_read_generation_${operation}`)
 const foldTriggers = operations.map((operation) => `window_read_fold_${operation}`)
 const quote = (name: string) => '"' + name.replaceAll('"', '""') + '"'
-const streamTypes = ['assistant_delta', 'thinking', 'text']
+const transcriptOnlyTypes = ['assistant_delta', 'thinking', 'text', 'tool_call', 'tool_result']
 // Kept folds read fold rows, generations and, of a conversation's own row, only its provider. A new
 // row has no ledger yet, so only a changed provider or a deleted row marks its conversation.
 const PROVIDER_ROW_READ = ['id', 'provider']
@@ -136,7 +136,7 @@ export function windowWriterSampler(
         'turn_id',
         'id',
       ])
-      const snapshotChanged = `(${routesChanged} AND (${rows.map((row) => `${row}.type NOT IN (${terms(streamTypes)})`).join(' OR ')}))`
+      const snapshotChanged = `(${routesChanged} AND (${rows.map((row) => `${row}.type NOT IN (${terms(transcriptOnlyTypes)})`).join(' OR ')}))`
       db.exec(`CREATE TEMP TRIGGER IF NOT EXISTS window_read_event_${operation}
         AFTER ${operation} ON main.events
         WHEN ${snapshotChanged} OR (${routesChanged} AND (${rows.map(relevant).join(' OR ')}))

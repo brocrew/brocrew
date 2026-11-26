@@ -67,19 +67,7 @@ describe('canonical window worker folds and independent live-store reads', () =>
         approvalMode: 'ask',
         profileId: 'fictional',
       })
-    row('alpha', 'question_asked', {
-      type: 'question_asked',
-      requestId: 'first',
-      prompt: 'Which fictional option?',
-      questions: [{ id: 'part', prompt: 'Which option?', options: [] }],
-    })
-    row('alpha', 'request_routed', {
-      type: 'request_routed',
-      requestId: 'first',
-      to: 'the-parent',
-      parent: 'beta',
-    })
-    row('alpha', 'request_escalated', { type: 'request_escalated', requestId: 'first' })
+    recordEscalatedQuestion('first', 'Which fictional option?')
     engine = new WindowReadEngine(file)
     vi.spyOn(console, 'warn').mockImplementation(() => {})
   })
@@ -331,20 +319,22 @@ describe('canonical window worker folds and independent live-store reads', () =>
     return { host, writer }
   }
 
-  function anotherQuestion() {
+  const anotherQuestion = () => recordEscalatedQuestion('second', 'Another fictional option?')
+
+  function recordEscalatedQuestion(requestId: string, prompt: string) {
     row('alpha', 'question_asked', {
       type: 'question_asked',
-      requestId: 'second',
-      prompt: 'Another fictional option?',
+      requestId,
+      prompt,
       questions: [{ id: 'part', prompt: 'Which option?', options: [] }],
     })
     row('alpha', 'request_routed', {
       type: 'request_routed',
-      requestId: 'second',
+      requestId,
       to: 'the-parent',
       parent: 'beta',
     })
-    row('alpha', 'request_escalated', { type: 'request_escalated', requestId: 'second' })
+    row('alpha', 'request_escalated', { type: 'request_escalated', requestId })
   }
 
   const sink = {
@@ -562,10 +552,10 @@ describe('canonical window worker folds and independent live-store reads', () =>
     expect(console.warn).not.toHaveBeenCalled()
   })
 
-  it('a queue composed from overtaken snapshots covers nothing completely', async () => {
+  async function queueWithWritesAfterSnapshot(write: () => void) {
     const read = vi.fn(async (query: WindowReadQuery) => {
       const answer = engine.read(query)
-      row('alpha', 'request_escalated', { type: 'request_escalated', requestId: 'second' })
+      write()
       return answer
     })
     const { host } = hostWith({ read, close: async () => {} }, true)
@@ -573,6 +563,23 @@ describe('canonical window worker folds and independent live-store reads', () =>
     const queue = await host.personsQueue()
     if ('refused' in queue) throw new Error(queue.refused)
     expect(queue.questions?.rows).toHaveLength(1)
+    return { queue, read }
+  }
+
+  it('keeps a complete queue when only tool transcript events arrive during the read', async () => {
+    const { queue, read } = await queueWithWritesAfterSnapshot(() => {
+      row('beta', 'tool_call', { type: 'tool_call', summary: 'fictional call' })
+      row('beta', 'tool_result', { type: 'tool_result', summary: 'fictional result' })
+    })
+    expect(queue.published.covers.questions.complete).toBe(true)
+    expect(queue.published.covers.decisions.complete).toBe(true)
+    expect(read).toHaveBeenCalledOnce()
+  })
+
+  it('a queue composed from overtaken snapshots covers nothing completely', async () => {
+    const { queue } = await queueWithWritesAfterSnapshot(() => {
+      row('alpha', 'request_escalated', { type: 'request_escalated', requestId: 'second' })
+    })
     for (const covers of Object.values(queue.published.covers)) expect(covers.complete).toBe(false)
   })
 
