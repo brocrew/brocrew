@@ -12,6 +12,7 @@ import type {
 } from '../../src/shared/runtime-ipc'
 import type { ExternalMcpServerReach, ExternalMcpServerRow } from '../../src/shared/external-mcp'
 import { mount, unmountAll, type Mounted } from './harness'
+import { anIdentity } from './identity-fixture'
 import { rosterSettingsBridge } from '../lib/agent-roster-fixture'
 
 /**
@@ -61,17 +62,7 @@ const server = (
   reach,
 })
 
-const identity = (over: Partial<AgentIdentity> = {}): AgentIdentity => ({
-  id: 'aid:pm',
-  slug: 'pm',
-  displayName: null,
-  createdAt: 1_700_000_000_000,
-  // ⚑ **598 · who brought it into being** — null is *nobody recorded it*; see `AgentIdentity.createdBy`.
-  createdBy: null,
-  provider: null,
-  externalMcpServerIds: [],
-  ...over,
-})
+const identity = (over: Partial<AgentIdentity> = {}): AgentIdentity => anIdentity('pm', over)
 
 /**
  * ⚑ **A capability map with both answers in it**, so *held back* is a statement about one entry

@@ -1,11 +1,11 @@
 import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import type { WorkReport } from '../../src/shared/task-contracts'
 import { agentCardSides } from './harness'
+import { aNameRow } from './identity-fixture'
 import { expandAgentCards } from './harness'
 import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
-import type { AgentIdentity } from '../../src/shared/runtime-ipc'
 
 import {
   channelGap,
@@ -31,8 +31,7 @@ afterEach(async () => {
   await page.viewport(ORIGINAL.width, ORIGINAL.height)
 })
 
-const ident = (slug: string, displayName: string | null): AgentIdentity =>
-  ({ id: `aid:${slug}`, slug, displayName }) as unknown as AgentIdentity
+const ident = aNameRow
 
 /** ⚑ Ada is named; BroBot is not, so the pane's own name comes from the default label. */
 const IDS = [ident('ada', 'Ada'), ident('brobot', null)]

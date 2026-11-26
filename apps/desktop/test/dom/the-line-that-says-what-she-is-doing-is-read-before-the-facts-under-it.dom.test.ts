@@ -12,6 +12,7 @@ import {
 } from '../../src/shared/what-is-being-done'
 import { drawnReady } from './drawn'
 import { mount, unmountAll, type Mounted } from './harness'
+import { aRoster, aUse, anIdentity } from './identity-fixture'
 
 /**
  * 🔴 **588's inversion, on the Team card** — `EXT-013` §2.4 measured a row that carried four facts,
@@ -42,32 +43,18 @@ const FLOOR = 972
 /** ⚑ Anchored to the wall clock: the page measures every age it draws from the live minute. */
 const NOW = Date.now()
 
-const ADA: AgentIdentity = {
-  id: 'aid:ada',
-  slug: 'ada',
+const ADA: AgentIdentity = anIdentity('ada', {
   displayName: 'Ada',
   createdAt: NOW - 86_400_000,
-  createdBy: null,
   provider: 'claude',
-  externalMcpServerIds: [],
-}
+})
 
-const ADA_USE: IdentityUse = {
-  slug: 'ada',
+const ADA_USE: IdentityUse = aUse('ada', {
   conversations: 4,
-  thisAppMintsIt: false,
-  isLaunching: false,
-  isStarting: false,
   runsOn: { provider: 'claude', from: 'saved' },
-}
+})
 
-const AGENTS: AgentIdentities = {
-  identities: [ADA],
-  foldersWithoutARow: [],
-  use: [ADA_USE],
-  defaultApprovalMode: 'ask',
-  externalMcpServers: [],
-}
+const AGENTS: AgentIdentities = aRoster([ADA], [ADA_USE])
 
 const STORE = {
   renameTo: vi.fn(async () => null),

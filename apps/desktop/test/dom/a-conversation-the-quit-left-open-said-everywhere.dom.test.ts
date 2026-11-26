@@ -2,6 +2,7 @@ import type { LedgerWalk, LedgerWalkKind } from '../../src/shared/question-contr
 import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import type { WorkReport } from '../../src/shared/task-contracts'
 import { expandAgentCards } from './harness'
+import { aRoster, aUse, anIdentity } from './identity-fixture'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { nextTick, type Component } from 'vue'
 import { page } from 'vitest/browser'
@@ -99,32 +100,18 @@ const WALL = Date.now()
 /** ⛔ **The pane floor** — `--app-min-w` 1180 less `--rail-w` 208. */
 const FLOOR = 972
 
-const ADA: AgentIdentity = {
-  id: 'aid:ada',
-  slug: 'ada',
+const ADA: AgentIdentity = anIdentity('ada', {
   displayName: 'Ada',
   createdAt: WALL - 86_400_000,
-  createdBy: null,
   provider: 'claude',
-  externalMcpServerIds: [],
-}
+})
 
-const ADA_USE: IdentityUse = {
-  slug: 'ada',
+const ADA_USE: IdentityUse = aUse('ada', {
   conversations: 1,
-  thisAppMintsIt: false,
-  isLaunching: false,
-  isStarting: false,
   runsOn: { provider: 'claude', from: 'saved' },
-}
+})
 
-const AGENTS: AgentIdentities = {
-  identities: [ADA],
-  foldersWithoutARow: [],
-  use: [ADA_USE],
-  defaultApprovalMode: 'ask',
-  externalMcpServers: [],
-}
+const AGENTS: AgentIdentities = aRoster([ADA], [ADA_USE])
 
 const STORE = {
   renameTo: vi.fn(async () => null),

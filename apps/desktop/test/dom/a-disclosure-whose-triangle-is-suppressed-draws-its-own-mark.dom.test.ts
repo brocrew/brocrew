@@ -8,6 +8,7 @@ import type { AgentIdentities, AgentIdentity } from '../../src/shared/runtime-ip
 import type { WhatIsBeingDone } from '../../src/shared/what-is-being-done'
 import { drawnReady } from './drawn'
 import { mount, unmountAll, visible, type Mounted } from './harness'
+import { aRoster, aUse, anIdentity } from './identity-fixture'
 
 /**
  * 🔴 **`588` M21 · a disclosure whose UA triangle is suppressed must draw its own mark** (`106` — a
@@ -39,33 +40,13 @@ const NOW = Date.now()
 const FLOOR = 972
 const ORIGINAL = { width: window.innerWidth, height: window.innerHeight }
 
-const ident = (slug: string, over: Partial<AgentIdentity> = {}): AgentIdentity => ({
-  id: `aid:${slug}`,
-  slug,
-  displayName: null,
-  createdAt: NOW - 86_400_000,
-  createdBy: null,
-  provider: null,
-  externalMcpServerIds: [],
-  ...over,
-})
+const ident = (slug: string, over: Partial<AgentIdentity> = {}): AgentIdentity =>
+  anIdentity(slug, { createdAt: NOW - 86_400_000, ...over })
 
-const AGENTS: AgentIdentities = {
-  identities: [ident('ada', { displayName: 'Ada', provider: 'claude' })],
-  foldersWithoutARow: [],
-  use: [
-    {
-      slug: 'ada',
-      conversations: 1,
-      thisAppMintsIt: false,
-      isLaunching: false,
-      isStarting: false,
-      runsOn: { provider: 'claude', from: 'saved' },
-    },
-  ],
-  defaultApprovalMode: 'ask',
-  externalMcpServers: [],
-}
+const AGENTS: AgentIdentities = aRoster(
+  [ident('ada', { displayName: 'Ada', provider: 'claude' })],
+  [aUse('ada', { conversations: 1, runsOn: { provider: 'claude', from: 'saved' } })],
+)
 
 const NOTHING_DOING: WhatIsBeingDone = { readAt: NOW, conversations: [] }
 

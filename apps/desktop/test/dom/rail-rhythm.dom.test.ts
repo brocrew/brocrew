@@ -5,6 +5,7 @@ import SideRail from '../../src/renderer/src/components/SideRail.vue'
 import { createSessionRecord } from '../../src/renderer/src/lib/session-record'
 import type { AgentIdentities } from '../../src/shared/runtime-ipc'
 import { mount, unmountAll, type Mounted } from './harness'
+import { aRoster, anIdentity } from './identity-fixture'
 
 /** Rail geometry, compact text, and footer placement at both shipped widths. */
 const RAIL_W = 251.68
@@ -31,28 +32,9 @@ function conversation(sessionId: string): unknown {
   return record
 }
 
-const agents = (over: Partial<AgentIdentities> = {}): AgentIdentities => ({
-  identities: [
-    {
-      id: 'agp:default:pm',
-      slug: 'pm',
-      displayName: null,
-      createdAt: NOW,
-      // ⚑ **598 · who brought it into being** — null is *nobody recorded it*; see `AgentIdentity.createdBy`.
-      createdBy: null,
-      provider: null,
-      // ⚑ **516** — presence IS the grant, so an empty list is *granted none*, not *not chosen*.
-      externalMcpServerIds: [],
-    },
-  ],
-  foldersWithoutARow: [],
-  use: [],
-  // 500 · required on `AgentIdentities`; none of these fixtures is about the launch default.
-  defaultApprovalMode: 'ask',
-  // ⚑ **516** — the global registry, carried on the same read; empty is a real answer.
-  externalMcpServers: [],
-  ...over,
-})
+/** ⚠️ The identity keeps its pre-369 `agp:` id: nothing here reads the id's shape. */
+const agents = (over: Partial<AgentIdentities> = {}): AgentIdentities =>
+  aRoster([anIdentity('pm', { id: 'agp:default:pm', createdAt: NOW })], [], over)
 
 /**
  * The rail at its real width and a SHORT height, which is the state the finding is about.
