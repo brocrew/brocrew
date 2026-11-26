@@ -93,9 +93,14 @@ describe.each(['claude', 'codex'] as const)('current rules on %s', (provider: Pr
     const cleared = await turn(me, 'After clearing.')
     expect(rulesIn(cleared)).toBe('')
     expect(host.readConversationTasks({ sessionId: me })).not.toHaveProperty('currentRules')
-    expect(whatThisAppAdded(cleared).split('\n').length).toBe(
-      whatThisAppAdded(none).split('\n').length,
-    )
+    const withoutCurrentWork = (words: string): string[] =>
+      whatThisAppAdded(words)
+        .split('\n')
+        .filter(
+          (line) =>
+            !line.startsWith('Your current work') && line !== TURN_BLOCK_WORDS.updateGivenWork,
+        )
+    expect(withoutCurrentWork(cleared)).toHaveLength(withoutCurrentWork(none).length)
 
     // The top is what it was: the lines ride only in footers.
     expect(world.end.handed.map((one) => one.options.systemHint ?? null)).toEqual(topBefore)

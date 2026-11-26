@@ -767,7 +767,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
         expect([...ownersRead.values()].every((count) => count === 1)).toBe(true)
         expect(facts.helpers.map((row) => row.piece)).toEqual(open.map((row) => row.piece))
         const changed = turnBlockChanges(
-          { ...facts, person: true, now: tick() },
+          { ...facts, person: true, conversation: 'conversation W1 · Fictional', now: tick() },
           session.turnBlockSnapshot,
         )
         session.turnBlockSnapshot = changed.next
@@ -877,7 +877,10 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
       ).factsForTheTurnBlock({ id: pm }, null)
       expect(facts.helpers).toEqual([])
       expect(facts.nobodyWaiting).toBe(false)
-      const changed = turnBlockChanges({ ...facts, person: true, now: tick() }, EMPTY_TURN_BLOCK)
+      const changed = turnBlockChanges(
+        { ...facts, person: true, conversation: 'conversation W1 · Fictional', now: tick() },
+        EMPTY_TURN_BLOCK,
+      )
       const block = whatThisAppAddsToATurn({
         now: tick(),
         aPersonStartedIt: true,
@@ -1661,8 +1664,9 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
         store.routedRequestsOf = routedBefore
         store.questionsRaisedIn = raisedBefore
       }
-      // The reconciler's read also makes the two-line giver notice available.
-      expect(before.split('\n')).toHaveLength(11)
+      // The reconciler's read also makes the two-line giver notice available. The current work,
+      // unchanged since the worker's last turn, is not said again.
+      expect(before.split('\n')).toHaveLength(9)
       expect(before).toContain('Waiting on you:')
       expect(before).toContain("Questions you're waiting on:")
       expect(before).toContain(`- ${one} to the person, asked just now: “${QUESTION_ONE}”`)
@@ -1679,10 +1683,8 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
         "Withdraw one you don't need with withdraw_question; withdraw your questions about a task when it ends.",
       ])
       expect(lines[7]).toBe('Waiting on you:')
-      expect(lines[8]).toMatch(/^- .+ gave you the current task and is waiting for it\.$/)
-      expect(lines[9]).toMatch(/^Your current work: task W\S+ · the work this dispatch is about,/)
-      expect(lines[10]).toBe(TURN_BLOCK_WORDS.updateGivenWork)
-      expect(lines).toHaveLength(11)
+      expect(lines[8]).toMatch(/^- .+ gave you task W\S+ and is waiting for it\.$/)
+      expect(lines).toHaveLength(9)
     })
 
     it('a new question is read immediately, and direct ledger writes invalidate the cached views', async () => {

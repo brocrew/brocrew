@@ -17,6 +17,7 @@ const input = {
   nobodyWaiting: true,
   replyQuestionTurn: null,
   current: { kind: 'none' as const },
+  conversation: 'conversation W1 · Fictional job',
 }
 const helper = (id: number, urgent = false): AHelperInTheTurn => ({
   piece: `piece-${id}`,
@@ -114,17 +115,45 @@ describe('turn block changes', () => {
     ])
   })
 
-  it('shows current work on both person-started and app-started turns', () => {
+  it('says current work when it changes and after two hours, on person and app turns alike', () => {
     const first = turnBlockChanges(input, EMPTY_TURN_BLOCK)
     expect(block(first.extra)).toContain(TURN_BLOCK_WORDS.nobody)
     expect(block(first.extra)).toContain(TURN_BLOCK_WORDS.currentNone)
     const unchanged = turnBlockChanges({ ...input, now: 120_000 }, first.next)
     expect(block(unchanged.extra)).not.toContain(TURN_BLOCK_WORDS.nobody)
-    expect(unchanged.extra.currentWork).toEqual({ kind: 'none' })
-    expect(turnBlockChanges({ ...input, person: true }, first.next).extra.currentWork).toEqual({
-      kind: 'none',
-    })
-    expect(turnBlockChanges({ ...input, person: true }, first.next).extra.nobodyWaiting).toBe(true)
+    expect(unchanged.extra.currentWork).toBeUndefined()
+    expect(block(unchanged.extra)).not.toContain('Your current work')
+    const person = turnBlockChanges({ ...input, person: true }, unchanged.next)
+    expect(person.extra.currentWork).toBeUndefined()
+    expect(person.extra.nobodyWaiting).toBe(true)
+
+    // A new task is said with the one update nudge; the same task on the next turn is not.
+    const work = { kind: 'piece' as const, label: 'W1.2', title: 'Check it' }
+    const given = turnBlockChanges({ ...input, current: work, now: 180_000 }, unchanged.next)
+    expect(block(given.extra)).toContain(
+      'Your current work: task W1.2 · Check it, in conversation W1 · Fictional job.',
+    )
+    expect(block(given.extra).split(TURN_BLOCK_WORDS.updateGivenWork)).toHaveLength(2)
+    const same = turnBlockChanges({ ...input, current: work, now: 240_000 }, given.next)
+    expect(block(same.extra)).not.toContain('Your current work')
+    expect(block(same.extra)).not.toContain(TURN_BLOCK_WORDS.updateGivenWork)
+
+    // A retitled task or a renamed conversation is a change.
+    const retitled = { ...work, title: 'Check it again' }
+    const updated = turnBlockChanges({ ...input, current: retitled, now: 300_000 }, same.next)
+    expect(block(updated.extra)).toContain('Your current work: task W1.2 · Check it again,')
+    const renamed = turnBlockChanges(
+      { ...input, current: retitled, conversation: 'conversation W1 · Renamed', now: 360_000 },
+      updated.next,
+    )
+    expect(block(renamed.extra)).toContain('in conversation W1 · Renamed.')
+
+    // Unchanged, it is said again once two hours have passed since it was last said.
+    const quiet = { ...input, current: retitled, conversation: 'conversation W1 · Renamed' }
+    const before = turnBlockChanges({ ...quiet, now: 360_000 + 2 * 3_600_000 }, renamed.next)
+    expect(before.extra.currentWork).toBeUndefined()
+    const after = turnBlockChanges({ ...quiet, now: 360_001 + 2 * 3_600_000 }, before.next)
+    expect(block(after.extra)).toContain('Your current work: task W1.2 · Check it again,')
   })
 
   it('does not mistake incomplete facts for empty, a count, or no change', () => {
@@ -280,9 +309,9 @@ describe('turn block changes', () => {
     expect(block(result.extra)).toContain('  - piece-1 · ')
     expect(block(result.extra)).toContain(helper(1).state)
     expect(block(result.extra)).not.toContain(longLabel.slice(0, 20))
-    expect(
-      block({ currentWork: { kind: 'piece', label: longLabel, title: 'work', status: null } }),
-    ).toContain(TURN_BLOCK_WORDS.currentUnavailable)
+    expect(block({ currentWork: { kind: 'piece', label: longLabel, title: 'work' } })).toContain(
+      TURN_BLOCK_WORDS.currentUnavailable,
+    )
   })
 
   it('heads helper rows, omits an unknown age, and uses only the recorded last change', () => {
@@ -408,7 +437,7 @@ describe('turn block changes', () => {
         ],
         askers: [],
       },
-      extra: { currentWork: { kind: 'piece', label: 'W1.2', title: 'Check it', status: 'Ready' } },
+      extra: { currentWork: { kind: 'piece', label: 'W1.2', title: 'Check it' } },
     })
     expect(footer).toContain('- Ada gave you the current task and is waiting for it.')
     expect(footer).toContain('- Ali gave you task W1.3 and is waiting for it.')
@@ -424,7 +453,6 @@ describe('turn block changes', () => {
         kind: 'piece',
         label: 'W1',
         title: 'title\n' + 'x'.repeat(1000),
-        status: 'status\n' + 'y'.repeat(1000),
       },
     })
     expect(rendered.split('\n')).toHaveLength(8)
