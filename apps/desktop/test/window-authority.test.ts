@@ -180,6 +180,29 @@ describe('person-window commands preserve stream ownership', () => {
     },
   )
 
+  it('a window shown a conversation no window holds stops its running turn without taking it', async () => {
+    // Started with no window, as a delivery starts one; the window that sends to it keeps the
+    // recorded view, so its composer's Stop is this interrupt.
+    sessionId = (await host.createSession({ provider: 'codex', cwd: dir }, null)).sessionId
+    expect((await host.look(sessionId, stranger, false)).handover).toBe('recorded')
+    await ask(stranger, { kind: 'startAndSend', sessionId, text: 'keep going' })
+    const turnStates = (): string[] =>
+      store
+        .events(sessionId)
+        .flatMap((entry) => (entry.event.type === 'turn' ? [entry.event.state] : []))
+    await waitFor(
+      () => store.events(sessionId).some((entry) => entry.event.type === 'permission_request'),
+      'the turn to be running, held on its card',
+    )
+    expect(turnStates(), 'the premise: the turn is still open').toEqual([])
+
+    await ask(stranger, { kind: 'interrupt', sessionId })
+
+    await waitFor(() => turnStates().length > 0, 'the turn to end')
+    expect(turnStates()).toEqual(['interrupted'])
+    expect(host.attachOpenSessions(stranger)).toEqual([])
+  })
+
   it('a second window changes approval mode without gaining the stream', async () => {
     await ask(stranger, { kind: 'setApprovalMode', sessionId, mode: 'auto' })
     expect(
