@@ -77,6 +77,14 @@ it('keeps the old file and removes the stage when flushing the new bytes fails',
   expect(renameSync).not.toHaveBeenCalled()
   expect(readFileSync(path, 'utf8')).toBe('previous')
   expect(readdirSync(folder)).toEqual(['settings.json'])
+  writeAtomicallySync(path, 'next', {
+    prepare(temporary) {
+      writeFileSync(temporary, 'failed preparation')
+      throw new Error('preparation cleanup failed')
+    },
+  })
+  expect(readFileSync(path, 'utf8')).toBe('next')
+  expect(readdirSync(folder)).toEqual(['settings.json'])
 })
 
 it('reports a failed post-publication flush while retaining the complete new file', () => {

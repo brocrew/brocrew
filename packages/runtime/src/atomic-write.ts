@@ -168,6 +168,7 @@ export function stageAtomicWriteSync(
   path: string,
   data: string | Uint8Array,
   mode = 0o600,
+  prepare?: (temporary: string) => boolean,
 ): AtomicWriteStage {
   const temporary = temporaryFile(path)
   let active = false
@@ -177,10 +178,19 @@ export function stageAtomicWriteSync(
     active = false
   }
   let fd: number | undefined
+  let preparing = prepare !== undefined
   try {
-    fd = createFreshFile(temporary, mode)
-    active = true
-    writeFileSync(fd, data)
+    if (prepare !== undefined) {
+      active = true
+      if (prepare(temporary)) fd = openSync(temporary, 'r')
+      else discard()
+    }
+    if (fd === undefined) {
+      preparing = false
+      fd = createFreshFile(temporary, mode)
+      active = true
+      writeFileSync(fd, data)
+    }
     fchmodSync(fd, mode)
     fsyncSync(fd)
     const written = fd
@@ -199,6 +209,7 @@ export function stageAtomicWriteSync(
     } catch {
       // Preserve the original failure.
     }
+    if (preparing) return stageAtomicWriteSync(path, data, mode)
     throw error
   }
   return {
@@ -221,9 +232,14 @@ export function stageAtomicWriteSync(
 export function writeAtomicallySync(
   path: string,
   data: string | Uint8Array,
-  options: { readonly mode?: number; readonly exclusive?: boolean } = {},
+  options: {
+    readonly mode?: number
+    readonly exclusive?: boolean
+    /** Stage complete bytes at the temporary path, or return false with the path absent. */
+    readonly prepare?: (temporary: string) => boolean
+  } = {},
 ): void {
-  const stage = stageAtomicWriteSync(path, data, options.mode)
+  const stage = stageAtomicWriteSync(path, data, options.mode, options.prepare)
   try {
     stage.commit(options.exclusive)
   } finally {

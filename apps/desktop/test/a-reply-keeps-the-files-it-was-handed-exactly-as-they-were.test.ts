@@ -10,6 +10,7 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  renameSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -31,7 +32,7 @@ import type { WorkSearchPage } from '../src/shared/work-search'
 import { workSearchQuery, clippedWorkText } from '../src/shared/work-search'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
-import { keepResource, resourcesRoot } from '../src/main/resources/resources'
+import { keepResource, readOfferedResource, resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { RESOURCE_ROLES } from '../src/shared/documents'
 import { PIECE_EVENT_TYPES } from '../src/shared/tasks'
@@ -1162,6 +1163,9 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
       expect(landed.outcome, JSON.stringify(landed)).toBe('ok')
       const ids = landed.resources as string[]
       expect(ids).toHaveLength(sources.length)
+      writeFileSync(paths[0]!, 'changed after handover')
+      renameSync(paths[1]!, join(root, 'moved.md'))
+      rmSync(paths[2]!)
 
       for (const [index, source] of sources.entries()) {
         const row = store.resource(ids[index] as string)
@@ -1374,8 +1378,13 @@ describe('D-016b · a reply keeps the files it was handed exactly as they were',
         })
         expect(listing()).toEqual([])
 
-        // The positive over the same root and the same bytes: only the spelling differed above.
-        expect(keepResource(kept, { bytes, sha256: good, name: 'a.md' })).toEqual({ ok: true })
+        const source = join(dir, 'a.md')
+        writeFileSync(source, bytes)
+        const offered = readOfferedResource(source)
+        if (!offered.ok) throw new Error('Could not read source fixture')
+        // A same-length change between capture and save must fall back to the captured bytes.
+        writeFileSync(source, Buffer.alloc(bytes.length, 'x'))
+        expect(keepResource(kept, offered)).toEqual({ ok: true })
         expect(readFileSync(join(kept, good, 'a.md'))).toEqual(bytes)
         expect(keepResource(kept, { bytes, sha256: good, name: 'a.md' })).toEqual({ ok: true })
         expect(listing()).toEqual([good])

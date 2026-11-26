@@ -25,13 +25,9 @@ import {
 } from '../../shared/documents'
 import { PIECE_TITLE_CHARS } from '../../shared/piece-called'
 import { filesystemSpelling } from '../runtime/scratch-cwd'
+import { prepareResourceClone } from './resource-clone'
 
-/**
- * Keeps a piece's input and result files at `<userData>/resources/<sha256>/<name>`.
- * Save-time hashes name and deduplicate content. Files are written to a temporary name and
- * renamed before their rows are recorded, so the kept name holds a complete file.
- * Reads return the current local bytes within the resources tree and size bounds.
- */
+/** Input and result files are atomically kept at `resources/<sha256>/<name>`. */
 
 /** The directory under Electron's `userData` that holds every resource. */
 export const RESOURCES_DIRNAME = 'resources'
@@ -262,7 +258,6 @@ export function resolveResource(
   }
 }
 
-/** What a file offered as a resource turned out to be, ready to keep. */
 export type OfferedResource =
   | {
       readonly ok: true
@@ -271,10 +266,10 @@ export type OfferedResource =
       readonly form: DocumentForm
       readonly bytes: Buffer
       readonly sha256: string
+      readonly sourcePath: string
     }
   | { readonly ok: false; readonly refusal: ResourceRefusal }
 
-/** A file that passed {@link readOfferedResource} — what {@link keepResource} keeps. */
 export type OfferedFile = Extract<OfferedResource, { readonly ok: true }>
 
 export function readOfferedResource(
@@ -330,13 +325,10 @@ export function readOfferedFile(
       return { ok: false, refusal: refuseResource('resource-not-text', { path: realPath }) }
     }
   }
-  return { ok: true, name, form, bytes }
+  return { ok: true, name, form, bytes, sourcePath: realPath }
 }
 
-/**
- * ⚑ **At most `size` bytes, read through the descriptor** — bounded by the size a stat just gave,
- * so a file that grows between the two reads what was measured and no more.
- */
+/** Read at most the descriptor size measured by the caller, even if the file grows. */
 function readBounded(fd: number, size: number): Buffer {
   const bytes = Buffer.alloc(size)
   let filled = 0
@@ -389,11 +381,7 @@ function somethingStandsAt(path: string): boolean {
   }
 }
 
-/**
- * ⛔ **A name this app would write as one path segment, and nothing else** — never empty, never
- * `.` or `..`, with no separator and no NUL. ⚑ Every name it keeps is the `basename` of a real path,
- * which passes; this is what a hand-edited row must pass too before it is joined to the tree.
- */
+/** Keep basenames only, including when reading a hand-edited row. */
 function isOneSegment(name: string): boolean {
   return (
     name.length > 0 &&
@@ -413,7 +401,12 @@ export type KeepProblem = 'write-failed' | 'something-else-is-at-that-name'
 
 export function keepResource(
   root: string,
-  offered: { readonly bytes: Buffer; readonly sha256: string; readonly name: string },
+  offered: {
+    readonly bytes: Buffer
+    readonly sha256: string
+    readonly name: string
+    readonly sourcePath?: string
+  },
   subdir?: 'sent',
 ):
   | { readonly ok: true }
@@ -435,10 +428,17 @@ export function keepResource(
         return { ok: false, problem: 'something-else-is-at-that-name' }
       }
     }
-    const already = readOwnFile(kept, offered.bytes.length)
-    if (already.ok && already.bytes.equals(offered.bytes)) return { ok: true }
+    const { sourcePath, bytes } = offered
+    const matches = (path: string): boolean => {
+      const read = readOwnFile(path, bytes.length)
+      return read.ok && read.bytes.equals(bytes)
+    }
+    if (matches(kept)) return { ok: true }
     if (somethingStandsAt(kept)) return { ok: false, problem: 'something-else-is-at-that-name' }
-    writeAtomicallySync(kept, offered.bytes)
+    const prepare = sourcePath
+      ? (temporary: string) => prepareResourceClone(sourcePath, temporary, bytes.length, matches)
+      : undefined
+    writeAtomicallySync(kept, bytes, { prepare })
     return { ok: true }
   } catch (error) {
     if (subdir === undefined) return { ok: false, problem: 'write-failed' }
