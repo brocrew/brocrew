@@ -2,6 +2,7 @@ import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { agentCardRecipient } from './harness'
 import { expandAgentCards } from './harness'
 import { afterEach, describe, expect, it } from 'vitest'
+import { nextTick } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import { screenFacts } from '../../src/renderer/src/composables/useWhoCalledWhom'
 import type { AgentIdentity } from '../../src/shared/runtime-ipc'
@@ -120,7 +121,8 @@ describe('the piece a conversation gave, on its own page', () => {
     expect(card.getAttribute('data-tool')).toBe('give_work')
     expect(agentCardRecipient(m)).toBe('Ayo')
     expect(card.querySelector('.exchange-heading')?.textContent).toContain('gave work')
-    expect(m.q('exchange-preview').textContent?.trim()).toBe('Make the rail say what the card says')
+    // ⚑ Open, the title reads once, above the brief, so the header drops its preview.
+    expect(m.all('exchange-preview')).toHaveLength(0)
     expect(m.q('exchange-state').textContent?.trim()).toBe('given')
     expect(m.q('outgoing-outcome').textContent?.trim()).toBe('Ayo has it.')
     const title = m.q('outgoing-title')
@@ -139,6 +141,11 @@ describe('the piece a conversation gave, on its own page', () => {
     expect(m.all('tool-entry')).toHaveLength(0)
     expect(m.all('outgoing-receipt')).toHaveLength(0)
     expect(card.textContent).not.toContain('sess_')
+    expect(card.textContent?.match(/Make the rail say what the card says/g)).toHaveLength(1)
+    // ⚑ Closed, the header's preview is the title.
+    m.q('exchange-toggle').click()
+    await nextTick()
+    expect(m.q('exchange-preview').textContent?.trim()).toBe('Make the rail say what the card says')
   })
 
   it('⛔ THE CONTROL — a session never told its tools’ names draws the tool row, and no card', async () => {

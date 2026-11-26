@@ -69,14 +69,18 @@ describe('agent exchanges fold inline', () => {
     ],
   ] as const) {
     it(`${kind}: closed summary, complete markdown on expansion, model detail stays inside`, async () => {
+      const words =
+        kind === 'work'
+          ? `${EXCHANGE_WORDS}\n\n${'A long word can wrap inside the expanded card. '.repeat(12)}${'x'.repeat(200)}`
+          : EXCHANGE_WORDS
       const m = pane([
         {
           type: 'user_turn',
-          text: EXCHANGE_WORDS,
+          text: words,
           relayedFrom: EXCHANGE_OTHER,
           relayedFromProfile: 'ayo',
           at: EXCHANGE_AT,
-          sent: EXCHANGE_WORDS,
+          sent: words,
           ...extra,
         } as unknown as TranscriptEvent,
       ])
@@ -110,6 +114,12 @@ describe('agent exchanges fold inline', () => {
       expect(md.querySelector('pre code')?.textContent).toContain('const ready = true')
       expect(md.querySelector('a')?.getAttribute('href')).toBe('https://example.com/guide')
       expect(md.textContent).toContain('The whole brief ends here.')
+      if (kind === 'work') {
+        const card = m.q('outside-card')
+        expect(m.all('exchange-preview')).toHaveLength(0)
+        expect(card.scrollWidth).toBeLessThanOrEqual(card.clientWidth)
+        expect(md.textContent).toContain('x'.repeat(200))
+      }
       for (const model of m.all('model-got-switch')) expect(visible(model)).toBe(true)
       await expand(m)
       expect(visible(m.q('exchange-body'))).toBe(false)
@@ -130,6 +140,7 @@ describe('agent exchanges fold inline', () => {
     ).toBe(true)
     await expand(m)
     expect(m.q('outgoing-message').textContent).toContain('The whole brief ends here.')
+    expect(m.all('outside-card')[0]!.textContent?.match(/Check the menu/g)).toHaveLength(1)
     expect(m.all('outgoing-cut')).toHaveLength(0)
   })
   for (const kind of ['note', 'follow-up'] as const) {
