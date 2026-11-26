@@ -515,20 +515,16 @@ const panel = computed(() => sessionPanel(control.value))
 
 /** 🔴 **0.2.40 · a send is on its way in and the provider is yet to start** (the host says `active`, the fold `idle`). */
 const yetToStart = computed(() =>
-  providerIsYetToStart(
-    control.value.status,
-    props.record.phase === 'recorded' ? agentState.value : props.record.agentState,
-    props.launching,
-  ),
+  providerIsYetToStart(control.value.status, props.record.agentState, props.launching),
 )
 
-/**
- * Drawn from its ledger, and running all the same: the host says Active. Its message goes in through
- * `startAndSend`, which cannot stop the turn, so Stop and send is not offered; Stop itself is a person's
- * interrupt, which the host takes from a window that does not hold the conversation.
- */
+// Drawn from its ledger while the host says Active. Its message goes in by `startAndSend`, which stops
+// nothing, so no Stop and send; Stop needs its page to show a turn or a wait, as a stopped life's does not.
 const runsWithoutThisWindow = computed(
   () => props.record.phase === 'recorded' && agentState.value?.is === 'active',
+)
+const aTurnOnItsPage = computed(() =>
+  ['working', 'waiting_permission'].includes(control.value.status),
 )
 
 /**
@@ -548,8 +544,7 @@ const composerState = computed<ComposerState>(() => {
   // last said: nothing in it is working here, and the message is what continues it. ⛔ **Above the
   // cards**: a card on such a view is answered by the window that holds it — or, where none does,
   // once this window takes it (the card's own press) — so it freezes nothing here.
-  // A view drawn from its ledger while the host says it is Active is running without this window, as a
-  // conversation started by a delivery is: busy, and Stop once the provider works.
+  // …unless the host says it is Active: then it runs without this window ({@link runsWithoutThisWindow}).
   if (props.record.phase === 'recorded') return runsWithoutThisWindow.value ? 'busy' : 'idle'
   // ⛔ **The CARDS, and deliberately not `panel.waiting`** — see this computed's own note.
   if (panel.value.permissions.length + panel.value.questions.length > 0) return 'frozen'
@@ -892,7 +887,12 @@ const canTakeAMessage = computed(
  * ⚑ **One computed, read by the button and by the key** (`onKey` is the third stop affordance; 094).
  * 🔴 **0.2.40 · and not while a send is on its way in and the provider is yet to start**: nothing exists to stop, so a Stop would be dead. The composer is busy and Stop waits for the provider ({@link providerIsYetToStart}); a launch this view owns keeps its own.
  */
-const interruptible = computed(() => props.record.phase !== 'closing' && !yetToStart.value)
+const interruptible = computed(
+  () =>
+    props.record.phase !== 'closing' &&
+    !yetToStart.value &&
+    (props.launching === true || !runsWithoutThisWindow.value || aTurnOnItsPage.value),
+)
 
 /**
  * 🔴 **730 · R83 — what the Stop control says while an ask to stop goes unanswered**, or `null`.
