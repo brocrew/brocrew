@@ -1,4 +1,4 @@
-import { neutralHostDeps } from './lib/host-fixture'
+import { neutralHostDeps, RecordingSink } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
@@ -15,11 +15,7 @@ import type { Provider } from '@brobot2/shared'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import {
-  RuntimeHost,
-  type RuntimeHostDeps,
-  type RuntimeEventSink,
-} from '../src/main/runtime/runtime-host'
+import { RuntimeHost, type RuntimeHostDeps } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {
   profileBundleSpans,
@@ -39,12 +35,8 @@ const leadFor = thisConversationSpans as (
   provider: Provider,
 ) => ReturnType<typeof thisConversationSpans>
 const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
-class Window implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly ownerId = 'webContents:1'
-  readonly alive = true
-  send(): void {}
-  sendLiveness(): void {}
+class Window extends RecordingSink {
+  override readonly ownerId = 'webContents:1'
 }
 
 // The real host, repository, publisher and instruction reader. Only the external providers are

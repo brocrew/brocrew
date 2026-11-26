@@ -1,4 +1,4 @@
-import { neutralHostDeps } from '../lib/host-fixture'
+import { neutralHostDeps, RecordingSink } from '../lib/host-fixture'
 import { createServer } from 'node:http'
 import type { AddressInfo } from 'node:net'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
@@ -20,21 +20,13 @@ import { openDatabase } from '../../src/main/db/connection'
 import { applyMigrations } from '../../src/main/db/migrate'
 import { createSessionStore } from '../../src/main/db/session-store'
 import { archivedConversationsIn } from '../../src/main/archived-file'
-import { RuntimeHost, type RuntimeEventSink } from '../../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../../src/main/runtime/scratch-cwd'
-import type { RuntimeEventMessage } from '../../src/shared/runtime-ipc'
 
-export class McpRequestSink implements RuntimeEventSink {
-  alive = true
-  readonly messages: RuntimeEventMessage[] = []
-  constructor(
-    readonly ownerId = 'webContents:fixture',
-    readonly aPersonIsBehindIt = true,
-  ) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
+export class McpRequestSink extends RecordingSink {
+  constructor(ownerId = 'webContents:fixture', aPersonIsBehindIt = true) {
+    super(ownerId, aPersonIsBehindIt)
   }
-  sendLiveness(): void {}
 }
 
 export function deferred() {

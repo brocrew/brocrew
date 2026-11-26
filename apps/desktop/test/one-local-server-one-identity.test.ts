@@ -33,7 +33,7 @@ import type { ExternalMcpServerRow } from '../src/shared/external-mcp'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { composeProfileBundle, type InstructionContext } from '../src/main/runtime/factory-text'
 import { publishProfileBundle } from '../src/main/runtime/profile-bundle'
@@ -581,12 +581,8 @@ describe('one local server, one identity', () => {
 
   describe('§5 · registration approval and colleague removal', () => {
     /** ⛔ A sink that declares nothing — every channel but a window (349). */
-    class Anonymous implements RuntimeEventSink {
-      readonly aPersonIsBehindIt = false
-      readonly alive = true
-      constructor(readonly ownerId: string) {}
-      send(): void {}
-      sendLiveness(): void {}
+    class Anonymous extends Sink {
+      override readonly aPersonIsBehindIt = false
     }
 
     it('keeps registration approval and allows a colleague to remove the selected server', async () => {

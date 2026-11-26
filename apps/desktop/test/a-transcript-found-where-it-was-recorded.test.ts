@@ -12,8 +12,9 @@ import { childWorkRoot, readChildWork } from '../src/main/providers/claude/child
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
+import { RecordingSink } from './lib/host-fixture'
 
 /**
  * 🔴 **731 · `706` F-5 — a Claude transcript is found where the CLI RECORDED it.**
@@ -31,12 +32,8 @@ import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 const here = dirname(fileURLToPath(import.meta.url))
 const migrations = join(here, '../src/main/db/migrations')
 
-class NullSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = false
-  readonly ownerId = 'owner:1'
-  readonly alive = true
-  send(): void {}
-  sendLiveness(): void {}
+class NullSink extends RecordingSink {
+  override readonly aPersonIsBehindIt = false
 }
 
 const ID = 'fd4cb53c-79df-4db2-be37-4c7ce61c0cf8'
