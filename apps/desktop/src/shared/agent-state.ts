@@ -128,6 +128,21 @@ export const IN_THE_BACKGROUND = 'running in the background'
  */
 export const SCHEDULED = 'scheduled'
 
+/**
+ * 🔴 **0.2.40 · the host names `active` before the provider has started anything** — a message on its
+ * way in (a queued delivery, a start) is a turn being driven as far as the header is concerned, while
+ * the provider's own status is still `idle`. ⚑ Asked by the composer, which then reads *busy* under an
+ * Active header but offers Stop only when something exists to stop: provider `interrupt` finds nothing
+ * to end in this window and the delivery goes ahead, so a Stop here would be a dead control.
+ */
+export function providerIsYetToStart(
+  status: string | null,
+  state: AgentState | null | undefined,
+  launching?: boolean,
+): boolean {
+  return launching !== true && status === 'idle' && state?.is === 'active'
+}
+
 export function agentStateArm(facts: AgentStateArmFacts): AgentStateName {
   if (facts.needsYou) return 'needs-you'
   if (facts.active) return 'active'

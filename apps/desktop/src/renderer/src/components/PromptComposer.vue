@@ -643,7 +643,7 @@ async function emitOnce(latch: { interrupting: boolean; voiceVersion: number }):
   // this press into a QUEUE, which is what pressing Send a beat later would have meant — reading it
   // before would send into a session that is now busy. ⚑ …and `latch.interrupting` rather than the
   // argument, so a ⇧⌘↵ that arrived DURING the wait is the meaning this send carries (292 §1).
-  const intent = sendIntentFor(props.state, latch.interrupting)
+  const intent = sendIntentFor(props.state, latch.interrupting && props.interruptible)
   // ⚑ **D-010 · no refusal here**: several messages may wait — and since D-027 they go together, in
   // one turn, oldest first, a command alone.
   // trimEnd, not trim: a message that opens with indented code keeps its indentation — with a
@@ -1313,7 +1313,7 @@ defineExpose({
             Stop now
           </button>
           <button
-            v-else
+            v-else-if="canInterrupt"
             class="interrupt-send-button"
             type="button"
             :title="`Stop and send — ${A_STOP_THEN_THIS_IS_SENT} (${interruptKey})`"

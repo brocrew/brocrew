@@ -49,7 +49,7 @@ import type { WorkThatNamesIt } from '../../../shared/piece-called'
 // ⚑ **636 · a TYPE only** — see {@link ConversationPane.waiting}, which is narrowed before it
 // arrives and is never derived here.
 
-import { scheduleHeld, somethingRunning } from '../../../shared/agent-state'
+import { scheduleHeld, somethingRunning, providerIsYetToStart } from '../../../shared/agent-state'
 import { whoItOwesIn } from '../lib/conversation-waits'
 import type { WorkGivenOutReading } from '../lib/work-given-out'
 import { THE_COMPACT_COMMAND, type CompactionFacts } from '../lib/compaction-offer'
@@ -513,6 +513,11 @@ const control = computed(() => props.record.control)
  */
 const panel = computed(() => sessionPanel(control.value))
 
+/** 🔴 **0.2.40 · a send is on its way in and the provider is yet to start** (the host says `active`, the fold `idle`). */
+const yetToStart = computed(() =>
+  providerIsYetToStart(control.value.status, props.record.agentState, props.launching),
+)
+
 /**
  * Determine composer state from both the conversation's state and whether it can accept a message.
  *
@@ -536,6 +541,8 @@ const composerState = computed<ComposerState>(() => {
   // 🔴 **The host is holding this conversation on a person**, whether or not its card is in the part
   // of the fold this window holds.
   if (control.value.status === 'waiting_permission') return 'frozen'
+  // 🔴 **0.2.40 · busy under an Active header**: the host names it before the provider says `working`.
+  if (yetToStart.value) return 'busy'
   return control.value.status === 'idle' ? 'idle' : 'busy'
 })
 
@@ -858,13 +865,8 @@ const canTakeAMessage = computed(
  * ⛔ **Whether the turn can still be taken back — the composer's `interruptible`, supplied for the
  * first time** (234 §2, from `228` M2).
  *
- * ⚠️ **It was a DEAD PROP from 102/103 until this dispatch** (corrected in review — the first draft
- * said "since 094", which is the dispatch that added `frozen` to `canInterrupt`, not the one that
- * killed the prop). The LAUNCHER passed `interruptible: false` until 102 flipped it and 103 removed
- * it; from then nothing in `src` set it, so it was permanently `true` and two branches of the
- * composer's `canInterrupt` were unreachable. `composer-parity.test.ts` named it as such rather than
- * deleting it, on the grounds that 219 §4 scoped that dispatch to the send gate. ⚑ **This is the
- * caller it was waiting for.**
+ * ⚠️ **It was a DEAD PROP from 102/103 until this dispatch**: nothing in `src` set it after 103 removed the
+ * launcher's `false`, so it was permanently `true`. ⚑ **This is the caller it was waiting for.**
  *
  * ⛔ **Stop is the one control the sign-in block deliberately leaves lit** — interrupting needs no
  * credential — **and closing is not that case.** Teardown ends the running turn itself, and bounds
@@ -872,10 +874,10 @@ const canTakeAMessage = computed(
  * ask for a thing that is already happening, and it can come back as a session error from a handle
  * that has gone. ⚠️ Nothing is lost: Close is the stronger gesture and it is the one in flight.
  *
- * ⚑ **One computed, read by the button and by the key**, because `onKey` is the third stop
- * affordance and 094 is the dispatch about what happens when they are gated one at a time.
+ * ⚑ **One computed, read by the button and by the key** (`onKey` is the third stop affordance; 094).
+ * 🔴 **0.2.40 · and not while a send is on its way in and the provider is yet to start**: nothing exists to stop, so a Stop would be dead. The composer is busy and Stop waits for the provider ({@link providerIsYetToStart}); a launch this view owns keeps its own.
  */
-const interruptible = computed(() => props.record.phase !== 'closing')
+const interruptible = computed(() => props.record.phase !== 'closing' && !yetToStart.value)
 
 /**
  * 🔴 **730 · R83 — what the Stop control says while an ask to stop goes unanswered**, or `null`.
