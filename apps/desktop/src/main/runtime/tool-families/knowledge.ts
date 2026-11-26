@@ -269,7 +269,7 @@ export function createReadOwnNotesTool(
       guarded(async () => {
         const input = notesReadQuery.safeParse(args)
         if (!input.success) return malformedQueryAnswer(input.error.issues)
-        const outcome = host.readOwnNotes(me, input.data.agent, by)
+        const outcome = await host.readOwnNotes(me, input.data.agent, by)
         if (!outcome.ok) return refusalAnswer(refuseTool(outcome.rail, outcome.detail))
         return answer({ outcome: 'ok', ...outcome.result }, JSON.stringify(outcome.result))
       }),
@@ -304,7 +304,7 @@ export function createWriteOwnNotesTool(
         const input = notesWriteQuery.safeParse(args)
         if (!input.success) return malformedQueryAnswer(input.error.issues)
         const value = input.data
-        const outcome = host.writeOwnNotes(
+        const outcome = await host.writeOwnNotes(
           me,
           {
             expectedVersion: value.current_version,

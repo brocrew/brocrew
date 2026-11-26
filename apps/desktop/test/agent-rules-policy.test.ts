@@ -1,30 +1,18 @@
-import { RecordingSink } from './lib/host-fixture'
-import { policyHostDeps, policySessionOpener } from './helpers/policy-session'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import type { RecordingSink } from './lib/host-fixture'
+import { openPolicySessionFixture, policySessionOpener } from './helpers/policy-session'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import {
-  FakeProviderSessions,
-  type AgentToolset,
-  type StartOptions,
-  type ResumeOptions,
-} from '@brobot2/runtime'
-import { openDatabase, type AppDatabase } from '../src/main/db/connection'
+import type { AgentToolset, StartOptions, ResumeOptions } from '@brobot2/runtime'
+import type { AppDatabase } from '../src/main/db/connection'
 import { createAppLifetime } from '../src/main/app-lifetime'
 import { closeDatabase } from '../src/main/db/close-database'
 import { deferred } from './helpers/quit-open-list-cases'
 import { stopFailedStart } from './helpers/stop-failed-start'
-import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { agentCallerId, TOOL_NAMES } from '../src/main/runtime/agent-tools'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
-import { RuntimeHost, type Caller, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
+import type { RuntimeHost, Caller, RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import type { AgentInstructionsReading } from '../src/shared/own-instructions'
-
-const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 
 // A local expected contract lets this fixture compile before the host methods are added.
 type Baseline = { readonly expectedVersion: number }
@@ -70,7 +58,6 @@ type PolicyCommand =
   | { kind: 'markAgentRulesSeen'; profileId: string; throughVersion: number }
 
 describe('standing-rule authority belongs to the host and changes remain attributable', () => {
-  let root: string
   let work: string
   let db: AppDatabase
   let store: SessionStore
@@ -78,10 +65,8 @@ describe('standing-rule authority belongs to the host and changes remain attribu
   let window: RecordingSink
   let handed: AgentToolset[]
   let launches: (StartOptions | ResumeOptions)[]
-  let providerSessions: FakeProviderSessions
   let tools: Map<string, AgentToolset>
   let clock: number
-  let sequence: number
   const tick = (): number => clock++
   const caller = (id: string) => ({ ownerId: agentCallerId(id) })
   const policy = (): PolicyHost => host as unknown as PolicyHost
@@ -92,38 +77,14 @@ describe('standing-rule authority belongs to the host and changes remain attribu
       said as unknown as Parameters<typeof executeRuntimeCommand>[2],
     )
 
+  let fixture: ReturnType<typeof openPolicySessionFixture>
   beforeEach(() => {
-    root = mkdtempSync(join(tmpdir(), 'rules-policy-'))
-    work = mkdtempSync(join(tmpdir(), 'rules-policy-work-'))
-    db = openDatabase(join(root, 'app.sqlite'))
-    applyMigrations(db, migrations)
     clock = 1000
-    sequence = 0
-    handed = []
-    launches = []
-    providerSessions = new FakeProviderSessions()
-    tools = new Map()
-    store = createSessionStore(db, tick)
-    host = new RuntimeHost({
-      store,
-      ...policyHostDeps({
-        root,
-        providerSessions,
-        launches,
-        handed,
-        newSessionId: () => `session-${++sequence}`,
-        now: tick,
-      }),
-    })
-    window = new RecordingSink('webContents:1')
+    fixture = openPolicySessionFixture('rules-policy', tick)
+    ;({ host, window, work, db, store, handed, launches, tools } = fixture)
   })
 
-  afterEach(async () => {
-    await host.closeAll()
-    if (db.open) db.close()
-    rmSync(root, { recursive: true, force: true })
-    rmSync(work, { recursive: true, force: true })
-  })
+  afterEach(() => fixture.close())
 
   const start = policySessionOpener(() => ({ host, window, work, handed, tools }))
   const propose = (me: string, text = 'Proposed rules', expectedVersion = 0) =>

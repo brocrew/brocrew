@@ -317,7 +317,7 @@ describe('one normal agent on both providers', () => {
         expect(written).not.toBeNull()
         v2 = written!.versions[0]!.version
       } else {
-        const written = host.writeOwnNotes(writer, update, { ownerId: agentCallerId(writer) })
+        const written = await host.writeOwnNotes(writer, update, { ownerId: agentCallerId(writer) })
         expect(written.ok).toBe(true)
         if (!written.ok) throw new Error('notes write refused')
         v2 = written.result.version
@@ -326,7 +326,7 @@ describe('one normal agent on both providers', () => {
       expect(v2).toBeGreaterThan(v1)
       for (const owner of Object.values(owners))
         expect(
-          host.readOwnNotes(owner, undefined, { ownerId: agentCallerId(owner) }),
+          await host.readOwnNotes(owner, undefined, { ownerId: agentCallerId(owner) }),
         ).toMatchObject({
           ok: true,
           result: { profile: 'draft-reader', version: v2, text: textTwo },
@@ -369,7 +369,7 @@ describe('one normal agent on both providers', () => {
         v3 = cleared!.versions[0]!.version
       } else {
         // Claiming the window does not revoke this live owner's own-notes write authority.
-        const cleared = host.writeOwnNotes(writer, clear, { ownerId: agentCallerId(writer) })
+        const cleared = await host.writeOwnNotes(writer, clear, { ownerId: agentCallerId(writer) })
         expect(cleared.ok).toBe(true)
         if (!cleared.ok) throw new Error('notes clear refused')
         v3 = cleared.result.version

@@ -487,6 +487,8 @@ import type {
 } from './spawn-rails'
 export type { GiveOutcome } from './spawn-rails'
 import { agentIdentityRowId, foldProfileName } from '../db/identity'
+import { createSqliteAgentNotes } from '../database/sqlite/agents/own-notes'
+import type { AgentNotes } from '../database'
 import { LinkAnswers, type ReadLinkAnswer } from './link-answers'
 import type {
   Exchange,
@@ -2135,6 +2137,7 @@ export class RuntimeHost implements LiveHost {
   private readonly giveWorkRunner: GiveWork
   private readonly schedulePlanning: SchedulePlanning
   private readonly conversationInspection: ConversationInspection
+  private readonly agentNotes: Pick<AgentNotes, 'currentOwnNotesOf' | 'writeOwnNotes'>
 
   constructor(private readonly deps: RuntimeHostDeps) {
     this.ledgerIdentity = deps.store
@@ -2156,6 +2159,7 @@ export class RuntimeHost implements LiveHost {
       providerHomeFor: (session) => this.providerHomeFor(session),
       now: () => this.now(),
     })
+    this.agentNotes = createSqliteAgentNotes(this.deps.store)
     this.mcpServerRequests = new McpServerRequests(this.deps, {
       slotOf: (sessionId) => this.slots.get(sessionId),
       runningAs: (sessionId) => this.runningAs(sessionId),
@@ -29270,7 +29274,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
     me: string,
     about: string | undefined,
     by: Caller,
-  ): AgentOwnNotesOutcome<AgentOwnNotesReading> {
+  ): Promise<AgentOwnNotesOutcome<AgentOwnNotesReading>> {
     return this.instructionDecisions.readOwnNotes(me, about, by)
   }
 
@@ -29279,7 +29283,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
     me: string,
     said: OwnNotesWrite,
     by: Caller,
-  ): AgentOwnNotesOutcome<OwnNotesReceipt> {
+  ): Promise<AgentOwnNotesOutcome<OwnNotesReceipt>> {
     return this.instructionDecisions.writeOwnNotes(me, said, by)
   }
 
@@ -30410,6 +30414,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
       this.deps.readCurrentAgentRules?.(profile) ?? this.deps.store.readCurrentAgentRules(profile),
     writeDirectAgentRules: (...args) =>
       this.deps.writeDirectAgentRules?.(...args) ?? this.deps.store.writeDirectAgentRules(...args),
+    notes: () => this.agentNotes,
     rulesAuthor: (me, by) => this.rulesAuthor(me, by),
     instructionPublisher: (conversation) => {
       const session = this.slots.get(conversation)?.session ?? null

@@ -298,8 +298,12 @@ export interface AgentToolHost {
     me: string,
     about: string | undefined,
     by: Caller,
-  ): AgentOwnNotesOutcome<AgentOwnNotesReading>
-  writeOwnNotes(me: string, said: OwnNotesWrite, by: Caller): AgentOwnNotesOutcome<OwnNotesReceipt>
+  ): Promise<AgentOwnNotesOutcome<AgentOwnNotesReading>>
+  writeOwnNotes(
+    me: string,
+    said: OwnNotesWrite,
+    by: Caller,
+  ): Promise<AgentOwnNotesOutcome<OwnNotesReceipt>>
   readAgentRules(
     me: string,
     about: string,
