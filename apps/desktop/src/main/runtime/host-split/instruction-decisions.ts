@@ -62,7 +62,7 @@ interface InstructionDecisionOperations {
   >
   readCurrentAgentRules: SessionStore['readCurrentAgentRules']
   writeDirectAgentRules: SessionStore['writeDirectAgentRules']
-  notes(): Pick<AgentNotes, 'currentOwnNotesOf' | 'writeOwnNotes'>
+  notes(): Pick<AgentNotes, 'currentOwnNotesOf' | 'writeOwnNotes' | 'undoOwnNotes' | 'ownNotesOf'>
   rulesAuthor(me: string, by: Caller): RulesAuthor | null
   /** Capture the current live session; invoke the returned publisher synchronously at the write. */
   instructionPublisher(
@@ -72,7 +72,6 @@ interface InstructionDecisionOperations {
         event: InstructionProposedEvent | InstructionChangedEvent | InstructionSettledEvent,
       ) => void)
     | null
-  agentOwnNotes(profile: string): OwnNotesReading | null
   agentInstructions(profile: string): AgentInstructionsReading
   theWorldMoved(what: 'agents'): void
   now(): number
@@ -175,28 +174,36 @@ export class InstructionDecisions {
     return this.ops.store().ownNotesUnread(foldProfileName(profile))
   }
 
-  saveOwnNotes(profile: string, said: OwnNotesWrite, by: Caller): OwnNotesReading | null {
+  async saveOwnNotes(
+    profile: string,
+    said: OwnNotesWrite,
+    by: Caller,
+  ): Promise<OwnNotesReading | null> {
     const actor = whoDidIt(by)
     if (!ownNotesWriteFits(said)) return null
-    const page = this.ops.store().currentOwnNotesOf(profile)
+    const notes = this.ops.notes()
+    const page = await notes.currentOwnNotesOf(profile)
     if (page === null || (page.current?.version ?? 0) !== said.expectedVersion) return null
-    const written = this.ops.store().writeOwnNotes(profile, said, actor, this.ops.now())
+    const written = await notes.writeOwnNotes(profile, said, actor, this.ops.now())
     if (written === null) return null
     this.ops.theWorldMoved('agents')
-    return this.ops.agentOwnNotes(profile)
+    return notes.ownNotesOf(foldProfileName(profile))
   }
 
-  undoOwnNotes(profile: string, expectedVersion: number, by: Caller): OwnNotesReading | null {
+  async undoOwnNotes(
+    profile: string,
+    expectedVersion: number,
+    by: Caller,
+  ): Promise<OwnNotesReading | null> {
     const actor = whoDidIt(by)
     if (!Number.isSafeInteger(expectedVersion) || expectedVersion < 1) return null
-    const current = this.ops.store().currentOwnNotesOf(profile)?.current
+    const notes = this.ops.notes()
+    const current = (await notes.currentOwnNotesOf(profile))?.current
     if (current == null || current.version !== expectedVersion) return null
-    const written = this.ops
-      .store()
-      .undoOwnNotes(profile, { expectedVersion }, actor, this.ops.now())
+    const written = await notes.undoOwnNotes(profile, { expectedVersion }, actor, this.ops.now())
     if (written === null) return null
     this.ops.theWorldMoved('agents')
-    return this.ops.agentOwnNotes(profile)
+    return notes.ownNotesOf(foldProfileName(profile))
   }
 
   markOwnNotesSeen(profile: string, throughVersion: number, by: Caller): boolean {

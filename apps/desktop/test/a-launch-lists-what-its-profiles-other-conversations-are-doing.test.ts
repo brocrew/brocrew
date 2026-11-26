@@ -466,7 +466,11 @@ describe('§3 · launch instructions and changing turn facts', () => {
       clock = writtenAt
       expect(host.instructAgent('ali', rules, undefined, window)).not.toBeNull()
       expect(
-        host.saveOwnNotes('ali', { expectedVersion: 0, text: notes, why: 'Fixture note.' }, window),
+        await host.saveOwnNotes(
+          'ali',
+          { expectedVersion: 0, text: notes, why: 'Fixture note.' },
+          window,
+        ),
       ).not.toBeNull()
       await quitAndRelaunch()
       await host.resumeSession(peer.id, window)
@@ -583,7 +587,11 @@ describe('§3 · launch instructions and changing turn facts', () => {
       const original = getStart()
       const notes = 'Include the latest fictional report.'
       expect(
-        host.saveOwnNotes('ali', { expectedVersion: 0, text: notes, why: 'Fixture.' }, window),
+        await host.saveOwnNotes(
+          'ali',
+          { expectedVersion: 0, text: notes, why: 'Fixture.' },
+          window,
+        ),
       ).not.toBeNull()
 
       await quitAndRelaunch()

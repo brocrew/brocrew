@@ -221,7 +221,7 @@ describe('one normal agent on both providers', () => {
           }
         },
       })
-      const saved = host.saveOwnNotes(
+      const saved = await host.saveOwnNotes(
         'draft-reader',
         {
           expectedVersion: 0,
@@ -313,7 +313,7 @@ describe('one normal agent on both providers', () => {
       }
       let v2: number
       if (writerProvider === 'person') {
-        const written = host.saveOwnNotes('draft-reader', update, world.window)
+        const written = await host.saveOwnNotes('draft-reader', update, world.window)
         expect(written).not.toBeNull()
         v2 = written!.versions[0]!.version
       } else {
@@ -364,7 +364,7 @@ describe('one normal agent on both providers', () => {
       }
       let v3: number
       if (writerProvider === 'person') {
-        const cleared = host.saveOwnNotes('draft-reader', clear, world.window)
+        const cleared = await host.saveOwnNotes('draft-reader', clear, world.window)
         expect(cleared).not.toBeNull()
         v3 = cleared!.versions[0]!.version
       } else {

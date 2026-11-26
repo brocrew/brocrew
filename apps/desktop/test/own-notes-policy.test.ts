@@ -26,8 +26,12 @@ type NotesHost = {
   readOwnNotes(me: string, about: string | undefined, by: Caller): Promise<Result>
   writeOwnNotes(me: string, said: OwnNotesWrite, by: Caller): Promise<Result>
   agentOwnNotes(profile: string): OwnNotesReading | null
-  saveOwnNotes(profile: string, said: OwnNotesWrite, by: Caller): OwnNotesReading | null
-  undoOwnNotes(profile: string, expectedVersion: number, by: Caller): OwnNotesReading | null
+  saveOwnNotes(profile: string, said: OwnNotesWrite, by: Caller): Promise<OwnNotesReading | null>
+  undoOwnNotes(
+    profile: string,
+    expectedVersion: number,
+    by: Caller,
+  ): Promise<OwnNotesReading | null>
   markOwnNotesSeen(profile: string, throughVersion: number, by: Caller): boolean
   agentOwnNotesUnread(profile: string): OwnNotesUnread
 }
@@ -604,7 +608,7 @@ describe('own notes tools bind to their caller and person controls stay in the w
     async (kind) => {
       await start('lark')
       expect(
-        notes().saveOwnNotes(
+        await notes().saveOwnNotes(
           'lark',
           { expectedVersion: 0, text: 'Original.\r\n', why: 'Original reason' },
           window,
@@ -627,18 +631,18 @@ describe('own notes tools bind to their caller and person controls stay in the w
         text: 'Actual correction.\r\nCafé.',
         why: 'Actual caller reason',
       }
-      expect(notes().saveOwnNotes('missing', said, by)).toBeNull()
-      const written = notes().saveOwnNotes('lark', said, by)
+      expect(await notes().saveOwnNotes('missing', said, by)).toBeNull()
+      const written = await notes().saveOwnNotes('lark', said, by)
       expect(written).toMatchObject({
         versions: [
           { version: 2, text: said.text, by: actor, author: null, reason: said.why },
           { version: 1 },
         ],
       })
-      expect(notes().saveOwnNotes('lark', said, by)).toBeNull()
-      expect(notes().undoOwnNotes('lark', 1, by)).toBeNull()
-      expect(notes().undoOwnNotes('lark', 3, by)).toBeNull()
-      const restored = notes().undoOwnNotes('lark', 2, by)
+      expect(await notes().saveOwnNotes('lark', said, by)).toBeNull()
+      expect(await notes().undoOwnNotes('lark', 1, by)).toBeNull()
+      expect(await notes().undoOwnNotes('lark', 3, by)).toBeNull()
+      const restored = await notes().undoOwnNotes('lark', 2, by)
       expect(restored).toMatchObject({
         versions: [
           {
@@ -711,7 +715,9 @@ describe('own notes tools bind to their caller and person controls stay in the w
         { version: 1 },
       ],
     })
-    expect(notes().saveOwnNotes('lark', { ...said(), expectedVersion: 1 }, caller(me))).toBeNull()
+    expect(
+      await notes().saveOwnNotes('lark', { ...said(), expectedVersion: 1 }, caller(me)),
+    ).toBeNull()
     expect(
       await command(agentSink, { kind: 'undoOwnNotes', profileId: 'lark', expectedVersion: 1 }),
     ).toBeNull()

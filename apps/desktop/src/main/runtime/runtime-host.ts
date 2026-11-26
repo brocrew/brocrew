@@ -2164,7 +2164,7 @@ export class RuntimeHost implements LiveHost {
   private readonly giveWorkRunner: GiveWork
   private readonly schedulePlanning: SchedulePlanning
   private readonly conversationInspection: ConversationInspection
-  private readonly agentNotes: Pick<AgentNotes, 'currentOwnNotesOf' | 'writeOwnNotes'>
+  private readonly agentNotes: AgentNotes
 
   constructor(private readonly deps: RuntimeHostDeps) {
     this.ledgerIdentity = deps.store
@@ -29558,12 +29558,18 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
     return this.instructionDecisions.agentOwnNotesUnread(profile)
   }
 
-  saveOwnNotes(profile: string, said: OwnNotesWrite, by: Caller): OwnNotesReading | null {
-    return this.instructionDecisions.saveOwnNotes(profile, said, by)
+  saveOwnNotes(profile: string, said: OwnNotesWrite, by: Caller): Promise<OwnNotesReading | null> {
+    return this.trackAgentKnowledge(this.instructionDecisions.saveOwnNotes(profile, said, by))
   }
 
-  undoOwnNotes(profile: string, expectedVersion: number, by: Caller): OwnNotesReading | null {
-    return this.instructionDecisions.undoOwnNotes(profile, expectedVersion, by)
+  undoOwnNotes(
+    profile: string,
+    expectedVersion: number,
+    by: Caller,
+  ): Promise<OwnNotesReading | null> {
+    return this.trackAgentKnowledge(
+      this.instructionDecisions.undoOwnNotes(profile, expectedVersion, by),
+    )
   }
 
   markOwnNotesSeen(profile: string, throughVersion: number, by: Caller): boolean {
@@ -30683,7 +30689,6 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
       const session = this.slots.get(conversation)?.session ?? null
       return session === null ? null : (event) => this.publishOurs(session, event)
     },
-    agentOwnNotes: (profile) => this.agentOwnNotes(profile),
     agentInstructions: (profile) => this.agentInstructions(profile),
     theWorldMoved: (what) => this.theWorldMoved(what),
     now: () => this.now(),
@@ -33820,12 +33825,15 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
   recordOpenForQuit(): void {
     if (this.quitRecorded) return
     this.quitRecorded = true
-    const closing = this.whatTheQuitCloses()
-    this.keepTheTurnsTheQuitCuts(closing)
-    this.recordWhatTheQuitClosed(closing)
-    this.keepTheUsage()
-    this.launches.closeAdmission()
-    this.workReconciler?.close()
+    try {
+      const closing = this.whatTheQuitCloses()
+      this.keepTheTurnsTheQuitCuts(closing)
+      this.recordWhatTheQuitClosed(closing)
+      this.keepTheUsage()
+    } finally {
+      this.launches.closeAdmission()
+      this.workReconciler?.close()
+    }
   }
 
   private quitRecorded = false

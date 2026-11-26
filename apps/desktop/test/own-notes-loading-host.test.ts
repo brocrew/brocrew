@@ -48,7 +48,7 @@ describe('own notes reach starts and cold resumes from one recorded launch snaps
   let sequence: number
   let sessions: FakeProviderSessions
   let skillPreparation: RuntimeHostDeps['prepareBuiltInSkills']
-  let atLaunch: (() => void) | undefined
+  let atLaunch: (() => Promise<void>) | undefined
   let options: (StartOptions | ResumeOptions)[]
   let reads: {
     provider: Provider
@@ -75,7 +75,7 @@ describe('own notes reach starts and cold resumes from one recorded launch snaps
     class Runtime extends FakeRuntime {
       override async start(opts: StartOptions): ReturnType<FakeRuntime['start']> {
         options.push(opts)
-        atLaunch?.()
+        if (atLaunch) await atLaunch()
         return super.start(opts)
       }
       override async resume(
@@ -83,7 +83,7 @@ describe('own notes reach starts and cold resumes from one recorded launch snaps
         opts: ResumeOptions,
       ): ReturnType<FakeRuntime['resume']> {
         options.push(opts)
-        atLaunch?.()
+        if (atLaunch) await atLaunch()
         return super.resume(ref, opts)
       }
     }
@@ -146,8 +146,8 @@ describe('own notes reach starts and cold resumes from one recorded launch snaps
   // Finish the fake turn without a permission card; these cases test loading and lead retention.
   const start = async (provider: Provider, profileId = 'lark') =>
     (await host.createSession({ provider, profileId, cwd, approvalMode: 'auto' }, window)).sessionId
-  const save = (profile: string, text: string, expectedVersion = 0) => {
-    const result = host.saveOwnNotes(
+  const save = async (profile: string, text: string, expectedVersion = 0) => {
+    const result = await host.saveOwnNotes(
       profile,
       { text, expectedVersion, why: 'Keep this standing wish.' },
       window,
@@ -213,7 +213,7 @@ describe('own notes reach starts and cold resumes from one recorded launch snaps
       expect(
         host.instructAgent('lark', 'Standing wishes stay first.', undefined, window),
       ).not.toBeNull()
-      save('lark', 'First page.')
+      await save('lark', 'First page.')
       const me = await start(provider)
       const first = reads.at(-1)!
       expect(first.context).toMatchObject({ ownNotes: { version: 1, text: 'First page.' } })
@@ -229,7 +229,7 @@ describe('own notes reach starts and cold resumes from one recorded launch snaps
           initiallySent!.indexOf('## Your own notes'),
         )
       else expect(options.at(-1)?.systemHint).toBeUndefined()
-      save('lark', 'Second page.', 1)
+      await save('lark', 'Second page.', 1)
       expect(first.context).toMatchObject({ ownNotes: { version: 1, text: 'First page.' } })
       await host.send(me, 'Read your standing context.', window)
       await vi.waitFor(() => expect(turns(me)).toHaveLength(1))
@@ -257,7 +257,7 @@ describe('own notes reach starts and cold resumes from one recorded launch snaps
       await vi.waitFor(() =>
         expect(store.events(me).filter(({ event }) => event.type === 'turn')).toHaveLength(2),
       )
-      save('lark', '', 2)
+      await save('lark', '', 2)
       await host.close(me, window)
       await host.resumeSession(me, window)
       const clear = reads.at(-1)!
@@ -280,10 +280,10 @@ describe('own notes reach starts and cold resumes from one recorded launch snaps
     async (provider) => {
       const seed = await start(provider)
       await host.close(seed, window)
-      save('lark', 'Read before the race.')
-      atLaunch = () => {
+      await save('lark', 'Read before the race.')
+      atLaunch = async () => {
         atLaunch = undefined
-        save('lark', 'Written during launch.', 1)
+        await save('lark', 'Written during launch.', 1)
       }
       const me = await start(provider)
       expect(store.currentOwnNotesOf('lark')?.current?.version).toBe(2)
@@ -302,7 +302,7 @@ describe('own notes reach starts and cold resumes from one recorded launch snaps
     async (provider) => {
       const other = await start(provider, 'wren')
       await host.close(other, window)
-      save('wren', 'Other role only.')
+      await save('wren', 'Other role only.')
       const me = await start(provider, 'lark')
       const read = reads.at(-1)!
       expect(read.context).toMatchObject({ ownNotes: { version: 0, text: '' } })
