@@ -1,5 +1,5 @@
 import { once, sliceOf } from './lib/source-markers'
-import { neutralHostDeps } from './lib/host-fixture'
+import { neutralHostDeps, RecordingSink as WindowSink } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -86,14 +86,6 @@ function withAProcess(
       return typeof value === 'function' ? (value as () => unknown).bind(target) : value
     },
   })
-}
-
-class WindowSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(): void {}
-  sendLiveness(): void {}
 }
 
 async function waitFor(predicate: () => boolean, what: string): Promise<void> {

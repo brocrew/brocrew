@@ -1,4 +1,4 @@
-import { neutralHostDeps } from './lib/host-fixture'
+import { neutralHostDeps, RecordingSink as WindowSink } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -16,30 +16,14 @@ import {
 } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { executeRuntimeCommand, noPersonBehindIt } from '../src/main/runtime/ipc'
-import type { AgentIdentities, RuntimeEventMessage } from '../src/shared/runtime-ipc'
+import type { AgentIdentities } from '../src/shared/runtime-ipc'
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
 
-/** A window: what the app's own sink declares, and the only thing that declares it (349). */
-class WindowSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(): void {}
-}
-
 /** Anything else — an agent's own channel, or a surface that never said. */
-class AnonymousSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = false
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(): void {}
-  sendLiveness(): void {}
+class AnonymousSink extends WindowSink {
+  override readonly aPersonIsBehindIt = false
 }
 
 describe('355 · the identity door a person writes through', () => {

@@ -14,14 +14,9 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost, THE_APP_ITSELF } from './helpers/giver-notice-host'
-import type { RuntimeEventSink } from './helpers/giver-notice-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import type {
-  CreatedSession,
-  RuntimeEventMessage,
-  SessionLivenessMessage,
-} from '../src/shared/runtime-ipc'
+import type { CreatedSession } from '../src/shared/runtime-ipc'
 import ConversationPane from '../src/renderer/src/components/ConversationPane.vue'
 import QueuedMessage from '../src/renderer/src/components/QueuedMessage.vue'
 import RelayedEntry from '../src/renderer/src/components/RelayedEntry.vue'
@@ -56,7 +51,7 @@ import {
   THE_GO_AHEAD_WAS_NOT_SENT,
   TYPE_TO_CARRY_ON,
 } from '../src/shared/the-go-ahead'
-import { syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import { syntheticProviderHome, neutralHostDeps, RecordingSink } from './lib/host-fixture'
 import { waitFor } from './lib/f093-host'
 import { latch } from './helpers/held-operation'
 // ⚑ 700 · `688` H2 — main's sentence and the row's are one value now, in `shared/`.
@@ -102,20 +97,6 @@ vi.mock('../src/renderer/src/components/OutsideCard.vue', async () => {
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-
-class RecordingSink implements RuntimeEventSink {
-  readonly aPersonIsBehindIt = true
-  readonly messages: RuntimeEventMessage[] = []
-  readonly liveness: SessionLivenessMessage[] = []
-  alive = true
-  constructor(readonly ownerId: string) {}
-  send(message: RuntimeEventMessage): void {
-    this.messages.push(message)
-  }
-  sendLiveness(message: SessionLivenessMessage): void {
-    this.liveness.push(message)
-  }
-}
 
 /* ─────────────────────────── what a person reads, out of rendered markup ─────────────────────────── */
 
@@ -390,7 +371,7 @@ describe('688 · draw who wrote it, and which task', () => {
     sessionId: string,
     upTo: { messages: number; liveness: number } = {
       messages: window.messages.length,
-      liveness: window.liveness.length,
+      liveness: window.livenessMessages.length,
     },
   ): SessionRecord => {
     const record = createSessionRecord(sessionId)
@@ -401,7 +382,7 @@ describe('688 · draw who wrote it, and which task', () => {
     for (const message of window.messages.slice(0, upTo.messages)) {
       if (message.sessionId === sessionId) acceptEvent(record, structuredClone(message))
     }
-    const newest = window.liveness
+    const newest = window.livenessMessages
       .slice(0, upTo.liveness)
       .filter((one) => one.sessionId === sessionId)
       .at(-1)
@@ -411,7 +392,7 @@ describe('688 · draw who wrote it, and which task', () => {
 
   const now = (): { messages: number; liveness: number } => ({
     messages: window.messages.length,
-    liveness: window.liveness.length,
+    liveness: window.livenessMessages.length,
   })
 
   /**
