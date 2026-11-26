@@ -76,7 +76,7 @@ describe('normalizeMessage — Claude → content RuntimeEvents', () => {
           },
         }),
       ),
-    ).toEqual([
+    ).toMatchObject([
       { type: 'tool_call', id: 'tu_1', name: 'Bash', summary: 'echo hi' },
       { type: 'assistant_message', text: 'running' },
     ])
@@ -537,7 +537,7 @@ describe('normalizeMessage — mixed content blocks keep SOURCE order (044 P3)',
         { type: 'tool_use', id: 'tu_1', name: 'Bash', input: { command: 'echo hi' } },
         { type: 'text', text: 'AFTER' },
       ]),
-    ).toEqual([
+    ).toMatchObject([
       { type: 'assistant_message', text: 'BEFORE' },
       { type: 'tool_call', id: 'tu_1', name: 'Bash', summary: 'echo hi' },
       { type: 'assistant_message', text: 'AFTER' },
@@ -554,7 +554,7 @@ describe('normalizeMessage — mixed content blocks keep SOURCE order (044 P3)',
         { type: 'tool_use', id: 'tu_3', name: 'Bash', input: { command: 'three' } },
         { type: 'text', text: 'third' },
       ]),
-    ).toEqual([
+    ).toMatchObject([
       { type: 'assistant_message', text: 'first' },
       { type: 'tool_call', id: 'tu_1', name: 'Bash', summary: 'one' },
       { type: 'assistant_message', text: 'second' },
@@ -580,14 +580,14 @@ describe('normalizeMessage — mixed content blocks keep SOURCE order (044 P3)',
         { type: 'text', text: 'about to run' },
         { type: 'tool_use', id: 'tu_1', name: 'Bash', input: { command: 'ls' } },
       ]),
-    ).toEqual([
+    ).toMatchObject([
       { type: 'assistant_message', text: 'about to run' },
       { type: 'tool_call', id: 'tu_1', name: 'Bash', summary: 'ls' },
     ])
     // Tool-only: no empty assistant_message is fabricated on either side.
     expect(
       assistant([{ type: 'tool_use', id: 'tu_1', name: 'Bash', input: { command: 'ls' } }]),
-    ).toEqual([{ type: 'tool_call', id: 'tu_1', name: 'Bash', summary: 'ls' }])
+    ).toMatchObject([{ type: 'tool_call', id: 'tu_1', name: 'Bash', summary: 'ls' }])
   })
 
   it('string content (not a block array) still yields exactly one message', () => {
@@ -613,7 +613,7 @@ describe('normalizeMessage — mixed content blocks keep SOURCE order (044 P3)',
           error: 'rate_limit',
         }),
       ),
-    ).toEqual([
+    ).toMatchObject([
       { type: 'assistant_message', text: 'hi' },
       { type: 'tool_call', id: 'tu_1', name: 'Bash', summary: 'ls' },
       { type: 'error', message: 'claude is rate-limited', fatal: false },
@@ -1105,7 +1105,7 @@ describe('sub-agents — Claude system events → sub_agent (029)', () => {
           session_id: 's',
         }),
       ),
-    ).toEqual([
+    ).toMatchObject([
       {
         type: 'sub_agent',
         phase: 'started',
@@ -1135,7 +1135,7 @@ describe('sub-agents — Claude system events → sub_agent (029)', () => {
         session_id: 's',
       }),
     )[0]
-    expect(event).toEqual({
+    expect(event).toMatchObject({
       type: 'sub_agent',
       phase: 'progress',
       agentId: AGENT,
@@ -1168,7 +1168,7 @@ describe('sub-agents — Claude system events → sub_agent (029)', () => {
       }),
       tasks,
     )[0]
-    expect(updated).toEqual({
+    expect(updated).toMatchObject({
       type: 'sub_agent',
       phase: 'ended',
       agentId: AGENT,
@@ -1192,7 +1192,7 @@ describe('sub-agents — Claude system events → sub_agent (029)', () => {
         }),
         tasks,
       )[0],
-    ).toEqual({
+    ).toMatchObject({
       type: 'sub_agent',
       phase: 'ended',
       agentId: AGENT,
@@ -1259,7 +1259,7 @@ describe('sub-agents — Claude system events → sub_agent (029)', () => {
           session_id: 's',
         }),
       ),
-    ).toEqual([
+    ).toMatchObject([
       { type: 'tool_call', id: 'child_1', name: 'Bash', summary: 'ls', parentToolCallId: PARENT },
     ])
 
@@ -1344,7 +1344,7 @@ describe('sub-agents — Claude system events → sub_agent (029)', () => {
           session_id: 's',
         }),
       ),
-    ).toEqual([
+    ).toMatchObject([
       { type: 'assistant_message', text: 'before', parentToolCallId: PARENT },
       { type: 'tool_call', id: 'child_2', name: 'Bash', summary: 'ls', parentToolCallId: PARENT },
       { type: 'assistant_message', text: 'after', parentToolCallId: PARENT },

@@ -121,6 +121,40 @@ export function useConversationOverlays(
     readingOutput.value?.sessionId === props.record.sessionId ? readingOutput.value : null,
   )
 
+  const readingWorkflow = ref<{ sessionId: string; taskId: string } | null>(null)
+  const workflowFor = computed(() =>
+    readingWorkflow.value?.sessionId === props.record.sessionId
+      ? transcript.value.workflows[readingWorkflow.value.taskId]
+      : undefined,
+  )
+  function backgroundRun(id: string) {
+    const past = transcript.value.background.history?.find((one) => one.id === id)
+    if (past?.outcome !== undefined || past?.unfinished) return past
+    return transcript.value.background.running.find((one) => one.id === id) ?? past
+  }
+  const readingBackground = ref<{ sessionId: string; id: string } | null>(null)
+  const backgroundFor = computed(() =>
+    readingBackground.value?.sessionId === props.record.sessionId
+      ? backgroundRun(readingBackground.value.id)
+      : undefined,
+  )
+  const readingPlan = ref<{ sessionId: string; itemId: string } | null>(null)
+  const readingTool = ref<{ sessionId: string; callId: string } | null>(null)
+  const toolFor = computed(() =>
+    readingTool.value?.sessionId === props.record.sessionId
+      ? transcript.value.items.find(
+          (item) => item.kind === 'tool' && item.callId === readingTool.value?.callId,
+        )
+      : undefined,
+  )
+  const planFor = computed(() =>
+    readingPlan.value?.sessionId === props.record.sessionId
+      ? transcript.value.items.find(
+          (item) => item.kind === 'plan' && item.id === readingPlan.value?.itemId,
+        )
+      : undefined,
+  )
+
   /** What a sub-agent did (112). Same shape, same `sessionId` guard, for the same 067 reason. */
   const readingChild = ref<{
     sessionId: string
@@ -173,6 +207,9 @@ export function useConversationOverlays(
     () => {
       viewing.value = null
       readingOutput.value = null
+      readingWorkflow.value = null
+      readingPlan.value = null
+      readingTool.value = null
       readingChild.value = null
       closeToolAnswer()
     },
@@ -207,12 +244,55 @@ export function useConversationOverlays(
     return result.ok
   }
 
+  function closePanelRun(): void {
+    readingWorkflow.value = null
+    readingPlan.value = null
+    readingTool.value = null
+    readingBackground.value = null
+  }
+
   async function openPanelRun(run: RunTarget): Promise<boolean> {
+    closePanelRun()
+    const callId =
+      run.kind === 'tool'
+        ? run.id
+        : run.kind === 'background'
+          ? backgroundRun(run.id)?.toolCallId
+          : undefined
+    if (
+      callId &&
+      transcript.value.items.some((item) => item.kind === 'tool' && item.callId === callId)
+    ) {
+      readingWorkflow.value = null
+      readingPlan.value = null
+      readingTool.value = { sessionId: props.record.sessionId, callId }
+      return true
+    }
+    if (run.kind === 'background') {
+      const work = backgroundRun(run.id)
+      if (work?.run?.input || work?.run?.progress || work?.run?.result) {
+        closePanelRun()
+        readingBackground.value = { sessionId: props.record.sessionId, id: run.id }
+        return true
+      }
+    }
+    if (
+      run.kind === 'checklist' &&
+      transcript.value.items.some((item) => item.kind === 'plan' && item.id === run.id)
+    ) {
+      readingWorkflow.value = null
+      readingTool.value = null
+      readingPlan.value = { sessionId: props.record.sessionId, itemId: run.id }
+      return true
+    }
     if (run.kind === 'agent' && props.onReadChildWork) {
       return openChildWork({ part: 'transcript', agentId: run.id }, run.label, true)
     }
-    if (run.kind === 'workflow' && props.onReadWorkflowOutput) {
-      return openWorkflowOutput(run.id, run.label, true)
+    if (run.kind === 'workflow' && transcript.value.workflows[run.id]) {
+      readingPlan.value = null
+      readingTool.value = null
+      readingWorkflow.value = { sessionId: props.record.sessionId, taskId: run.id }
+      return true
     }
     return false
   }
@@ -271,6 +351,11 @@ export function useConversationOverlays(
     instructionsOpen,
     inputsFor,
     inputsOpen,
+    workflowFor,
+    backgroundFor,
+    planFor,
+    readingTool,
+    toolFor,
     readingOutput,
     outputFor,
     readingChild,
@@ -280,6 +365,7 @@ export function useConversationOverlays(
     openWorkflowOutput,
     openChildWork,
     openPanelRun,
+    closePanelRun,
     openToolAnswer,
     canReadToolAnswer,
     openImage,

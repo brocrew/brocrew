@@ -2,6 +2,7 @@ import type { TranscriptEvent } from '../../../shared/conversation-events'
 import type { ImportedEntry, ImportedTranscript } from '../../archive/transcript-types'
 import {
   assistantErrorWords,
+  ClaudeToolRuns,
   FileEdits,
   summarizeToolInput,
   summarizeToolResult,
@@ -12,6 +13,11 @@ import { wrapUnknown, type RuntimeEvent } from '@brobot2/runtime'
 
 type Record_ = Record<string, unknown>
 
+interface ImportState {
+  edits: FileEdits
+  runs: ClaudeToolRuns
+}
+
 export function importClaudeTranscript(
   frames: string[],
   fallbackAt: number,
@@ -20,7 +26,10 @@ export function importClaudeTranscript(
   const entries: ImportedEntry[] = []
   let unreadable = 0
   let at = fallbackAt
-  const edits = (carry as FileEdits | undefined) ?? new FileEdits()
+  const state = (carry as ImportState | undefined) ?? {
+    edits: new FileEdits(),
+    runs: new ClaudeToolRuns(),
+  }
 
   for (const frame of frames) {
     let record: Record_
@@ -31,10 +40,10 @@ export function importClaudeTranscript(
       continue
     }
     at = recordTime(record) ?? at
-    for (const event of recordToEvents(record, edits)) entries.push({ at, event })
+    for (const event of recordToEvents(record, state)) entries.push({ at, event })
   }
 
-  return { entries, unreadable, lastAt: at, edits }
+  return { entries, unreadable, lastAt: at, edits: state }
 }
 
 function recordTime(record: Record_): number | null {
@@ -44,12 +53,12 @@ function recordTime(record: Record_): number | null {
   return Number.isFinite(parsed) ? parsed : null
 }
 
-function recordToEvents(record: Record_, edits: FileEdits): TranscriptEvent[] {
+function recordToEvents(record: Record_, state: ImportState): TranscriptEvent[] {
   switch (record['type']) {
     case 'assistant':
-      return assistantEvents(record, edits)
+      return assistantEvents(record, state)
     case 'user':
-      return userEvents(record, edits)
+      return userEvents(record, state)
     case 'queue-operation':
     case 'last-prompt':
       return [chatter(record, 'lifecycle')]
@@ -61,7 +70,7 @@ function recordToEvents(record: Record_, edits: FileEdits): TranscriptEvent[] {
   }
 }
 
-function assistantEvents(record: Record_, edits: FileEdits): TranscriptEvent[] {
+function assistantEvents(record: Record_, state: ImportState): TranscriptEvent[] {
   const events: TranscriptEvent[] = []
   const content = messageContent(record)
   const message = record['message']
@@ -94,13 +103,15 @@ function assistantEvents(record: Record_, edits: FileEdits): TranscriptEvent[] {
       } else if (block['type'] === 'tool_use' && typeof block['id'] === 'string') {
         flush()
         const name = typeof block['name'] === 'string' ? block['name'] : 'tool'
+        const runFacts = state.runs.called(block['id'], name, block['input'])
         events.push({
           type: 'tool_call',
+          ...(runFacts?.kind === 'command' ? { run: runFacts } : {}),
           id: block['id'],
           name,
           summary: summarizeToolInput(name, block['input']),
         })
-        edits.called(block['id'], name, block['input'])
+        state.edits.called(block['id'], name, block['input'])
       }
     }
   }
@@ -123,7 +134,7 @@ function assistantEvents(record: Record_, edits: FileEdits): TranscriptEvent[] {
   return events
 }
 
-function userEvents(record: Record_, edits: FileEdits): TranscriptEvent[] {
+function userEvents(record: Record_, state: ImportState): TranscriptEvent[] {
   const content = messageContent(record)
 
   if (typeof content === 'string') {
@@ -137,13 +148,16 @@ function userEvents(record: Record_, edits: FileEdits): TranscriptEvent[] {
     if (!isRecord(block)) continue
     if (block['type'] === 'tool_result' && typeof block['tool_use_id'] === 'string') {
       const ok = block['is_error'] !== true
+      const run = state.runs.resultFor(block['tool_use_id'], block['content'], ok)
+      state.runs.releaseCall(block['tool_use_id'])
       events.push({
         type: 'tool_result',
+        ...(run ? { run } : {}),
         id: block['tool_use_id'],
         summary: summarizeToolResult(block['content']),
         ok,
       })
-      const edit = edits.settled(block['tool_use_id'], ok)
+      const edit = state.edits.settled(block['tool_use_id'], ok)
       if (edit) events.push({ type: 'file_change', changes: [edit.change], source: edit.tool })
     } else if (block['type'] === 'text' && typeof block['text'] === 'string') {
       injected = true

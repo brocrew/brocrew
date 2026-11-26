@@ -1,3 +1,4 @@
+import { mergeRun } from '../native-run'
 import type { AssistantItem } from '../transcript-message-contracts'
 import type { ChangeReport, TranscriptState } from '../transcript-state-contracts'
 import type { UserTurnPart, HumanFinalContext } from '../../../../shared/human-answer-contracts'
@@ -418,6 +419,7 @@ export function foldEvent(
       }
       const open = itemById(state, state.planId ?? undefined)
       if (open?.kind === 'plan') {
+        open.run = mergeRun(open.run, event.run)
         // REPLACE, never merge — every event states the complete list, so anything else would let
         // a removed step (Claude's `deleted`) survive as a line the model has abandoned. Copied
         // rather than aliased: the event is persisted and replayed, and the item is mutable.
@@ -443,6 +445,7 @@ export function foldEvent(
       state.items.push({
         kind: 'plan',
         id,
+        ...(event.run === undefined ? {} : { run: { ...event.run } }),
         steps: event.steps.map((step) => ({ ...step })),
         ...(event.note !== undefined ? { note: event.note } : {}),
         ...(event.body !== undefined ? { body: event.body } : {}),

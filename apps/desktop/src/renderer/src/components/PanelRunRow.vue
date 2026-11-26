@@ -26,9 +26,10 @@ defineEmits<{ open: []; stop: [] }>()
       @click="!disabled && $emit('open')"
     >
       <svg class="icon" aria-hidden="true"><use :href="run.icon" /></svg>
-      <div class="copy">
+      <div class="copy" :title="`${run.label} · ${run.detail}`">
         <MarkdownWords
           v-if="run.labelIsProse"
+          compact
           class="label"
           data-cy="panel-run-label"
           :text="run.label"
@@ -39,12 +40,13 @@ defineEmits<{ open: []; stop: [] }>()
           {{ run.group }}<template v-if="run.detail"> · </template>
           <MarkdownWords
             v-if="run.detailIsProse && run.detail"
+            compact
             :text="run.detail"
             :session-id="conversation"
           />
           <template v-else>{{ run.detail }}</template>
         </div>
-        <span class="status" :class="{ failed: run.failed }"
+        <span class="status" :class="{ failed: run.failed }" :title="run.detail || run.status"
           >{{ run.status }}<span v-if="run.time" class="time">{{ run.time }}</span></span
         >
       </div>
@@ -74,11 +76,11 @@ defineEmits<{ open: []; stop: [] }>()
 }
 .run-open {
   display: flex;
-  align-items: flex-start;
-  gap: var(--space-4);
+  align-items: center;
+  gap: var(--space-3);
   width: 100%;
   min-width: 0;
-  padding: var(--space-5) 0;
+  padding: var(--space-4) 0;
   border: 0;
   background: none;
   color: var(--text);
@@ -88,6 +90,10 @@ defineEmits<{ open: []; stop: [] }>()
   background: var(--accent-mix-5);
 }
 .copy {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  overflow: hidden;
   flex: 1;
   min-width: 0;
 }
@@ -97,6 +103,8 @@ defineEmits<{ open: []; stop: [] }>()
   display: block;
 }
 .label {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -104,12 +112,13 @@ defineEmits<{ open: []; stop: [] }>()
   font-weight: var(--fw-semibold);
 }
 .detail {
+  flex: 1;
+  min-width: 0;
   color: var(--muted);
   font-size: var(--type-caption);
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
-  margin-top: var(--space-1);
 }
 .detail :deep(.markdown-words),
 .detail :deep(.md-chat),
@@ -119,13 +128,18 @@ defineEmits<{ open: []; stop: [] }>()
 .status {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  max-width: 42%;
+  flex: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   gap: var(--space-3);
   color: var(--accent-text);
   font-size: var(--type-caption);
-  margin-top: var(--space-1);
+  margin-top: 0;
 }
 .time {
+  margin-left: var(--space-2);
   color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
@@ -135,13 +149,15 @@ defineEmits<{ open: []; stop: [] }>()
 .icon {
   color: var(--muted);
   flex: none;
-  margin-top: var(--space-1);
+  margin-top: 0;
 }
 .arrow {
-  width: 12px;
-  height: 12px;
+  display: none;
 }
 .stop {
+  padding: var(--space-1) var(--space-3);
+  margin-left: var(--space-3);
+  min-height: 24px;
   flex: none;
   font-size: var(--type-caption);
 }

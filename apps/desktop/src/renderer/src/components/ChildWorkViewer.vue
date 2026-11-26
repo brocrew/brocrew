@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import RunInput from './RunInput.vue'
+import type { NativeRun } from '@brobot2/runtime'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { absenceUnreadSays } from '../lib/rows-unread'
 import type {
@@ -68,6 +70,7 @@ import TranscriptView from './TranscriptView.vue'
  */
 const props = defineProps<{
   result: ChildWorkResult
+  run?: NativeRun
   /** Who this is — the agent's own label, or the run's name for a journal or a script. */
   label: string
   /**
@@ -454,6 +457,7 @@ const PART_WORD: Record<string, string> = {
     </p>
 
     <!-- A CHILD'S TRANSCRIPT: the conversation, with the bytes behind it. -->
+    <RunInput :text="run?.input" :progress="run?.progress" :result="run?.result" />
     <template v-if="result.ok && result.part === 'transcript'">
       <div class="seg-bar">
         <span class="seg-group">

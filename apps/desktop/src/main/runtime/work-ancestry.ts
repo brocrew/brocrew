@@ -79,6 +79,11 @@ export class WorkAncestryRead {
         event: {
           ...previous?.event,
           ...event,
+          ...(previous?.event.run
+            ? { run: { ...previous.event.run, ...event.run } }
+            : event.run
+              ? { run: event.run }
+              : {}),
           phase: previous?.event.phase === 'ended' ? 'ended' : event.phase,
         },
       })

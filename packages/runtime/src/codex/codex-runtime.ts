@@ -767,8 +767,7 @@ export class CodexSessionHandle implements SessionHandle {
     this.mcpCalls.note(method, params)
     this.noteWhatTheTurnMovedOnTo(method, params)
     for (const normalized of normalizeNotification(method, params, this.rateLimits)) {
-      const event = this.withMessageReceipt(normalized, method, params)
-      this.subAgents.note(event)
+      const event = this.subAgents.note(this.withMessageReceipt(normalized, method, params), params)
       if (event.type === 'tool_call' && event.backgroundId !== undefined) {
         this.currentTurn?.commands.set(event.id, { movedOn: false })
       }

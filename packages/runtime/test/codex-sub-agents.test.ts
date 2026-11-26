@@ -90,7 +90,7 @@ describe('CodexSubAgents — the child thread ends the card (033)', () => {
     feed(agents, 'item/started', birth(ALPHA, 'alpha'))
     feed(agents, 'thread/status/changed', status(ALPHA, 'active'))
     const [ended] = cards(feed(agents, 'thread/status/changed', status(ALPHA, 'idle')))
-    expect(ended).toEqual({ type: 'sub_agent', phase: 'ended', agentId: ALPHA })
+    expect(ended).toMatchObject({ type: 'sub_agent', phase: 'ended', agentId: ALPHA })
     expect(ended).not.toHaveProperty('outcome')
     // Nor a summary: the child's answer goes to the parent MODEL as an inter-agent message and
     // never reaches this connection, so there is nothing truthful to put there.
@@ -242,7 +242,7 @@ describe('CodexSubAgents — the depth-2 agent nobody announced (135)', () => {
     const grand = cards(replay()).filter((e) => e.agentId === GRAND)
     expect(grand.map((e) => e.phase)).toEqual(['started', 'ended'])
     // Opened by the `active` at 105, NOT by the `idle` at 103 that merely announced the thread.
-    expect(grand[0]).toEqual({
+    expect(grand[0]).toMatchObject({
       type: 'sub_agent',
       agentId: GRAND,
       idKind: 'thread',
@@ -254,7 +254,7 @@ describe('CodexSubAgents — the depth-2 agent nobody announced (135)', () => {
     expect(grand[0]).not.toHaveProperty('kind')
     expect(grand[0]).not.toHaveProperty('parentToolCallId')
     // The ending is the ordinary one — it stopped, and nothing said how it went.
-    expect(grand[1]).toEqual({ type: 'sub_agent', phase: 'ended', agentId: GRAND })
+    expect(grand[1]).toMatchObject({ type: 'sub_agent', phase: 'ended', agentId: GRAND })
     for (const event of replay()) expect(runtimeEventSchema.parse(event)).toBeTruthy()
   })
 

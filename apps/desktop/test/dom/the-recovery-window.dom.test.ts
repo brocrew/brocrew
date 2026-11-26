@@ -280,7 +280,6 @@ describe('recorded rows whose controls need what this window lacks', () => {
   const ACTIONS = [
     'open-image',
     'subagent-open-transcript',
-    'workflow-agent-label',
     'workflow-open-journal',
     'workflow-open-script',
     'workflow-open-output',
@@ -324,8 +323,8 @@ describe('recorded rows whose controls need what this window lacks', () => {
     const transcript = view.q('recovery-transcript')
     await disclose(view)
 
-    // Recovery keeps the compact parent card; inline child output is retired.
-    expect(view.all('subagent-entry')).toHaveLength(1)
+    // The parent and each workflow child use the same component without opening controls.
+    expect(view.all('subagent-entry')).toHaveLength(4)
     expect(view.all('subagent-summary')).toHaveLength(0)
     expect(view.all('workflow-agent')).toHaveLength(3)
 
@@ -339,11 +338,11 @@ describe('recorded rows whose controls need what this window lacks', () => {
     expect(view.q('image-caption').textContent).toContain('pencil sketch of a lighthouse')
 
     expect(view.q('subagent-entry').dataset.agentId).toBe('agent-outer')
-    expect(view.all('workflow-agent-label-plain').map((el) => el.textContent)).toEqual([
-      'reader:one',
-      'reader:two',
-      'judge',
-    ])
+    expect(
+      view
+        .all('workflow-agent')
+        .map((row) => row.querySelector('[data-cy="subagent-kind"]')?.textContent),
+    ).toEqual(['reader:one', 'reader:two', 'judge'])
     expect(view.q('workflow-output-name').textContent).toContain('review-panel.output')
 
     // The held message keeps its words and says it was never sent.

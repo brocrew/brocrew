@@ -1,3 +1,4 @@
+import { nativeRun, commandInput, agentInput, runLine, checklistRun } from '../native-run'
 import {
   ASKED_QUESTION_LIMITS,
   wrapUnknown,
@@ -87,7 +88,14 @@ export function normalizeNotification(
       }
       // `explanation` is null while the plan is in progress; keep absence as absence.
       const explanation = readString(params, 'explanation')
-      return [{ type: 'plan_update', steps, ...(explanation ? { note: explanation } : {}) }]
+      return [
+        {
+          type: 'plan_update',
+          steps,
+          run: checklistRun(steps, explanation),
+          ...(explanation ? { note: explanation } : {}),
+        },
+      ]
     }
 
     // Context window fill. Uses `last`, never `total`: `total.totalTokens` is cumulative billing and
@@ -738,7 +746,7 @@ function itemToEvents(item: unknown, phase: 'started' | 'completed'): RuntimeEve
     if (phase !== 'completed') return []
     const body = readString(item, 'text').trim()
     return body
-      ? [{ type: 'plan_update', steps: [], body }]
+      ? [{ type: 'plan_update', steps: [], body, run: checklistRun([], undefined, body) }]
       : [wrapUnknown('codex', item, 'unrecognized', type)]
   }
 
@@ -782,6 +790,21 @@ function itemToEvents(item: unknown, phase: 'started' | 'completed'): RuntimeEve
   const name = toolItemName(type, item)
   const summary = itemSummary(type, item)
   const backgroundId = commandProcessId(type, item)
+  const commandRun =
+    type === 'commandExecution'
+      ? nativeRun('command', {
+          input: commandInput(readString(item, 'command'), readString(item, 'cwd')),
+          ...(phase === 'started'
+            ? { progress: runLine(readString(item, 'aggregatedOutput'), true) ?? 'Running' }
+            : {}),
+          ...(phase === 'completed'
+            ? {
+                result:
+                  runLine(readString(item, 'aggregatedOutput'), true) ?? readString(item, 'status'),
+              }
+            : {}),
+        })
+      : undefined
   if (phase === 'started') {
     const tool = readString(item, 'tool')
     const displayName =
@@ -791,6 +814,7 @@ function itemToEvents(item: unknown, phase: 'started' | 'completed'): RuntimeEve
     return [
       {
         type: 'tool_call',
+        ...(commandRun ? { run: commandRun } : {}),
         id,
         name,
         summary,
@@ -810,13 +834,38 @@ function itemToEvents(item: unknown, phase: 'started' | 'completed'): RuntimeEve
   return [
     {
       type: 'tool_result',
+      ...(commandRun?.result ? { run: { result: commandRun.result } } : {}),
       id,
       summary: spoken,
       ok: outcome.ok,
       ...mcpDuration(type, item),
       ...(backgroundId ? { backgroundId } : {}),
     },
+    ...collabInputs(type, item),
   ]
+}
+
+function collabInputs(type: string, item: Record<string, unknown>): RuntimeEvent[] {
+  if (type !== 'collabAgentToolCall' || readString(item, 'tool') !== 'spawnAgent') return []
+  const receivers = item['receiverThreadIds']
+  if (!Array.isArray(receivers)) return []
+  const prompt = readString(item, 'prompt')
+  const model = readString(item, 'model')
+  return receivers.flatMap((agentId): RuntimeEvent[] =>
+    typeof agentId === 'string'
+      ? [
+          {
+            type: 'sub_agent',
+            agentId,
+            phase: 'progress',
+            parentToolCallId: readString(item, 'id'),
+            run: nativeRun('agent', {
+              input: agentInput(prompt, undefined, model),
+            }),
+          },
+        ]
+      : [],
+  )
 }
 
 /**
@@ -1098,6 +1147,10 @@ export function subAgentBirth(item: Record<string, unknown>): RuntimeEvent | nul
   const kind = agentName(readString(item, 'agentPath'))
   return {
     type: 'sub_agent',
+    run: nativeRun('agent', {
+      input: agentInput(undefined, kind, readString(item, 'model')),
+      ...(activity.phase === 'ended' ? { result: activity.outcome } : {}),
+    }),
     agentId,
     // A real thread id with a rollout file of its own, unlike Claude's.
     idKind: 'thread',

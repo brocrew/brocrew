@@ -865,7 +865,12 @@ describe('F084 · `BackgroundTerminals.endTheseCommands`', () => {
     terminals.refresh()
     await drain()
     expect(endingsOf(events)).toEqual([
-      { id: '42852', toolCallId: 'exec-other', outcome: 'unknown' },
+      {
+        id: '42852',
+        toolCallId: 'exec-other',
+        outcome: 'unknown',
+        run: { kind: 'command', input: 'sleep 42852\nDirectory: /x' },
+      },
     ])
   })
 
@@ -881,6 +886,13 @@ describe('F084 · `BackgroundTerminals.endTheseCommands`', () => {
     expect(await terminals.endTheseCommands(() => true)).toHaveLength(1)
     terminals.refresh()
     await drain()
-    expect(endingsOf(events)).toEqual([{ id: '42852', toolCallId: 'exec-a', outcome: 'stopped' }])
+    expect(endingsOf(events)).toEqual([
+      {
+        id: '42852',
+        toolCallId: 'exec-a',
+        outcome: 'stopped',
+        run: { kind: 'command', input: 'sleep 42852\nDirectory: /x', result: 'Stopped' },
+      },
+    ])
   })
 })
