@@ -179,6 +179,11 @@ const props = withDefaults(
      */
     interruptible?: boolean
     /**
+     * Whether a send can also stop the turn. False where the message goes in by another path that
+     * cannot stop anything, so Stop and send, and its chord, would be a stop in disguise.
+     */
+    stopAndSend?: boolean
+    /**
      * Whether a message is ALREADY waiting to be sent (077). One at a time: the host refuses a
      * second rather than overwriting the first, and this is what lets the control say so before the
      * press instead of after it.
@@ -255,6 +260,7 @@ const props = withDefaults(
     placeholder: 'Message this conversation…',
     who: 'The agent',
     interruptible: true,
+    stopAndSend: true,
     hasQueued: false,
     stopUnanswered: null,
     blocked: () => [],
@@ -643,7 +649,10 @@ async function emitOnce(latch: { interrupting: boolean; voiceVersion: number }):
   // this press into a QUEUE, which is what pressing Send a beat later would have meant — reading it
   // before would send into a session that is now busy. ⚑ …and `latch.interrupting` rather than the
   // argument, so a ⇧⌘↵ that arrived DURING the wait is the meaning this send carries (292 §1).
-  const intent = sendIntentFor(props.state, latch.interrupting && props.interruptible)
+  const intent = sendIntentFor(
+    props.state,
+    latch.interrupting && props.interruptible && props.stopAndSend,
+  )
   // ⚑ **D-010 · no refusal here**: several messages may wait — and since D-027 they go together, in
   // one turn, oldest first, a command alone.
   // trimEnd, not trim: a message that opens with indented code keeps its indentation — with a
@@ -1313,7 +1322,7 @@ defineExpose({
             Stop now
           </button>
           <button
-            v-else-if="canInterrupt"
+            v-else-if="canInterrupt && props.stopAndSend"
             class="interrupt-send-button"
             type="button"
             :title="`Stop and send — ${A_STOP_THEN_THIS_IS_SENT} (${interruptKey})`"

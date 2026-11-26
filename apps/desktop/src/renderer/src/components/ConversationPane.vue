@@ -515,7 +515,20 @@ const panel = computed(() => sessionPanel(control.value))
 
 /** 🔴 **0.2.40 · a send is on its way in and the provider is yet to start** (the host says `active`, the fold `idle`). */
 const yetToStart = computed(() =>
-  providerIsYetToStart(control.value.status, props.record.agentState, props.launching),
+  providerIsYetToStart(
+    control.value.status,
+    props.record.phase === 'recorded' ? agentState.value : props.record.agentState,
+    props.launching,
+  ),
+)
+
+/**
+ * Drawn from its ledger, and running all the same: the host says Active. Its message goes in through
+ * `startAndSend`, which cannot stop the turn, so Stop and send is not offered; Stop itself is a person's
+ * interrupt, which the host takes from a window that does not hold the conversation.
+ */
+const runsWithoutThisWindow = computed(
+  () => props.record.phase === 'recorded' && agentState.value?.is === 'active',
 )
 
 /**
@@ -535,7 +548,9 @@ const composerState = computed<ComposerState>(() => {
   // last said: nothing in it is working here, and the message is what continues it. ⛔ **Above the
   // cards**: a card on such a view is answered by the window that holds it — or, where none does,
   // once this window takes it (the card's own press) — so it freezes nothing here.
-  if (props.record.phase === 'recorded') return 'idle'
+  // A view drawn from its ledger while the host says it is Active is running without this window, as a
+  // conversation started by a delivery is: busy, and Stop once the provider works.
+  if (props.record.phase === 'recorded') return runsWithoutThisWindow.value ? 'busy' : 'idle'
   // ⛔ **The CARDS, and deliberately not `panel.waiting`** — see this computed's own note.
   if (panel.value.permissions.length + panel.value.questions.length > 0) return 'frozen'
   // 🔴 **The host is holding this conversation on a person**, whether or not its card is in the part
@@ -1573,6 +1588,7 @@ onUnmounted(() => {
           :key="props.record.sessionId"
           :state="composerState"
           :interruptible="interruptible"
+          :stop-and-send="!runsWithoutThisWindow"
           :who="who"
           :draft="props.draft"
           :submit="props.submit"
