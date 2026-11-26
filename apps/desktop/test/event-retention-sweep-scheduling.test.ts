@@ -30,6 +30,7 @@ const result = (removed: number): EventTrimResult => ({
   interrupted: false,
   deferredConversations: 0,
   reads: 0,
+  chatterSelected: {},
 })
 
 class SweepWorker extends EventEmitter {

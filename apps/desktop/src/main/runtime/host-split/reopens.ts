@@ -7,6 +7,7 @@ import { PROVIDER_NAME } from '../../../shared/runtime-ipc'
 import type { TranscriptEvent } from '../../../shared/conversation-events'
 import { unavailableOf } from '../session-unavailable'
 import type { RecordedSession } from '../../db/session-store'
+import { THE_ROWS_A_REFUSED_TURN_IS_READ_IN } from '../refused-turn-window'
 
 /**
  * ⚑ **What a reopen on the current sign-in waits for** ({@link RuntimeHost.whatAReopenWaitsFor}) —
@@ -140,9 +141,6 @@ function aGiveReopenOnlyHeardHousekeeping(event: TranscriptEvent): boolean {
     providerAuthPolicies[provider].protocol.reopenedGive(event),
   )
 }
-
-/** How many rows past a refused turn's words are read to decide; more, and it is not carried on. */
-const THE_ROWS_A_REFUSED_TURN_IS_READ_IN = 400
 
 /** A retained input, never a second copy of its words. A piece restricts recovery to its first give. */
 interface RefusedInputReference {

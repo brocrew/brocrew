@@ -300,7 +300,7 @@ it('deletes a batch by seeking each id, without reading the rest of its conversa
       .map(([sql]) => sql)
       .filter((sql) => sql.trimStart().startsWith('DELETE'))
     expect(deletes).toHaveLength(1)
-    const batch = { session: 's', ids: '["a","b"]', before: NOW }
+    const batch = { session: 's', ids: '["a","b"]', before: NOW, atAnyAge: '[]' }
     const plan = (
       db.prepare(`EXPLAIN QUERY PLAN ${deletes[0]}`).all(batch) as { detail: string }[]
     ).map((row) => row.detail)

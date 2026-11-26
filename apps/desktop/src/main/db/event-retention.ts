@@ -1,5 +1,6 @@
 import { observeDatabaseMemory } from '../database-memory'
 import Database from 'better-sqlite3'
+import { keptChatter, repeatingWarning, type KeptChatter } from '../providers/kept-chatter'
 import { setTimeout as pause, setImmediate as seeMessages } from 'node:timers/promises'
 import {
   ANCHORS,
@@ -8,9 +9,13 @@ import {
   HISTORY_TYPES,
   keptNewest,
   NEWEST_ONLY,
+  recoveryReadsFromSQL,
+  rawPayloadSQL,
+  turnInputSQL,
 } from './event-retention-policy'
 import type { AppDatabase } from './connection'
 import { committedChangesOf } from './committed-changes'
+import { THE_ROWS_A_REFUSED_TURN_IS_READ_IN } from '../runtime/refused-turn-window'
 
 const KEEP_DAYS = 3
 const BATCH_ROWS = 200
@@ -37,6 +42,8 @@ export interface EventTrimResult {
   readonly deferredConversations: number
   /** Selections made, each after a check for a stop: how far a stopped sweep got (404). */
   readonly reads: number
+  /** Rows selected under a kind's own rule ({@link keptChatter}), by provider and label. */
+  readonly chatterSelected: Readonly<Record<string, number>>
 }
 
 export interface EventTrimBatch {
@@ -44,6 +51,8 @@ export interface EventTrimBatch {
   readonly active: number
   readonly ids: readonly string[]
   readonly before: number
+  /** The ids a kind's own rule removes however recent they are. */
+  readonly atAnyAge?: readonly string[]
 }
 
 export interface EventTrimWrite {
@@ -60,12 +69,18 @@ export function eventTrimWriter(db: AppDatabase): (batch: EventTrimBatch) => Eve
   // the primary key, instead of reading every row of the conversation through `session_id`.
   const remove = db.prepare(`DELETE FROM events
     WHERE +session_id = @session AND id IN (SELECT value FROM json_each(@ids))
-      AND (created_at < @before OR type IN ('provider_commands','tool_inventory','launched'))`)
+      AND (created_at < @before OR type IN ('provider_commands','tool_inventory','launched')
+        OR id IN (SELECT value FROM json_each(@atAnyAge)))`)
   const write = db.transaction((batch: EventTrimBatch) => {
     const current = generation.get(batch.session) as
       { active: number; building: number | null } | undefined
     if (!current || current.active !== batch.active || current.building !== null) return null
-    const changed = remove.run({ ...batch, ids: JSON.stringify(batch.ids) }).changes
+    const changed = remove.run({
+      session: batch.session,
+      before: batch.before,
+      ids: JSON.stringify(batch.ids),
+      atAnyAge: JSON.stringify(batch.atAnyAge ?? []),
+    }).changes
     if (changed > 0) committed.whole(batch.session, 'trimmed')
     return changed
   })
@@ -87,9 +102,40 @@ interface HistoryRow {
   readonly g: number
   readonly o: number
   readonly at: number
+  readonly t: string | null
   readonly k: string
+  readonly labelled: number
+  readonly malformed: number
   readonly protected: number
   readonly resumed: number
+  readonly message: string | null
+  readonly stall: number
+  readonly fatal: number
+}
+
+/** A repeating warning keeps its newest one, of its own kind, at any age. */
+const WARNING_RULE: KeptChatter = { category: 'error', newest: 1 }
+
+interface ChatterKind {
+  readonly label: string
+  readonly rule: KeptChatter | null
+}
+
+/** A stored chatter kind's own rule, from its `[provider, category, label]` key. */
+function chatterKindOf(k: string, known: Map<string, ChatterKind>): ChatterKind | null {
+  if (k === '') return null
+  let kind = known.get(k)
+  if (kind === undefined) {
+    const [provider, category, label] = JSON.parse(k) as [unknown, unknown, unknown]
+    const named =
+      typeof provider === 'string' && typeof category === 'string' && typeof label === 'string'
+    kind = {
+      label: named ? `${provider} ${label}` : k,
+      rule: named ? keptChatter(provider, category, label) : null,
+    }
+    known.set(k, kind)
+  }
+  return kind
 }
 
 /**
@@ -114,6 +160,7 @@ export async function trimOldEvents(
   let peakHeapBytes = 0
   let deferredConversations = 0
   let reads = 0
+  const chatterSelected: Record<string, number> = {}
   const result = (interrupted: boolean): EventTrimResult => ({
     removed,
     batches,
@@ -128,6 +175,7 @@ export async function trimOldEvents(
     interrupted,
     deferredConversations,
     reads,
+    chatterSelected,
   })
   /** One timed read, after the worker has seen its messages; null once it is asked to stop. */
   const read = async <T>(run: () => T): Promise<T | null> => {
@@ -144,6 +192,37 @@ export async function trimOldEvents(
       id: string
     }[]
     const headOf = db.prepare(conversationHeadSQL)
+    const rawOf = db.prepare(rawPayloadSQL).pluck()
+    const recoveryReadsFrom = db.prepare(recoveryReadsFromSQL).pluck()
+    const inputOf = db.prepare(turnInputSQL)
+    const kinds = new Map<string, ChatterKind>()
+    /** Whether a row beyond its kind's newest may go: null once the sweep is asked to stop. */
+    const ruleAllows = async (
+      rule: KeptChatter,
+      row: HistoryRow,
+      session: string,
+    ): Promise<boolean | null> => {
+      if (rule.echoed === undefined && rule.routine === undefined) return !row.protected
+      const json = await read(() => rawOf.get(row.id) as string | null | undefined)
+      if (json === null) return null
+      const raw: unknown = json === undefined ? undefined : JSON.parse(json)
+      if (rule.routine !== undefined && !rule.routine(raw)) return false
+      if (rule.echoed === undefined) return !row.protected
+      const text = rule.echoed(raw)
+      if (text === null || row.t === null) return false
+      const inputs = await read(
+        () =>
+          inputOf.all({ session, generation: row.g, turn: row.t }) as {
+            sent: unknown
+            text: unknown
+          }[],
+      )
+      if (inputs === null) return null
+      // What was sent is the input; the displayed words stand in only when nothing else was kept.
+      return inputs.some((input) =>
+        typeof input.sent === 'string' ? input.sent === text : input.text === text,
+      )
+    }
     const steps = historyStepsSQL.map((sql) => db.prepare(sql))
     for (const { id: session } of conversations) {
       if (removed >= ROWS_PER_SWEEP) break
@@ -153,13 +232,24 @@ export async function trimOldEvents(
         deferredConversations += 1
         continue
       }
+      const recoveryReads = await read(
+        () =>
+          recoveryReadsFrom.get({
+            session,
+            generation: head.active,
+            window: THE_ROWS_A_REFUSED_TURN_IS_READ_IN,
+          }) as number,
+      )
+      if (recoveryReads === null) return result(true)
       let found = 0
       let ids: string[] = []
+      let atAnyAgeIds: string[] = []
       /** Applies the rows found so far; false when this conversation is to be left as it is. */
       const apply = async (): Promise<boolean | 'stop'> => {
         if (stopped()) return 'stop'
-        const batch = { session, active: head.active, ids, before }
+        const batch = { session, active: head.active, ids, before, atAnyAge: atAnyAgeIds }
         ids = []
+        atAnyAgeIds = []
         try {
           const applied = await write(batch)
           longestBatchMs = Math.max(longestBatchMs, applied.durationMs)
@@ -181,6 +271,8 @@ export async function trimOldEvents(
         const atAnyAge = NEWEST_ONLY.has(type)
         /** How many rows of each kind of this type are newer than the next one read. */
         const newer = new Map<string, number>()
+        /** The same, counting only the rows a kind's own rule covers. */
+        const ruled = new Map<string, number>()
         /** The anchors of this type not yet met: the first well-formed row in the active generation. */
         const unmet = new Set(ANCHORS[type])
         for (const [index, step] of steps.entries()) {
@@ -202,14 +294,40 @@ export async function trimOldEvents(
             )
             if (rows === null) return result(true)
             for (const row of rows) {
-              const nth = (newer.get(row.k) ?? 0) + 1
-              newer.set(row.k, nth)
+              const warning =
+                type === 'error'
+                  ? repeatingWarning(row.message, row.stall === 1, row.fatal === 1)
+                  : null
+              if (type === 'error' && warning === null) continue
+              const key = warning === null ? row.k : `warning ${warning}`
+              const nth = (newer.get(key) ?? 0) + 1
+              newer.set(key, nth)
               let anchor = active && type === 'launched' && row.o > head.after
               if (active && !row.protected) {
                 if (unmet.delete('command') || unmet.delete('inventory')) anchor = true
                 if (!row.resumed && unmet.delete('declaration')) anchor = true
               }
-              if (nth <= cap || row.protected || anchor || (!atAnyAge && row.at >= before)) continue
+              const kind =
+                warning !== null
+                  ? { label: key, rule: WARNING_RULE }
+                  : row.labelled === 1
+                    ? chatterKindOf(row.k, kinds)
+                    : null
+              if (kind?.rule) {
+                // Only rows the rule covers count toward its newest: an unlabelled or malformed row
+                // of the same key never stands in for the newest reading, and is kept anyway.
+                if (row.malformed) continue
+                const nthOfRule = (ruled.get(key) ?? 0) + 1
+                ruled.set(key, nthOfRule)
+                if (nthOfRule <= kind.rule.newest) continue
+                if (row.g === head.active && row.o >= recoveryReads) continue
+                const allowed = await ruleAllows(kind.rule, row, session)
+                if (allowed === null) return result(true)
+                if (!allowed) continue
+                atAnyAgeIds.push(row.id)
+                chatterSelected[kind.label] = (chatterSelected[kind.label] ?? 0) + 1
+              } else if (nth <= cap || row.protected || anchor || (!atAnyAge && row.at >= before))
+                continue
               found += 1
               ids.push(row.id)
               if (ids.length < Math.min(BATCH_ROWS, ROWS_PER_SWEEP - removed)) continue

@@ -7,3 +7,5 @@ export {
   recordedScheduleReceiptProvider,
   storedToolsThatMakeOrCancel,
 } from './claude/recorded-schedule-receipts'
+export { CLAUDE_KEPT_CHATTER, CLAUDE_REPEATING_WARNINGS } from './claude/kept-chatter'
+export { CODEX_KEPT_CHATTER, CODEX_REPEATING_WARNINGS } from './codex/kept-chatter'

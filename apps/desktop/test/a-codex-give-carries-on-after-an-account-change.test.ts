@@ -17,6 +17,7 @@ import {
 import type { Provider } from '@brobot2/shared'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
+import { eventTrimWriter, trimOldEvents } from '../src/main/db/event-retention'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import {
   DEFAULT_PROFILE_ID,
@@ -550,8 +551,8 @@ describe('a Codex give refused after its profile changed account carries on once
         expect(codex.answeredInputs).toHaveLength(0)
       })
 
-      it('a give held behind an older turn also answers its retained input once', async () => {
-        const { giver, helper } = await given()
+      /** A second give to the same conversation, queued behind its open turn. */
+      async function theNextBriefQueued(giver: string, helper: string) {
         codex.turnModes.push('held-open')
         const next = await host.giveWork(
           {
@@ -566,6 +567,12 @@ describe('a Codex give refused after its profile changed account carries on once
           { ownerId: agentCallerId(giver) },
         )
         if (!next.ok) throw new Error(`refused: ${next.refusal.rail}`)
+        return next
+      }
+
+      it('a give held behind an older turn also answers its retained input once', async () => {
+        const { giver, helper } = await given()
+        const next = await theNextBriefQueued(giver, helper)
         expect(next.owner).toBe(helper)
         expect(codex.sent).toHaveLength(1)
         codex.answerTheOpenTurn()
@@ -582,6 +589,63 @@ describe('a Codex give refused after its profile changed account carries on once
           drives: next.piece,
           text: '',
         })
+      })
+
+      /**
+       * A give queued behind an older turn, with chatter the history trim removes heard both before
+       * the give and between the give and its input, then a real sweep before the refusal.
+       */
+      async function aQueuedGiveThenASweep(effect?: RuntimeEvent) {
+        const { giver, helper } = await given()
+        await heardBeforeRefusal(helper, [housekeeping('skills/changed')])
+        const next = await theNextBriefQueued(giver, helper)
+        await heardBeforeRefusal(helper, [
+          housekeeping('skills/changed'),
+          housekeeping('thread/status/changed'),
+          housekeeping('thread/status/changed'),
+        ])
+        codex.answerTheOpenTurn()
+        await vi.waitFor(() => expect(codex.sent).toHaveLength(2))
+        if (effect !== undefined) says(codex.handles.at(-1)!, effect)
+        const skills = () =>
+          rowsOf(helper).filter((row) => row.type === 'unknown' && row.label === 'skills/changed')
+        expect(skills()).toHaveLength(2)
+        const write = eventTrimWriter(db)
+        const swept = await trimOldEvents(
+          join(userData, 'brobot2.sqlite'),
+          () => false,
+          async (batch) => write(batch),
+          Date.now(),
+        )
+        // The sweep ran and removed the chatter before the give; the stretch recovery reads stayed.
+        expect(swept.removed).toBeGreaterThan(0)
+        expect(skills()).toHaveLength(1)
+        return { helper, piece: next.piece }
+      }
+
+      it('a queued give carries on once after a sweep removed chatter before it', async () => {
+        const { helper, piece } = await aQueuedGiveThenASweep()
+        switchAndRefuse()
+        await vi.waitFor(() =>
+          expect(endingsOf(helper)).toEqual(['completed', 'failed', 'completed']),
+        )
+        expect(codex.carriedOn).toBe(1)
+        expect(codex.sent).toHaveLength(2)
+        expect(codex.answeredInputs.at(-1)).toContain('Read the fictional release notes.')
+        expect(turnsOf(helper).filter((turn) => turn.carriesOn)).toHaveLength(1)
+        expect(turnsOf(helper).at(-1)).toMatchObject({ carriesOn: true, drives: piece, text: '' })
+      })
+
+      it('a queued give whose refused turn already answered is still refused after a sweep', async () => {
+        const { helper } = await aQueuedGiveThenASweep({
+          type: 'assistant_delta',
+          text: 'A partial answer.',
+        })
+        switchAndRefuse()
+        await vi.waitFor(() => expect(endingsOf(helper)).toEqual(['completed', 'failed']))
+        await settled()
+        expect(codex.carriedOn).toBe(0)
+        expect(codex.sent).toHaveLength(2)
       })
 
       it('a same-text rebrief is still not a first give and is never carried on', async () => {
