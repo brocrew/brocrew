@@ -42,7 +42,7 @@ describe('status keeps known context tokens without a window size', () => {
     async (provider) => {
       const id = await withReading(provider, { kind: 'tokens', used: 42_000 })
       const said = await status(id)
-      expect(said.text).toContain(' · context 42000 tokens used (window size not reported)')
+      expect(said.text).toContain(' · context 42000 tokens (window unknown)')
       expect(said.text).not.toMatch(/context \d+%/)
       expect(said.structured).toMatchObject({
         outcome: 'ok',
@@ -54,7 +54,7 @@ describe('status keeps known context tokens without a window size', () => {
   it('a reported count of zero tokens is said as zero, not as no reading', async () => {
     const id = await withReading('claude', { kind: 'tokens', used: 0 })
     const said = await status(id)
-    expect(said.text).toContain(' · context 0 tokens used (window size not reported)')
+    expect(said.text).toContain(' · context 0 tokens (window unknown)')
     expect(said.structured).toMatchObject({
       agent: { context: { used: 0, window: null, percentUsed: null } },
     })
@@ -63,8 +63,8 @@ describe('status keeps known context tokens without a window size', () => {
   it('a reading with a window keeps its share and window', async () => {
     const id = await withReading('codex', { kind: 'proportional', used: 10_000, window: 200_000 })
     const said = await status(id)
-    expect(said.text).toContain(' · context 5% of 200000 tokens used')
-    expect(said.text).not.toContain('window size not reported')
+    expect(said.text).toContain(' · context 5% of 200000 tokens')
+    expect(said.text).not.toContain('window unknown')
     expect(said.structured).toMatchObject({
       agent: { context: { used: 10_000, window: 200_000, percentUsed: 5 } },
     })

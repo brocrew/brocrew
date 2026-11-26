@@ -787,8 +787,17 @@ describe('a successful answer says in words what its payload held', () => {
         .split('\n')
         .find((one) => one.startsWith('conversation below_1 · Ada'))
       expect(line, listed.text).toBeDefined()
-      expect(line).toContain(' · started by ')
-      expect(line?.split(' · started by ')[0]).not.toContain('the owner of')
+      expect(line).not.toContain('the owner of')
+      // The list row is compact and no longer names the starter; the status of that conversation does.
+      expect(line).not.toContain(' · started by ')
+      const status = await ok(pmTools, 'get_agent_status', { agent: 'below_1' })
+      const statusLine = status.text
+        .split('\n')
+        .find((one) => one.startsWith('conversation below_1 · Ada'))
+      expect(statusLine, status.text).toBeDefined()
+      expect(statusLine?.split(' · started by ')[0]).not.toContain('the owner of')
+      // The starter is the PM, named by the piece it started it from, not the child itself.
+      expect(statusLine?.endsWith(' · started by Ada (the owner of W1)'), status.text).toBe(true)
     })
 
     it('update_work a new brief for a stopped holder: nothing is started, and it waits for its next input', async () => {

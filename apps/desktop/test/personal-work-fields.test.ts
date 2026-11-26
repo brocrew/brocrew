@@ -179,6 +179,9 @@ describe('personal work fields and their existing ownership boundaries', () => {
     const record = await call(caller, 'list_tasks', { piece: root.label })
     expect(record.structured).toMatchObject({ outcome: 'ok' })
     expect(record.text).toContain(`Done when: ${requested.definition_of_done}`)
+    const board = await call(caller, 'list_tasks', {})
+    expect(board.text).toContain(root.label)
+    expect(board.text).not.toContain(requested.definition_of_done)
     expect(world.ledger(caller).filter((event) => event.type === 'work_rebriefed')).toEqual([
       expect.objectContaining({
         piece: root.piece,
