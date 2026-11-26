@@ -3004,10 +3004,8 @@ export class RuntimeHost implements LiveHost {
         `runtime host: starting ${conversation} — the restart stopped its background work`,
       )
       // ⚑ **A turn of it the restart cut is continued on this same start** ({@link
-      // continueOnItsLife}): kept as started first, and its first words wait for the account check.
-      const andItsCut = aCutGoesNow && this.moveTheCut(conversation, 'starting')
-      if (andItsCut) this.cutHoldsTheFirstBatch.add(conversation)
-      else if (aCutGoesNow) this.notContinued(conversation, 'start-failed')
+      // continueOnItsLife}).
+      const andItsCut = aCutGoesNow && this.theCutsStartBegins(conversation)
       const owned = !this.runsOrStartsHere(conversation)
       this.wakingForStoppedWork.add(conversation)
       try {
@@ -3043,20 +3041,9 @@ export class RuntimeHost implements LiveHost {
       )
     } finally {
       this.releaseTheFirstBatch(conversation)
-      this.lastPacedStart = performance.now()
-      // ⚑ Its givers are asked again now: told nothing if its turn is driving their work, and the
-      // truth — what stopped, and the restart — if it could not be started. ⚑ Unless a program's
-      // cut of it came meanwhile, whose own wake asks them.
-      if (!this.aProgramsWakeComes(conversation, itsCut?.noticeId)) {
-        this.startComingAfterTheRestart.delete(conversation)
-        try {
-          this.tellWhoeverGaveTheWork(conversation)
-        } catch (error) {
-          console.warn(
-            `runtime host could not ask who gave ${conversation} its work: ${errorMessage(error)}`,
-          )
-        }
-      }
+      // ⚑ Its givers are told nothing if its turn is driving their work, and the truth — what
+      // stopped, and the restart — if it could not be started.
+      this.aPacedStartEnded(conversation, itsCut?.noticeId)
     }
   }
 
@@ -3364,18 +3351,7 @@ export class RuntimeHost implements LiveHost {
         await this.startForTheCut(conversation, noticeId)
       }
     } finally {
-      this.lastPacedStart = performance.now()
-      // ⚑ A newer program's cut is started by its own wake, which asks its givers then.
-      if (!this.aProgramsWakeComes(conversation, noticeId)) {
-        this.startComingAfterTheRestart.delete(conversation)
-        try {
-          this.tellWhoeverGaveTheWork(conversation)
-        } catch (error) {
-          console.warn(
-            `runtime host could not ask who gave ${conversation} its work: ${errorMessage(error)}`,
-          )
-        }
-      }
+      this.aPacedStartEnded(conversation, noticeId)
     }
   }
 
@@ -3410,12 +3386,8 @@ export class RuntimeHost implements LiveHost {
       // ({@link ensureRunning}). A start someone else began is ridden.
       const slot = this.slots.get(conversation)
       if (!this.runsOrStartsHere(conversation)) {
-        if (!this.moveTheCut(conversation, 'starting')) {
-          this.notContinued(conversation, 'start-failed')
-          return
-        }
+        if (!this.theCutsStartBegins(conversation)) return
         owned = true
-        this.cutHoldsTheFirstBatch.add(conversation)
         console.info(`runtime host: starting ${conversation} — its turn was cut`)
         // ⚑ Marked only for its own start, as the background wake's is. ⚑ Onto the window that
         // watched it when its program stopped, while that window is still there.
@@ -3555,6 +3527,35 @@ export class RuntimeHost implements LiveHost {
       this.flushQueued(session)
     } catch (error) {
       console.warn(`runtime host could not send what ${conversation} held: ${errorMessage(error)}`)
+    }
+  }
+
+  /** ⚑ Kept as starting first, so no later launch makes it again; its first words wait. */
+  private theCutsStartBegins(conversation: string): boolean {
+    if (!this.moveTheCut(conversation, 'starting')) {
+      this.notContinued(conversation, 'start-failed')
+      return false
+    }
+    this.cutHoldsTheFirstBatch.add(conversation)
+    return true
+  }
+
+  /** ⚑ A start in the restart line ended; a program's newer cut asks its givers at its own wake. */
+  private aPacedStartEnded(conversation: string, noticeId: string | undefined): void {
+    this.lastPacedStart = performance.now()
+    if (this.aProgramsWakeComes(conversation, noticeId)) return
+    this.startComingAfterTheRestart.delete(conversation)
+    this.askItsGiversAgain(conversation)
+  }
+
+  /** ⚑ Its givers are asked again, after a wake's start. ⛔ It never throws. */
+  private askItsGiversAgain(conversation: string): void {
+    try {
+      this.tellWhoeverGaveTheWork(conversation)
+    } catch (error) {
+      console.warn(
+        `runtime host could not ask who gave ${conversation} its work: ${errorMessage(error)}`,
+      )
     }
   }
 
@@ -4176,13 +4177,7 @@ export class RuntimeHost implements LiveHost {
         `runtime host could not continue ${conversation}'s turn its usage limit cut: ${errorMessage(error)}`,
       )
     } finally {
-      try {
-        this.tellWhoeverGaveTheWork(conversation)
-      } catch (error) {
-        console.warn(
-          `runtime host could not ask who gave ${conversation} its work: ${errorMessage(error)}`,
-        )
-      }
+      this.askItsGiversAgain(conversation)
     }
   }
 
