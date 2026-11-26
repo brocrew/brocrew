@@ -212,6 +212,24 @@ function gitChanges(base, cwd) {
 
 const relativeTo = (dir, file) =>
   path.relative(dir, path.resolve(dir, file)).split(path.sep).join('/')
+// jscpd reports real paths, and a scan root may sit behind a link (macOS /tmp is /private/tmp).
+// The base tree is removed after its scan, so the nearest existing ancestor is resolved instead.
+const realDir = (dir) => {
+  try {
+    return fs.realpathSync(dir)
+  } catch {
+    const parent = path.dirname(dir)
+    return parent === dir ? dir : path.join(realDir(parent), path.basename(dir))
+  }
+}
+// A file's path under a root, whether the file is named through the root as given or its real path.
+const relativeUnder = (dir) => {
+  const real = realDir(dir)
+  return (file) => {
+    const name = relativeTo(dir, file)
+    return name.startsWith('../') || path.isAbsolute(name) ? relativeTo(real, file) : name
+  }
+}
 // A half-open native span ending at column zero stops before that line.
 const lastLine = (file) =>
   file.endLoc?.line === file.end && file.endLoc.column === 0 && file.end > file.start
@@ -232,8 +250,9 @@ function changedRanges(files) {
 export function changedLineOverlap(base, cwd = root) {
   const { files, untracked } = gitChanges(base, cwd)
   const ranges = changedRanges(files)
+  const under = relativeUnder(cwd)
   return (file) => {
-    const name = relativeTo(cwd, file.name)
+    const name = under(file.name)
     const end = lastLine(file)
     return (
       untracked.has(name) ||
@@ -273,9 +292,10 @@ export function existedOnBase(base, baseReport, baseRoot, cwd = root) {
   const changed = changedRanges(files)
   const carried = new Map()
   for (const { from, to, hunks } of files) if (from) carried.set(from, { name: to, hunks })
+  const [underBase, underCwd] = [relativeUnder(baseRoot), relativeUnder(cwd)]
   const regions = baseReport.duplicates.flatMap((clone) =>
     [clone.firstFile, clone.secondFile].map((file) => {
-      const name = relativeTo(baseRoot, file.name)
+      const name = underBase(file.name)
       const { name: to, hunks } = carried.get(name) ?? { name, hunks: [] }
       return to && [to, carryLine(hunks, file.start, 'start'), carryLine(hunks, lastLine(file))]
     }),
@@ -284,7 +304,7 @@ export function existedOnBase(base, baseReport, baseRoot, cwd = root) {
     if (!span) return false
     const [name, start, end] = span
     const last = lastLine(file)
-    if (relativeTo(cwd, file.name) !== name || file.start < start || last > end) return false
+    if (underCwd(file.name) !== name || file.start < start || last > end) return false
     const ranges = changed.get(name) ?? []
     for (let line = file.start; line <= last; line++)
       if (!ranges.some(([first, final]) => first <= line && line <= final)) return true

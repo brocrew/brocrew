@@ -378,6 +378,40 @@ test('Git overlap uses candidate line boundaries, including moves and new paths'
     assert.equal(existed(pair(['new file.ts', 1, 1], [renamed, 9, 13])), false)
     // Line 7 replaced line 6, so that endpoint keeps no base line: a rewrite, not the old pair.
     assert.equal(existed(pair([renamed, 7, 7], [renamed, 16, 16])), false)
+
+    // jscpd names real paths while the roots the gate passes may be links (macOS /tmp is
+    // /private/tmp), and the base tree is already removed when its pairs are carried.
+    const links = fs.mkdtempSync(path.join(os.tmpdir(), 'code-health-link-'))
+    try {
+      fs.mkdirSync(path.join(links, 'real'))
+      const realBase = fs.realpathSync(path.join(links, 'real'))
+      fs.symlinkSync(realBase, path.join(links, 'base'))
+      fs.symlinkSync(fs.realpathSync(source), path.join(links, 'source'))
+      const linkedSource = path.join(links, 'source')
+      const real = (name, start, end) => ({
+        name: path.join(fs.realpathSync(source), name),
+        start,
+        end,
+      })
+      const inTree = (name, start, end) => ({ name: path.join(realBase, 'tree', name), start, end })
+      assert.equal(changedLineOverlap(base, linkedSource)(real(renamed, 2, 4)), true)
+      const linked = existedOnBase(
+        base,
+        report([
+          { firstFile: inTree('original.ts', 8, 12), secondFile: inTree('deleted-line.ts', 5, 9) },
+        ]),
+        path.join(links, 'base', 'tree'),
+        linkedSource,
+      )
+      const realPair = (first, second) => ({
+        firstFile: real(...first),
+        secondFile: real(...second),
+      })
+      assert.equal(linked(realPair([renamed, 9, 13], ['deleted-line.ts', 4, 8])), true)
+      assert.equal(linked(realPair([renamed, 9, 14], ['deleted-line.ts', 4, 8])), false)
+    } finally {
+      fs.rmSync(links, { recursive: true, force: true })
+    }
   } finally {
     fs.rmSync(source, { recursive: true, force: true })
   }
