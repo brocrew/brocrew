@@ -58,12 +58,17 @@ function openTodo(row: TodoRow): void {
 </script>
 
 <template>
-  <p v-if="unread" class="waits-unread" :class="{ floating }" :data-cy="`${cy}-${part}-unread`">
+  <p
+    v-if="unread"
+    class="waits-unread bb-queue-note"
+    :class="{ floating }"
+    :data-cy="`${cy}-${part}-unread`"
+  >
     {{ unreadSays[part] }}
   </p>
   <p
     v-if="floating && waits[part].short"
-    class="waits-unread"
+    class="waits-unread bb-queue-note"
     :class="{ floating }"
     :data-cy="`${cy}-${part}-short`"
   >
@@ -71,19 +76,29 @@ function openTodo(row: TodoRow): void {
   </p>
   <ol
     v-if="part === 'todos' && todoCards.length > 0"
-    class="waits"
+    class="waits bb-queue-list"
     :class="{ floating }"
     :data-cy="`${cy}-todos`"
   >
-    <li v-for="card in todoCards" :key="card.row.key" class="wait" :class="{ settled: card.taken }">
+    <li
+      v-for="card in todoCards"
+      :key="card.row.key"
+      class="wait bb-request"
+      :class="{ settled: card.taken }"
+    >
       <TodoCard :card="card" :cy="cy" open-conversation @open="openTodo(card.row)" />
     </li>
   </ol>
-  <ol v-if="cards.length > 0" class="waits" :class="{ floating }" :data-cy="`${cy}-${part}`">
+  <ol
+    v-if="cards.length > 0"
+    class="waits bb-queue-list"
+    :class="{ floating }"
+    :data-cy="`${cy}-${part}`"
+  >
     <li
       v-for="{ entry: one, listed, pending, said } in cards"
       :key="one.key"
-      class="wait"
+      class="wait bb-request"
       :class="{ settled: !listed }"
       :data-kind="one.kind"
       :data-cy="`${cy}-${part}-${one.key}`"
@@ -138,32 +153,6 @@ function openTodo(row: TodoRow): void {
 </template>
 
 <style scoped>
-.waits-unread {
-  margin: 0;
-  padding: 0 var(--space-9) var(--space-3);
-  color: var(--muted);
-  font-size: var(--type-caption);
-}
-
-.waits {
-  display: flex;
-  flex-direction: column;
-  margin: 0;
-  padding: 0 var(--space-9) var(--space-5);
-  gap: var(--space-3);
-  list-style: none;
-}
-
-.wait {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  padding: var(--space-3);
-  border: var(--border-width) solid var(--line);
-  border-radius: var(--radius-md);
-  gap: var(--space-2);
-}
-
 .wait.settled {
   color: var(--muted);
 }
@@ -186,21 +175,5 @@ function openTodo(row: TodoRow): void {
 .wait-controls .icon {
   width: 10px;
   height: 10px;
-}
-
-.waits-unread.floating {
-  padding: 0;
-  line-height: var(--leading-tight);
-}
-
-.waits.floating {
-  padding: 0;
-  gap: var(--space-4);
-}
-
-.waits.floating .wait {
-  padding: var(--space-4);
-  border-radius: var(--radius-sm);
-  background: var(--panel-2);
 }
 </style>

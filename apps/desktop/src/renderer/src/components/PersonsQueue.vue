@@ -404,7 +404,7 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
                and not the assignment**: the rest is behind the button beside it, where the work
                report draws the text unshortened. -->
           <MarkdownWords
-            class="pq-stall-what"
+            class="pq-stall-what bb-queue-clamp"
             :title="work.what"
             :data-cy="`persons-queue-stall-what-${work.key}`"
             :text="work.what"
@@ -416,7 +416,7 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
           <div class="pq-stop-actions pq-stall-actions">
             <CloseWorkButton :piece="work.key" :cy="`persons-queue-stall-close-${work.key}`" />
             <button
-              class="pq-go"
+              class="pq-go bb-queue-go"
               type="button"
               :data-cy="`persons-queue-stall-go-${work.key}`"
               @click="openStalled(work)"
@@ -442,7 +442,7 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
           <p class="pq-stop-who" :data-cy="`persons-queue-stopped-who-${card.row.key}`">
             {{ card.row.who }}
           </p>
-          <p class="pq-stall-what" :title="card.row.what">{{ card.row.what }}</p>
+          <p class="pq-stall-what bb-queue-clamp" :title="card.row.what">{{ card.row.what }}</p>
           <p
             v-if="card.listed"
             class="pq-stall-says"
@@ -467,7 +467,7 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
             />
             <button
               v-if="card.listed"
-              class="pq-go pq-door"
+              class="pq-go pq-door bb-queue-go"
               type="button"
               :data-cy="`persons-queue-stopped-look-${card.row.key}`"
               @click="queue.openWork(card.row)"
@@ -486,7 +486,7 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
           </p>
           <button
             v-if="!card.listed && !card.pending"
-            class="pq-go"
+            class="pq-go bb-queue-go"
             type="button"
             :data-cy="`persons-queue-stopped-dismiss-${card.row.key}`"
             @click="queue.dismissHandBack(card.row)"
@@ -532,7 +532,7 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
            hears what the order means rather than a bare *"list, 4 items"*. -->
       <ol
         v-if="rows.length > 0"
-        class="pq-rows"
+        class="pq-rows bb-queue-rows"
         aria-label="Waiting on you, the longest-blocked first"
         data-cy="persons-queue-rows"
       >
@@ -556,7 +556,7 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
           >
             <template #door>
               <button
-                class="pq-go"
+                class="pq-go bb-queue-go"
                 type="button"
                 :data-cy="`persons-queue-go-${row.key}`"
                 @click="go(row)"
@@ -644,7 +644,7 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
           >
             <template #door>
               <button
-                class="pq-go pq-door"
+                class="pq-go pq-door bb-queue-go"
                 type="button"
                 :data-cy="`persons-queue-go-${row.key}`"
                 @click="go(row)"
@@ -770,7 +770,7 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
                    answer line instead. -->
               <button
                 v-if="!row.question && row.liveCard?.kind !== 'permission'"
-                class="pq-go"
+                class="pq-go bb-queue-go"
                 type="button"
                 :data-cy="`persons-queue-go-${row.key}`"
                 @click="go(row)"
@@ -901,15 +901,6 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
   color: var(--waiting-text-label);
   font-size: var(--type-caption);
   font-weight: var(--fw-heavy);
-}
-
-.pq-rows {
-  display: flex;
-  flex-direction: column;
-  padding: 0;
-  margin: 0;
-  gap: var(--space-4);
-  list-style: none;
 }
 
 /* ⛔ **One scroller for both groups** (403). The bounded band holds a label, a list, a second
@@ -1074,18 +1065,6 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
   line-height: var(--leading-tight);
 }
 
-/* ⚑ **The work's own first line, clamped**: an assignment can be long, and a value that is never on
-   screen is the defect `530` measured — its `:title` carries the line whole. */
-.pq-stall-what {
-  display: -webkit-box;
-  overflow: hidden;
-  color: var(--faint);
-  font-size: var(--type-caption);
-  line-height: var(--leading-tight);
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-}
-
 /* The piece and its holder, in the row's own ink. */
 .pq-stop-who {
   color: var(--text);
@@ -1134,17 +1113,6 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
   color: var(--muted);
 }
 
-.pq-go {
-  display: inline-flex;
-  align-items: center;
-  align-self: flex-start;
-  padding: var(--space-2) var(--space-4);
-  border-radius: var(--radius-sm);
-  background: var(--panel);
-  font-size: var(--type-caption);
-  gap: var(--space-2);
-}
-
 .with-live-card .pq-go {
   padding: 0;
   border: 0;
@@ -1157,11 +1125,6 @@ function answer(row: PersonsQueueRow, response: UserInputResponse): void {
 .with-live-card .pq-more > summary {
   min-height: 22px;
   padding: 0;
-}
-
-.pq-go .icon {
-  width: 10px;
-  height: 10px;
 }
 
 /* ⚑ **Criterion 20's *about which work*, quiet like the other caveats** — it is context for the

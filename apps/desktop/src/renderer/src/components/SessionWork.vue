@@ -135,7 +135,7 @@ const view = computed(() =>
         <li
           v-for="row in view.rows"
           :key="row.piece"
-          class="row"
+          class="row bb-raised-item"
           :data-cy="`work-row-${row.piece}`"
         >
           <p class="head">
@@ -241,16 +241,6 @@ const view = computed(() =>
   padding: 0;
   gap: var(--space-4);
   list-style: none;
-}
-
-.row {
-  display: flex;
-  flex-direction: column;
-  padding: var(--space-5);
-  border: var(--border-width) solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--panel-2);
-  gap: var(--space-3);
 }
 
 .head {

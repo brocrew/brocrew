@@ -709,7 +709,7 @@ const fileManager = fileManagerHere()
             >
           </p>
           <!-- 🔴 **678 · F-R18a** — the walk behind it counted rows it could not read. -->
-          <p v-if="props.tasksShort" class="gap" data-cy="cast-taken-short">
+          <p v-if="props.tasksShort" class="gap bb-note-box" data-cy="cast-taken-short">
             <strong>{{ ROWS_UNREAD_LEAD }}</strong>
             {{ props.tasksShort }}
           </p>
@@ -837,7 +837,7 @@ const fileManager = fileManagerHere()
           </p>
         </template>
         <!-- ⚠️ **A list kept from the last read that answered says so**, once, under it. -->
-        <p v-if="props.filesStale" class="files-stale" data-cy="card-files-stale">
+        <p v-if="props.filesStale" class="files-stale bb-note-box" data-cy="card-files-stale">
           {{ FILES_DID_NOT_ANSWER }}
         </p>
       </CardSection>
@@ -1431,18 +1431,6 @@ button.run-effort[aria-expanded='true'] {
 .tile-kind {
   color: var(--muted);
   font-size: var(--type-caption);
-}
-
-.card-task .gap,
-.files-stale {
-  margin: 0;
-  padding: var(--space-4);
-  border: var(--border-width) solid var(--line);
-  border-radius: var(--radius-md);
-  background: var(--wash-1);
-  color: var(--muted);
-  font-size: var(--type-caption);
-  line-height: 1.5;
 }
 
 /* ⚠️ **The scroller, and it is here rather than on the drawer for one reason** (090 §3): the bot
