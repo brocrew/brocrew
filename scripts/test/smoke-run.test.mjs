@@ -8,8 +8,9 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import {
   GATE_SOCKET,
@@ -53,6 +54,7 @@ function at(iso) {
 
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
+  vi.unstubAllEnvs()
 })
 
 describe('a smoke run owns a directory of its own', () => {
@@ -130,27 +132,40 @@ describe('only one run at a time', () => {
 describe('242 · the gate socket has to FIT, and the root is what decides', () => {
   const RUN = '2026-08-19T10-20-30-400Z-4242'
   const LONGEST = 'user-data-sole-instance'
-  const OLD_DARWIN_TMPDIR = '/var/folders/_h/h3hwq1s0hjds8mmwtd5gv00000gn0a/T'
+  // A Mac's default `os.tmpdir()`, `/var/folders/<2>/<28>/T`.
+  const MAC_TMPDIR_BYTES = 48
+  const LIVE_LEAF = 'brobot2-ui-smoke'
 
   it('🔴 the OLD root could not hold a socket, and the NEW one can', (ctx) => {
     // darwin only: the premise is the Mac's long `tmpdir()` against a 104-byte socket path.
     // CI runs on Linux and skips it.
     ctx.skip(process.platform !== 'darwin')
-    // Computed, never created: these are strings and the filesystem is not touched. The old root is
-    // the shape of a Mac's default `os.tmpdir()` (48 bytes), not this process's own, so a short
-    // `TMPDIR` cannot make the negative pass for the wrong reason.
-    const wasAt = join(OLD_DARWIN_TMPDIR, 'brobot2-ui-smoke', RUN, LONGEST, GATE_SOCKET)
-    expect(wasAt.length).toBeGreaterThanOrEqual(SUN_PATH_MAX)
+    // Both halves run with `TMPDIR` as long as a Mac's default, in a directory this case makes
+    // without `smokeTmpRoot` (the code under test) and `afterEach` removes. A machine with a short
+    // `TMPDIR` can then neither pass the negative for the wrong reason nor hide, from the positive, a
+    // root that went back to `tmpdir()`.
+    const owned = mkdtempSync('/tmp/b2t-tmp-')
+    roots.push(owned)
+    const longTmp = join(owned, 'T'.padStart(MAC_TMPDIR_BYTES - owned.length - 1, 'x'))
+    mkdirSync(longTmp)
+    vi.stubEnv('TMPDIR', longTmp)
+    expect(tmpdir()).toBe(longTmp)
+    expect(longTmp).toHaveLength(MAC_TMPDIR_BYTES)
+    // As long as the live smoke's leaf, and this run's own through the `mkdtemp` suffix:
+    // `smokeTmpRoot` creates and `chmod`s what it is given, a test may not touch a live instrument's
+    // evidence root, and two runs at once must not remove each other's.
+    const leaf = `b2t-sock-${owned.slice(-6)}`.padEnd(LIVE_LEAF.length, '-')
 
-    // ...and the paired positive, on the root the smokes use. Built from `dirname` because
-    // `smokeTmpRoot` creates and `chmod`s what it is given, and a test may not touch a live
-    // instrument's evidence root.
-    const base = dirname(smokeTmpRoot(BASE))
-    const nowAt = join(base, 'brobot2-ui-smoke', RUN, LONGEST, GATE_SOCKET)
-    expect(nowAt.length).toBeLessThan(SUN_PATH_MAX)
+    // The old root, refused by the budget every smoke goes through. Computed, never created.
+    expect(() => smokeUserDataDir(join(tmpdir(), leaf, RUN), LONGEST)).toThrow(/sun_path holds 103/)
+
+    // ...and the paired positive, on the root the smokes use, budgeted as it is returned.
+    const root = smokeTmpRoot(leaf)
+    roots.push(root)
+    const userData = smokeUserDataDir(join(root, RUN), LONGEST)
     // ...and how little is left: the tightest of the three smokes has 5 bytes spare on this machine,
     // which is why the budget is checked rather than reasoned about.
-    expect(SUN_PATH_MAX - 1 - nowAt.length).toBeLessThan(10)
+    expect(SUN_PATH_MAX - 1 - join(userData, GATE_SOCKET).length).toBeLessThan(10)
   })
 
   it('⛔ is a per-user directory we own, not a shared one anybody can plant in', () => {
