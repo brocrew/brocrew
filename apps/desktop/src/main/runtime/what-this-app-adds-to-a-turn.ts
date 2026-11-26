@@ -20,6 +20,9 @@ import { providerFailureDiagnosis } from '../../shared/work-reconciliation'
 /** The line the block begins with, alone on its line: what follows it is this app's. */
 export const THE_BLOCK_BEGINS = '—'
 
+/** The line after it, the same on every turn and for every provider: whose words these are. */
+export const THE_BLOCK_SAYS = 'This app adds what follows; the message above comes first.'
+
 /** The most questions of its own the block names; the rest are counted. */
 export const OPEN_QUESTIONS_NAMED = 5
 
@@ -370,7 +373,7 @@ function whoWaitsOnIt(waiting: WhoWaitsOnIt, now: number, selected: string | nul
 
 /**
  * 🔴 **The block, whole.** ⚑ The time on every turn. ⚑ On a turn this app started
- * (`aPersonStartedIt` false), when the person last wrote — `null` means that time is unknown.
+ * (`aPersonStartedIt` false), when the person last wrote, if that time is known (`null` is not).
  * Its open questions, and who waits on it, as the host hands them in.
  *
  * An unknown list makes no absence claim. The host can separately supply a confirmed-empty
@@ -386,16 +389,15 @@ export function whatThisAppAddsToATurn(turn: {
 }): string {
   const { now } = turn
   const itIs = `It is ${nowFormat(now)}.`
+  // Said only when the time is known: an unknown time tells the agent nothing.
   const lastWrote =
-    turn.thePersonLastWroteAt === null
-      ? 'The last time the person wrote here is unknown.'
-      : `The person last wrote in this conversation at ${clockTimeFrom(turn.thePersonLastWroteAt, now)}.`
+    turn.aPersonStartedIt || turn.thePersonLastWroteAt === null
+      ? ''
+      : ` The person last wrote in this conversation at ${clockTimeFrom(turn.thePersonLastWroteAt, now)}.`
   return [
     THE_BLOCK_BEGINS,
-    turn.aPersonStartedIt
-      ? 'This app adds what follows. It is not part of the person’s message above, and that message comes first.'
-      : 'This app adds what follows. It is not part of the message above, and that message comes first.',
-    turn.aPersonStartedIt ? itIs : `${itIs} ${lastWrote}`,
+    THE_BLOCK_SAYS,
+    `${itIs}${lastWrote}`,
     ...(turn.questions === null ? [] : itsOpenQuestions(turn.questions, now)),
     ...(turn.waiting === null
       ? []
