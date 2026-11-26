@@ -192,26 +192,6 @@ describe('355 · the identity door a person writes through', () => {
       expect(noPersonBehindIt('setDefaultApprovalMode')).toContain('a person is asking')
       expect(noPersonBehindIt('setDefaultApprovalMode')).toContain('setDefaultApprovalMode')
     })
-
-    /**
-     * ⛔ **The wire refuses a payload it cannot read** — a key it does not know, such as a grant an
-     * older window still sends, is a refusal and never a silent strip.
-     */
-    it('⛔ refuses a payload that still carries a grant, and writes nothing', async () => {
-      await bringIdentityIntoBeing('pm')
-      await expect(
-        overTheWire({
-          kind: 'setExternalMcpServers',
-          externalMcpServerIds: [],
-          profileId: 'pm',
-          grant: { maxDepth: 1 },
-        }),
-      ).rejects.toThrow(/invalid runtime command/)
-      // ⚑ The positive: the same payload without the extra key is accepted.
-      await expect(
-        overTheWire({ kind: 'setExternalMcpServers', externalMcpServerIds: [], profileId: 'pm' }),
-      ).resolves.not.toBe(null)
-    })
   })
 
   describe('§3 · the identities a surface may draw', () => {

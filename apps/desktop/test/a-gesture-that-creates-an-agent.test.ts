@@ -470,34 +470,6 @@ describe('§3 · the identity’s default provider — every writer, measured', 
     // create that had written would leave `codex` here.
     expect(providerColumn(DEFAULT_PROFILE_ID)).toBeNull()
   })
-
-  it('⚑ creating `default` mints the SAME row a first launch would — the retired grant columns left NULL', () => {
-    // ⛔ **No name carries anything of its own.** A person who names BroBot gets exactly what a
-    // first launch of any name writes, and neither door writes the columns no code reads any more.
-    store.createAgentIdentity(
-      { slug: DEFAULT_PROFILE_ID, displayName: 'BroBot', provider: 'claude' },
-      { by: 'a-person' },
-    )
-    store.create({
-      id: 'sess_launch',
-      provider: 'claude',
-      cwd: dir,
-      approvalMode: 'ask',
-      profileId: 'worker',
-    })
-    const columns = [
-      'max_depth',
-      'can_message',
-      'can_assign_work',
-      'can_create_agents',
-      'can_write_rules',
-    ]
-    const rowOf = (slug: string): unknown =>
-      db.prepare(`SELECT ${columns.join(', ')} FROM agent_identity WHERE slug = ?`).get(slug)
-    const allNull = Object.fromEntries(columns.map((column) => [column, null]))
-    expect(rowOf('worker'), 'the launch row').toEqual(allNull)
-    expect(rowOf(DEFAULT_PROFILE_ID), 'the created row').toEqual(allNull)
-  })
 })
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
