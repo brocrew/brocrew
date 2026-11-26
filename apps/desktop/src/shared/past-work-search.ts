@@ -284,21 +284,31 @@ export function pastWorkSearchRefusal(reason: 'invalid' | 'unavailable') {
   }
 }
 
-export function pastWorkSearchInWords(
+/**
+ * A page of past-work search in words, in its parts: what goes first (the call that continues a
+ * partial transcript search), one block a hit, and what follows them (unread records, the cursor,
+ * the end). `hitLines` is each hit on one line, for a reply too long to go whole.
+ */
+export function pastWorkSearchParts(
   result: Extract<PastWorkSearchResult, { ok: true }>,
   continuing: boolean,
   transcript = false,
   query?: { words: string; profile?: string; from?: string; to?: string },
-): string {
+): {
+  readonly lead: readonly string[]
+  readonly rows: readonly string[]
+  readonly hitLines: readonly string[]
+  readonly notes: readonly string[]
+} {
+  const firstLine = (hit: (typeof result.hits)[number]): string =>
+    `${hit.line}${hit.state === '' ? '' : ` · ${hit.state}`}${hit.archived ? ' · archived' : ''}`
+  const matched = (hit: (typeof result.hits)[number]): string =>
+    hit.matched_field === 'work title or brief'
+      ? 'Matched a work title or brief.'
+      : `Matched ${hit.matched_field}: ${JSON.stringify(hit.snippet)}`
   const rows = result.hits.map((hit) => {
-    const archive = hit.archived ? ' · archived' : ''
-    const state = hit.state === '' ? '' : ` · ${hit.state}`
-    const lines = [`${hit.line}${state}${archive}`]
-    lines.push(
-      hit.matched_field === 'work title or brief'
-        ? 'Matched a work title or brief.'
-        : `Matched ${hit.matched_field}: ${JSON.stringify(hit.snippet)}`,
-    )
+    const lines = [firstLine(hit)]
+    lines.push(matched(hit))
     if (hit.turn !== undefined) {
       const reference = hit.turn.id ?? `event ${hit.turn.ordinal}`
       lines.push(`Recorded ${hit.turn.at} · ${reference}`)
@@ -320,16 +330,18 @@ export function pastWorkSearchInWords(
             : 'No matches in work titles, briefs or transcripts.',
     )
   }
-  if (result.work_unread === true) rows.push('Some work records could not be read.')
+  const notes: string[] = []
+  if (result.work_unread === true) notes.push('Some work records could not be read.')
   if (result.transcript_unread === true)
-    rows.push('The transcript preview could not be read. Search again with in: "transcripts".')
+    notes.push('The transcript preview could not be read. Search again with in: "transcripts".')
   if (result.next_cursor !== null) {
-    rows.push(
+    notes.push(
       `More of this search remains. Continue with cursor: ${JSON.stringify(result.next_cursor)} and the same words and filters, even if this page has no matches.`,
     )
   } else if (result.complete) {
-    rows.push('End of this search.')
+    notes.push('End of this search.')
   }
+  const lead: string[] = []
   if (result.transcript_next_cursor !== undefined && query !== undefined) {
     const call = `search_past_work(${JSON.stringify({
       ...query,
@@ -337,11 +349,26 @@ export function pastWorkSearchInWords(
       cursor: result.transcript_next_cursor,
     })})`
     const counts = result.preview_counts
-    rows.unshift(
+    lead.push(
       counts === undefined
         ? `Transcript search is incomplete. Continue with ${call}.`
         : `Stopped after ${counts.scanned} of ${counts.total} conversations; continue with ${call}.`,
     )
   }
-  return rows.join('\n\n')
+  const hitLines = result.hits.map((hit) => `${firstLine(hit)} — ${matched(hit)}`)
+  return { lead, rows, hitLines, notes }
+}
+
+/** The whole page in words, from its parts. */
+export const pastWorkSearchPartsInWords = (
+  parts: Pick<ReturnType<typeof pastWorkSearchParts>, 'lead' | 'rows' | 'notes'>,
+): string => [...parts.lead, ...parts.rows, ...parts.notes].join('\n\n')
+
+export function pastWorkSearchInWords(
+  result: Extract<PastWorkSearchResult, { ok: true }>,
+  continuing: boolean,
+  transcript = false,
+  query?: { words: string; profile?: string; from?: string; to?: string },
+): string {
+  return pastWorkSearchPartsInWords(pastWorkSearchParts(result, continuing, transcript, query))
 }

@@ -55,21 +55,16 @@ export function workSearchRefusal(reason: Extract<WorkSearchResult, { ok: false 
   }
 }
 
-export function workSearchInWords(page: WorkSearchPage): string {
-  const lines = page.hits.map((hit) => {
-    const when = new Date(hit.last_active_at).toISOString()
-    const words = [`${hit.line} · ${hit.profile ?? 'profile not recorded'} · last active ${when}`]
-    if (hit.status !== null) words.push('Status: ' + hit.status)
-    for (const match of hit.matched_tasks)
-      words.push('Task ' + match.label + (match.title === null ? '' : ' · ' + match.title))
-    if (hit.tasks_omitted > 0)
-      words.push(
-        String(hit.tasks_omitted) +
-          ' more matched tasks. list_tasks lists the conversation’s tasks.',
-      )
-    return words.join('\n')
-  })
-  if (lines.length === 0) lines.push(WORK_SEARCH_WORDS.empty)
+/** A conversation that matched, on one line: its line, profile and when it was last active. */
+const hitFirstLine = (hit: WorkSearchPage['hits'][number]): string =>
+  `${hit.line} · ${hit.profile ?? 'profile not recorded'} · last active ${new Date(hit.last_active_at).toISOString()}`
+
+/** Each matching conversation on one line, for a reply too long to go whole. */
+export const workSearchHitLines = (page: WorkSearchPage): string[] => page.hits.map(hitFirstLine)
+
+/** What follows the hits: how far the search got, what it could not read, and how to go on. */
+export function workSearchNotes(page: WorkSearchPage): string[] {
+  const lines: string[] = []
   if (page.hits.length <= 1) lines.push(WORK_SEARCH_WORDS.transcripts)
   lines.push(
     `Searched: ${page.searched}; rows_unread: ${page.rows_unread}; ledgers_skipped: ${page.ledgers_skipped}; complete: ${page.complete}.`,
@@ -94,5 +89,22 @@ export function workSearchInWords(page: WorkSearchPage): string {
       `${page.title_details_pending === true ? 'Continue for title details.' : WORK_SEARCH_WORDS.older} next_cursor: ${page.next_cursor}`,
     )
   lines.push(WORK_SEARCH_WORDS.changing)
-  return lines.join('\n\n')
+  return lines
+}
+
+export function workSearchInWords(page: WorkSearchPage): string {
+  const lines = page.hits.map((hit) => {
+    const words = [hitFirstLine(hit)]
+    if (hit.status !== null) words.push('Status: ' + hit.status)
+    for (const match of hit.matched_tasks)
+      words.push('Task ' + match.label + (match.title === null ? '' : ' · ' + match.title))
+    if (hit.tasks_omitted > 0)
+      words.push(
+        String(hit.tasks_omitted) +
+          ' more matched tasks. list_tasks lists the conversation’s tasks.',
+      )
+    return words.join('\n')
+  })
+  if (lines.length === 0) lines.push(WORK_SEARCH_WORDS.empty)
+  return [...lines, ...workSearchNotes(page)].join('\n\n')
 }

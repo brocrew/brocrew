@@ -30,7 +30,8 @@ import { type FoundFile } from '../kept-file-search'
 import { MOST_WORDS_FOUND, type readerFields } from './reader-inputs'
 import {
   PAST_WORK_SEARCH_DESCRIPTION,
-  pastWorkSearchInWords,
+  pastWorkSearchParts,
+  pastWorkSearchPartsInWords,
   pastWorkSearchQuery,
   pastWorkSearchRefusal,
 } from '../../../shared/past-work-search'
@@ -41,7 +42,7 @@ import { filesHoldingThoseWords, noFileHoldsThoseWords } from '../agent-tool-ans
 import { namedByItsWorkOnce } from './listings'
 import { pieceLine } from '../../../shared/piece-called'
 import { refuseTool } from './refusals'
-import { SHORT_REPLY_CHARACTERS, toolRepliesFolder } from './long-replies'
+import { roomForTheReplyPath, SHORT_REPLY_CHARACTERS, shortList } from './long-replies'
 
 /**
  * **D-012 · who sent a message, as `read_transcript` hands it over** — the kind, and the agent id
@@ -108,12 +109,6 @@ export function fromClause(from: WhoSentIt, named: (who: AConversation) => strin
       return 'a sender this app could not read'
   }
 }
-
-/**
- * What a short reply leaves for the line naming its temp file: the folder the writer uses, by its
- * real path, and more than enough for the call's own folder and file below it.
- */
-const roomForThePath = (): number => toolRepliesFolder().length + 80
 
 /** An ISO 8601 date, or a date and time with its zone: a calendar day that exists. */
 const ISO_DATE = z.iso.date()
@@ -309,7 +304,8 @@ export function transcriptText(
  * where the name does not already say it, its piece, who added it and when — and, for a find in its
  * text, the words around it on a line of its own.
  */
-function foundFileLine(found: FoundFile, readAt: number): string {
+/** A kept file on one line: its id and name, its title, its piece, who kept it and when. */
+function foundFileFirstLine(found: FoundFile, readAt: number): string {
   const { file } = found
   // An agent by its name and the profile a give names it by, as a sender is named.
   const by =
@@ -318,9 +314,13 @@ function foundFileLine(found: FoundFile, readAt: number): string {
       : file.addedBy.identity === null || file.addedBy.identity === file.addedBy.name
         ? file.addedBy.name
         : `${file.addedBy.name} (${file.addedBy.identity})`
-  const line = `  ${resourcesNamed([{ resource: file.resourceId, name: file.name }])}${
+  return `${resourcesNamed([{ resource: file.resourceId, name: file.name }])}${
     file.title === file.name ? '' : ` · ${file.title}`
   } — ${file.role === 'input' ? 'an input' : 'kept'} on ${pieceLine(file.label, file.pieceTitle)}, by ${by}, ${clockTimeFrom(file.keptAt, readAt)}`
+}
+
+function foundFileLine(found: FoundFile, readAt: number): string {
+  const line = `  ${foundFileFirstLine(found, readAt)}`
   return found.excerpt === null ? line : `${line}\n      “${found.excerpt}”`
 }
 
@@ -528,7 +528,7 @@ export function createReadTranscriptTool(
                   read.matched,
                   named,
                   read.readAt,
-                  SHORT_REPLY_CHARACTERS - head.length - 2 - roomForThePath(),
+                  SHORT_REPLY_CHARACTERS - head.length - 2 - roomForTheReplyPath(),
                   shownKind,
                 ),
               ].join('\n\n')
@@ -674,6 +674,23 @@ export function createFindFilesTool(
                 } not ${words.length === 0 ? 'listed' : 'looked through'}: call find_files again with older_than: ${found.goOnFrom}${where === 'everywhere' ? ', where: everywhere' : ''}${words.length === 0 ? '' : ' and the same words'} to go on.`,
               ]),
         ]
+        const after = found.files.length === 0 ? [] : [READ_ONE_WITH_READ_DOCUMENT]
+        const whole = [[head, ...lines].join('\n'), ...notes, ...after].join('\n\n')
+        // The short form only for a reply too long to go whole: a line a file, and how to go on.
+        const count = found.files.length
+        const short =
+          whole.length <= SHORT_REPLY_CHARACTERS
+            ? undefined
+            : shortList(
+                (shown) =>
+                  `${head}\n${
+                    shown === count
+                      ? `${String(count)} ${count === 1 ? 'file' : 'files'}, each cut short:`
+                      : `${String(count)} files; the first ${String(shown)}, each cut short:`
+                  }`,
+                found.files.map((one) => foundFileFirstLine(one, found.readAt)),
+                [...notes, ...after],
+              )
         return answer(
           {
             outcome: 'ok',
@@ -700,11 +717,8 @@ export function createFindFilesTool(
             older_than: found.goOnFrom,
             ...(found.textUnread === 0 ? {} : { text_unread: found.textUnread }),
           },
-          [
-            [head, ...lines].join('\n'),
-            ...notes,
-            ...(found.files.length === 0 ? [] : [READ_ONE_WITH_READ_DOCUMENT]),
-          ].join('\n\n'),
+          whole,
+          short,
         )
       }),
   }
@@ -743,6 +757,34 @@ export function createSearchPastWorkTool(
           const refused = pastWorkSearchRefusal(found.reason)
           return answer(refused, `refused (${refused.rail}): ${refused.reason}`)
         }
+        const continuing = input.success && input.data.cursor !== undefined
+        const transcriptsOnly = input.success && input.data.in === 'transcripts'
+        const query = input.success
+          ? {
+              words: input.data.words,
+              profile: input.data.profile,
+              from: input.data.from,
+              to: input.data.to,
+            }
+          : undefined
+        const parts = pastWorkSearchParts(found, continuing, transcriptsOnly, query)
+        const whole = pastWorkSearchPartsInWords(parts)
+        // The short form only for a reply too long to go whole: a line a match, and every line
+        // that says how to go on, the stopped-early transcript search included.
+        const matched = found.hits.length
+        const short =
+          whole.length <= SHORT_REPLY_CHARACTERS
+            ? undefined
+            : shortList(
+                (shown) =>
+                  matched === 0
+                    ? 'No matches on this page.'
+                    : shown === matched
+                      ? `${String(matched)} ${matched === 1 ? 'match' : 'matches'} on this page, each cut short:`
+                      : `${String(matched)} matches on this page; the first ${String(shown)}, each cut short:`,
+                parts.hitLines,
+                [...parts.lead, ...parts.notes],
+              )
         return answer(
           {
             outcome: 'ok',
@@ -755,19 +797,8 @@ export function createSearchPastWorkTool(
             ...(found.work_unread === true ? { work_unread: true } : {}),
             ...(found.transcript_unread === true ? { transcript_unread: true } : {}),
           },
-          pastWorkSearchInWords(
-            found,
-            input.success && input.data.cursor !== undefined,
-            input.success && input.data.in === 'transcripts',
-            input.success
-              ? {
-                  words: input.data.words,
-                  profile: input.data.profile,
-                  from: input.data.from,
-                  to: input.data.to,
-                }
-              : undefined,
-          ),
+          whole,
+          short,
         )
       }),
   }
