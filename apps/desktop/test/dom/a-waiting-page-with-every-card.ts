@@ -301,9 +301,35 @@ export async function aWaitingPageWithEveryCard(
   height = 1400,
   every = false,
   oneWall = false,
+  notices?: number,
 ): Promise<Mounted> {
   const rows = ASKERS.map((asker, at) => cardOf(asker, `req_${String(at)}`))
   const nameIt = (slug: string): string => slug.charAt(0).toUpperCase() + slug.slice(1)
+  const limits = walked(
+    foldProviderLimits(
+      [
+        {
+          ...wall(
+            'claude is approaching its rate limit (seven_day); resets 2026-09-24T11:00:00.000Z',
+          ),
+          meaning: { word: 'weekly', used: null, untimed: false },
+        },
+        ...(oneWall
+          ? []
+          : [
+              {
+                ...wall(
+                  'codex is approaching its rate limit — 99% of a 7-day window used; resets 2026-09-25T21:10:56.000Z',
+                ),
+                meaning: { word: 'weekly', used: 99, untimed: false },
+              },
+            ]),
+      ],
+      [],
+      NOW,
+    ).slice(0, notices === undefined ? undefined : Math.max(0, notices - 1)),
+    'every-provider-wall-recently-recorded',
+  )
   usePersonsQueue().supply(
     walked(every ? [...QUESTIONS, TODO] : [], 'every-conversation-that-routed'),
     walked(
@@ -333,32 +359,26 @@ export async function aWaitingPageWithEveryCard(
       decideMcpServerRequest: async () => ({ ok: true }) as never,
     },
     {
-      walked: walked(
-        foldProviderLimits(
-          [
-            {
-              ...wall(
-                'claude is approaching its rate limit (seven_day); resets 2026-09-24T11:00:00.000Z',
-              ),
-              meaning: { word: 'weekly', used: null, untimed: false },
-            },
-            ...(oneWall
-              ? []
-              : [
-                  {
-                    ...wall(
-                      'codex is approaching its rate limit — 99% of a 7-day window used; resets 2026-09-25T21:10:56.000Z',
-                    ),
-                    meaning: { word: 'weekly', used: 99, untimed: false },
-                  },
-                ]),
-          ],
-          [],
-          NOW,
-        ),
-        'every-provider-wall-recently-recorded',
-      ),
+      walked: limits,
       lastLookAnswered: true,
+      ...(notices === undefined || notices === 0
+        ? {}
+        : {
+            display: {
+              status: 'ready' as const,
+              reading: {
+                databaseEpoch: 1,
+                signInEpoch: 1,
+                operation: 1,
+                pinStartedAt: NOW,
+                pinFinishedAt: NOW,
+                evaluatedAt: NOW,
+                usageAt: NOW,
+                finishedAt: NOW,
+                walked: limits,
+              },
+            },
+          }),
     },
     { walked: walked([STALL], 'every-conversation-that-was-given-work'), lastLookAnswered: true },
     every ? { walked: [ASK], lastLookAnswered: true, nameOf: nameIt } : undefined,

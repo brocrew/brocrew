@@ -569,10 +569,19 @@ const drawsNothing = computed(
 
 .head-chips {
   display: flex;
-  flex-wrap: wrap;
+  overflow-x: auto;
+  min-width: 0;
+  height: calc(var(--control-h) + var(--space-4));
+  flex: 0 0 100%;
   align-self: center;
-  justify-content: flex-end;
+  align-items: flex-start;
   gap: var(--space-4);
+  scrollbar-width: thin;
+}
+
+.head-chips > * {
+  flex: none;
+  white-space: nowrap;
 }
 
 .chip {
@@ -590,7 +599,6 @@ const drawsNothing = computed(
 
 .walls {
   display: flex;
-  flex-wrap: wrap;
   margin: 0;
   gap: var(--space-4);
   padding: 0;
