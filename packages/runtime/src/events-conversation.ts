@@ -523,6 +523,12 @@ export const contextReadingSchema = z.object({
     }),
   ]),
   source: z.string().max(120),
+  /**
+   * Set by the adapter only when the reading is a model request's own usage: proof that the model
+   * ran on the context as it stood. A reading a provider derives otherwise (a compaction's result)
+   * leaves it out, and so does an adapter that cannot tell.
+   */
+  modelRequest: z.literal(true).optional(),
 })
 
 /**

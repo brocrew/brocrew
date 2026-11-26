@@ -514,6 +514,54 @@ describe('§3 · launch instructions and changing turn facts', () => {
     },
   )
 
+  it.each([
+    ['claude', 'its own model usage', true],
+    ['claude', 'only the compaction reading', false],
+    ['codex', 'its token usage, unmarked', false],
+  ] as const)(
+    'a %s start after a compaction followed by %s: kept is %s',
+    async (provider, _after, kept) => {
+      const target = await personOpens('ali', { provider, approvalMode: 'auto' })
+      const firstStart = () => {
+        const start = ledger(target.id).find((event) => event.type === 'launched')
+        if (start?.type !== 'launched' || !start.promptStart || 'from' in start.promptStart)
+          throw new Error('missing creation prompt')
+        return start.promptStart.systemHint ?? start.promptStart.firstTurnLead
+      }
+      await host.send(target.id, 'first message', window)
+      await waitFor(() => providerHeard(target.id).length === 1, 'the first message')
+      const handle = launches.at(-1)?.handle
+      const readings = () => ledger(target.id).filter((e) => e.type === 'context_reading').length
+      handle?.simulateCompaction(provider === 'claude' ? { after: 123 } : {})
+      if (provider === 'claude')
+        handle?.simulateContextReading({ kind: 'tokens', used: 123 }, 'compact_boundary')
+      await host.send(target.id, 'a turn after the compaction', window)
+      await waitFor(() => providerHeard(target.id).length === 2, 'the turn after the compaction')
+      if (provider === 'codex')
+        handle?.simulateContextReading(
+          { kind: 'proportional', used: 456, window: 9000 },
+          'thread/tokenUsage/updated',
+        )
+      else if (kept)
+        handle?.simulateContextReading({ kind: 'tokens', used: 456 }, 'message_start', true)
+      await waitFor(() => readings() === (kept ? 2 : 1), 'the readings')
+      const note = { expectedVersion: 0, text: 'A later note.', why: 'Fixture.' }
+      expect(host.saveOwnNotes('ali', note, window)).not.toBeNull()
+      await quitAndRelaunch()
+      await host.resumeSession(target.id, window)
+      const reopened = ledger(target.id)
+        .filter((event) => event.type === 'launched')
+        .at(-1)?.promptStart
+      if (kept) {
+        expect(reopened).toEqual({ from: expect.any(Number) })
+        expect(toldAt(-1)).toBe(firstStart())
+        return
+      }
+      if (reopened === undefined || 'from' in reopened) throw new Error('the start was not rebuilt')
+      expect(reopened.systemHint ?? reopened.firstTurnLead).toContain('A later note.')
+    },
+  )
+
   it.each(['claude', 'codex'] as const)(
     'replays at 59 minutes and refreshes at 61 minutes after a %s provider turn',
     async (provider) => {

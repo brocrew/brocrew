@@ -999,7 +999,14 @@ function contextReading(
     (sum, part) => sum + (part ?? 0),
     0,
   )
-  return [{ type: 'context_reading', reading: { kind: 'tokens', used }, source: eventType }]
+  return [
+    {
+      type: 'context_reading',
+      reading: { kind: 'tokens', used },
+      source: eventType,
+      modelRequest: true,
+    },
+  ]
 }
 
 function blockDeltaCategory(type: Exclude<BlockDeltaType, 'text_delta'>): UnknownCategory {
