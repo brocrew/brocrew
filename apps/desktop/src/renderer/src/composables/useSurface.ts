@@ -194,21 +194,6 @@ export const SURFACE_WITHOUT_A_WORD = {
   Record<Exclude<SurfaceName, (typeof SURFACE_OF_PLACE)[ReservedPlace]>, string>
 >
 
-/**
- * ⚑ **Every surface this app has, from the two tables that between them account for all of them.**
- *
- * ⛔ **This is what makes {@link SURFACE_WITHOUT_A_WORD} a rule rather than a comment.** A table
- * nothing reads is a table a later hand deletes; reading it here means the `Exclude` above is load
- * bearing at run time as well as at compile time
- * ([[a-line-no-mutation-can-kill-is-not-carrying-its-rule]]).
- */
-export const EVERY_SURFACE: readonly SurfaceName[] = [
-  ...new Set<SurfaceName>([
-    ...(Object.values(SURFACE_OF_PLACE) as readonly SurfaceName[]),
-    ...(Object.keys(SURFACE_WITHOUT_A_WORD) as readonly SurfaceName[]),
-  ]),
-]
-
 export function useSurface(store: Pick<SessionStore, 'live' | 'get'>): Surface {
   const place = ref<string | null>(null)
   const activeId = ref<string | null>(null)

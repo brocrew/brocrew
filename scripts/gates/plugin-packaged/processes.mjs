@@ -1,4 +1,3 @@
-import fs from 'node:fs'
 import { setTimeout as delay } from 'node:timers/promises'
 
 export async function bounded(work, milliseconds) {
@@ -59,20 +58,6 @@ export function requireDrained(receipt, current) {
     current.length
   )
     throw new Error('Child exit witnesses missing; scratch roots retained')
-}
-export function writeDrainReceipt(file, value) {
-  requireDrained(value, [])
-  const fd = fs.openSync(
-    file,
-    fs.constants.O_WRONLY | fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_NOFOLLOW,
-    0o600,
-  )
-  try {
-    fs.writeFileSync(fd, JSON.stringify(value))
-    fs.fsyncSync(fd)
-  } finally {
-    fs.closeSync(fd)
-  }
 }
 /** This owner is outside the journey. Child failure, timeout and cancellation all drain first. */
 export async function withIndependentDrain(work, adapter, onDrained, options) {

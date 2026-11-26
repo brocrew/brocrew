@@ -637,26 +637,6 @@ export async function restoreMemoryEntry(
   }
 }
 
-/** The inverse still requires confirmation and refuses any changed current text. */
-export function undoMemoryRestoration(
-  inputs: MemoryFileRestoration,
-  seams: MemoryWriteSeams = {},
-): MemoryFileResult {
-  if (inputs.source?.act !== 'restored' || typeof inputs.source.textAfter !== 'string')
-    return { ok: false, reason: 'not-restorable' }
-  return removeMemoryEntry(
-    {
-      ...inputs,
-      check: () => {
-        inputs.check()
-      },
-      provider: inputs.source.provider,
-      entry: inputs.source.entry,
-    },
-    seams,
-  )
-}
-
 /** An absent entry is meaningful only inside a pinned, eligible managed namespace. */
 export function observeMemoryEntry(
   inputs: AgentMemoryInputs,
