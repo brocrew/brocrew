@@ -80,7 +80,8 @@
         "scripts/test/**/*.test.{mjs,js,ts}",
         "scripts/native/*-check.ts",
         "scripts/test/fixtures/*.mjs",
-        ".github/windows-suite-failures.mjs"
+        ".github/windows-suite-failures.mjs",
+        ".github/windows-suite-part.mjs"
       ]
     },
     "scripts/code-health": {
