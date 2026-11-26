@@ -265,10 +265,8 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
 
   const QUESTION_ONE = 'did the rest of the Mac freeze at about 17:05?'
   const QUESTION_TWO = 'which port does the other one use?'
-  const HEADER_OF_A_PERSONS =
-    'This app adds what follows. It is not part of the person’s message above, and that message comes first.'
-  const HEADER_OF_THE_APPS =
-    'This app adds what follows. It is not part of the message above, and that message comes first.'
+  /** One marker after the dash, whoever started the turn and whichever provider runs it. */
+  const THE_MARKER = 'This app adds what follows; the message above comes first.'
 
   /** The words each turn handed its provider, as the double says them back. */
   const handedOver = (id: string): string[] =>
@@ -1365,7 +1363,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
       const lines = block.split('\n')
       expect(lines).toHaveLength(3)
       expect(lines[0]).toBe(THE_BLOCK_BEGINS)
-      expect(lines[1]).toBe(HEADER_OF_A_PERSONS)
+      expect(lines[1]).toBe(THE_MARKER)
       expect(lines[2]).toMatch(/^It is .*2026.*\.$/)
       // ⛔ When the person last wrote is for a turn this app started: theirs says nothing of it.
       expect(block).not.toContain('last wrote')
@@ -1380,7 +1378,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
         waiting: null,
       }).split('\n')
       expect(today).toHaveLength(3)
-      expect(today[1]).toBe(HEADER_OF_THE_APPS)
+      expect(today[1]).toBe(THE_MARKER)
       expect(today[2]).toMatch(
         /^It is .*2026.*\. The person last wrote in this conversation at [^.]*09[^.]*15[^.]*\.$/,
       )
@@ -1402,7 +1400,10 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
         questions: null,
         waiting: null,
       })
-      expect(unknown).toContain('The last time the person wrote here is unknown.')
+      // An unknown time says nothing, so nothing is said: the time alone.
+      expect(unknown.split('\n')).toHaveLength(3)
+      expect(unknown.split('\n')[2]).toMatch(/^It is .*2026.*\.$/)
+      expect(unknown).not.toMatch(/last wrote|wrote here/)
     })
 
     it('⚑ its open questions: one line each with its id, its age and its first line, the oldest five and a count of the rest', () => {
@@ -1520,7 +1521,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
       await itsTurnEnds(worker, surface)
       const block = await theBlockOfATurn(worker, 'what are you doing?', surface, surface)
       const lines = block.split('\n')
-      expect(lines.slice(0, 2)).toEqual([THE_BLOCK_BEGINS, HEADER_OF_A_PERSONS])
+      expect(lines.slice(0, 2)).toEqual([THE_BLOCK_BEGINS, THE_MARKER])
       expect(lines[2]).toMatch(/^It is .+\.$/)
       expect(block).not.toContain('last wrote')
       // ⚑ The turn's row keeps the whole text it was handed, the block with it.
@@ -1532,12 +1533,12 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
       expect(withoutWhatThisAppAdds(kept?.sent ?? '').endsWith('what are you doing?')).toBe(true)
     })
 
-    it('🔴 a turn this app started says when the person last wrote; before they ever wrote, that the time is unknown', async () => {
+    it('🔴 a turn this app started says when the person last wrote, and nothing about it before they ever wrote', async () => {
       const { worker, surface } = await aWorkerBetweenTurns()
       await itsTurnEnds(worker, surface)
       const first = await theBlockOfATurn(worker, 'the app speaking', THE_APP_ITSELF, surface)
-      expect(first.split('\n')[1]).toBe(HEADER_OF_THE_APPS)
-      expect(first).toContain('The last time the person wrote here is unknown.')
+      expect(first.split('\n')[1]).toBe(THE_MARKER)
+      expect(first).not.toMatch(/last wrote|wrote here/)
 
       await theBlockOfATurn(worker, 'a person writes', surface, surface)
       const second = await theBlockOfATurn(worker, 'the app again', THE_APP_ITSELF, surface)
