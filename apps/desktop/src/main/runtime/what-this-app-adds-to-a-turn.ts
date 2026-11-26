@@ -45,18 +45,13 @@ export const TURN_BLOCK_WORDS = {
   waitingOnThePerson: 'waiting on the person',
   currentUnavailable: 'Your current work is not available. list_tasks shows what you hold.',
   untitled: 'untitled',
-  helper: (
-    conversation: string,
-    label: string,
-    name: string,
-    state: string,
-    age: string | null,
-    context: number | null,
-  ): string =>
-    `${conversation} · task ${label} · ${name} · ${state}${age === null ? '' : ` · state updated ${age}`}${context === null ? '' : ` · context ${String(context)}%`}`,
+  helperConversation: (conversation: string, name: string, context: number | null): string =>
+    `${conversation} · ${name}${context === null ? '' : ` · context ${String(context)}%`}`,
+  helper: (label: string, state: string, age: string | null): string =>
+    `${label} · ${state}${age === null ? '' : ` · updated ${age}`}`,
   more: (count: number, incomplete = false): string =>
     `and ${incomplete ? 'at least ' : ''}${String(count)} more: list_tasks`,
-  updateGivenWork: 'Check this work and make any needed updates.',
+  updateGivenWork: 'Update outdated work with update_work.',
   current: (label: string, title: string, conversation: string): string =>
     `Your current work: task ${label} · ${title}, in ${conversation}${conversation.endsWith('.') ? '' : '.'}`,
   currentRules: (by: 'agent' | 'person', ago: string): string =>
@@ -199,24 +194,34 @@ function extraLines(facts: ExtraTurnFacts, now: number): string[] {
     const { more } = facts.helpers
     const rows = facts.helpers.rows.filter((row) => row.state !== null)
     if (rows.length > 0) lines.push(TURN_BLOCK_WORDS.helpersHeading)
-    lines.push(
-      ...rows.slice(0, 5).map((row) => {
-        const label = [...row.label].length <= TURN_LABEL_POINTS ? row.label : row.piece
-        if (row.providerTurnFailure !== undefined) {
-          const conversation = row.conversation.replace(/^conversation /, 'Conversation ')
-          const cause = oneLine(row.providerTurnFailure.message, WORK_BRIEF_CHARS)
-          return `- ${providerFailureDiagnosis(conversation, cause)} · task ${label} · recorded failed turn ${String(row.providerTurnFailure.turnOrdinal)}`
-        }
-        return `- ${TURN_BLOCK_WORDS.helper(
-          row.conversation,
+    // Neighbouring rows held in one conversation share its line, so it is said once.
+    let heading: string | null = null
+    for (const row of rows.slice(0, 5)) {
+      const label = [...row.label].length <= TURN_LABEL_POINTS ? row.label : row.piece
+      if (row.providerTurnFailure !== undefined) {
+        const conversation = row.conversation.replace(/^conversation /, 'Conversation ')
+        const cause = oneLine(row.providerTurnFailure.message, WORK_BRIEF_CHARS)
+        lines.push(
+          `- ${providerFailureDiagnosis(conversation, cause)} · task ${label} · recorded failed turn ${String(row.providerTurnFailure.turnOrdinal)}`,
+        )
+        heading = null
+        continue
+      }
+      const its = `- ${TURN_BLOCK_WORDS.helperConversation(
+        row.conversation,
+        oneLine(row.name, 64),
+        facts.contextOf?.(row.owner) ?? null,
+      )}`
+      if (its !== heading) lines.push(its)
+      heading = its
+      lines.push(
+        `  - ${TURN_BLOCK_WORDS.helper(
           label,
-          oneLine(row.name, 64),
           oneLine(row.state!, 100),
-          row.changedAt === null ? null : howLongAgo(row.changedAt, now),
-          facts.contextOf?.(row.owner) ?? null,
-        )}`
-      }),
-    )
+          row.changedAt === null ? null : howLongAgo(row.changedAt, now, true),
+        )}`,
+      )
+    }
     const overflow = more + Math.max(0, rows.length - 5)
     if (overflow > 0) lines.push(TURN_BLOCK_WORDS.more(overflow, facts.helpers.incomplete === true))
     else if (facts.helpers.incomplete === true) lines.push('list_tasks shows the work you gave.')
@@ -302,15 +307,21 @@ const nowFormat = localFormat({
   minute: '2-digit',
 })
 
-/** How long ago a moment was, in the largest whole unit: minutes, hours or days. */
-export function howLongAgo(at: number, now: number): string {
+/**
+ * How long ago a moment was, in the largest whole unit: minutes, hours or days. `short` writes the
+ * unit as one letter (`5m ago`), for lines said again on every turn.
+ */
+export function howLongAgo(at: number, now: number, short = false): string {
   const minutes = Math.floor((now - at) / 60_000)
   if (minutes < 1) return 'just now'
-  if (minutes < 60) return `${String(minutes)} ${minutes === 1 ? 'minute' : 'minutes'} ago`
+  const ago = (count: number, unit: string): string =>
+    short
+      ? `${String(count)}${unit[0]!} ago`
+      : `${String(count)} ${unit}${count === 1 ? '' : 's'} ago`
+  if (minutes < 60) return ago(minutes, 'minute')
   const hours = Math.floor(minutes / 60)
-  if (hours < 24) return `${String(hours)} ${hours === 1 ? 'hour' : 'hours'} ago`
-  const days = Math.floor(hours / 24)
-  return `${String(days)} ${days === 1 ? 'day' : 'days'} ago`
+  if (hours < 24) return ago(hours, 'hour')
+  return ago(Math.floor(hours / 24), 'day')
 }
 
 function itsFirstWords(prompt: string): string {

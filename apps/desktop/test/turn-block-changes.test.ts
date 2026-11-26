@@ -158,7 +158,7 @@ describe('turn block changes', () => {
       5,
     )
     expect(rendered).toContain(
-      'and at least 3 more: list_tasks\nCheck this work and make any needed updates.',
+      'and at least 3 more: list_tasks\nUpdate outdated work with update_work.',
     )
     expect(rendered).not.toContain('and 3 more: list_tasks')
     expect(rendered).not.toContain(TURN_BLOCK_WORDS.nobody)
@@ -277,7 +277,7 @@ describe('turn block changes', () => {
       { ...input, helpers: [{ ...helper(1), label: longLabel }] },
       EMPTY_TURN_BLOCK,
     )
-    expect(block(result.extra)).toContain('task piece-1')
+    expect(block(result.extra)).toContain('  - piece-1 · ')
     expect(block(result.extra)).toContain(helper(1).state)
     expect(block(result.extra)).not.toContain(longLabel.slice(0, 20))
     expect(
@@ -293,14 +293,56 @@ describe('turn block changes', () => {
     const rendered = block(
       turnBlockChanges({ ...input, now: 180_000, helpers: rows }, EMPTY_TURN_BLOCK).extra,
     )
-    expect(rendered).toContain('Work you gave, still open:\n- conversation W1.2')
-    expect(rendered).toContain('task W1.1 · worker-1 · being worked on\n')
     // The formatter's clock is input.now (60,000); givenAt must never supply an age.
-    expect(rendered).toContain('W1.2 · worker-2 · being worked on · state updated just now')
+    expect(rendered).toContain(
+      'Work you gave, still open:\n' +
+        '- conversation W1.2 · Fictional job · worker-2\n' +
+        '  - W1.2 · being worked on · updated just now\n',
+    )
+    expect(rendered).toContain(
+      '- conversation W1.1 · Fictional job · worker-1\n  - W1.1 · being worked on\n',
+    )
     expect(rendered).not.toContain('given ')
     const noList = block({ helpers: { rows: [], more: 0 } })
     expect(noList).not.toContain('Work you gave')
-    expect(noList).not.toContain('Check this work and make any needed updates.')
+    expect(noList).not.toContain(TURN_BLOCK_WORDS.updateGivenWork)
+  })
+
+  it('names a conversation once for neighbouring rows it holds, and again after a failure row', () => {
+    const inOne = (id: number) => ({
+      ...helper(id),
+      owner: 'worker-1',
+      conversation: helper(1).conversation,
+      name: 'worker-1',
+    })
+    const rendered = block({
+      helpers: {
+        rows: [
+          inOne(1),
+          inOne(2),
+          { ...inOne(3), providerTurnFailure: { turnOrdinal: 7, message: 'Fictional error.' } },
+          inOne(4),
+          helper(5),
+        ],
+        more: 0,
+      },
+      contextOf: (owner) => (owner === 'worker-1' ? 40 : null),
+    })
+    const lines = rendered.split('\n')
+    const given = lines.slice(lines.indexOf('Work you gave, still open:') + 1)
+    expect(given.slice(0, 3)).toEqual([
+      '- conversation W1.1 · Fictional job · worker-1 · context 40%',
+      '  - W1.1 · being worked on',
+      '  - W1.2 · being worked on',
+    ])
+    expect(given[3]).toMatch(/^- Conversation W1\.1 · Fictional job .* · task W1\.3 · /)
+    expect(given.slice(4, 9)).toEqual([
+      '- conversation W1.1 · Fictional job · worker-1 · context 40%',
+      '  - W1.4 · being worked on',
+      '- conversation W1.5 · Fictional job · worker-5',
+      '  - W1.5 · being worked on',
+      TURN_BLOCK_WORDS.updateGivenWork,
+    ])
   })
 
   it('tracks state changes and status revisions without inventing an age from a give or an unrelated event', () => {
@@ -385,7 +427,7 @@ describe('turn block changes', () => {
         status: 'status\n' + 'y'.repeat(1000),
       },
     })
-    expect(rendered.split('\n')).toHaveLength(7)
+    expect(rendered.split('\n')).toHaveLength(8)
     expect(rendered).toContain('…')
     expect([...rendered].length).toBeLessThan(3000)
     expect(

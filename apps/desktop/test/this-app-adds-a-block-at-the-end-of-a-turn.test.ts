@@ -437,9 +437,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
         tick(),
       )
       clock += 19 * 60 * 60_000
-      expect(composedEndOfTheCurrentLife(pm)).toContain(
-        'being worked on · state updated 19 hours ago',
-      )
+      expect(composedEndOfTheCurrentLife(pm)).toContain('being worked on · updated 19h ago')
     },
   )
 
@@ -799,12 +797,10 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
           tick(),
         )
       const shown = (footer: string) =>
-        [...footer.matchAll(/^[-] conversation .* · task (\S+) · /gm)].map((match) => match[1])
+        [...footer.matchAll(/^ {2}- (\S+) · /gm)].map((match) => match[1])
       const first = render()
       expect(first).toContain('Work you gave, still open:')
-      expect(first).toContain(
-        'and 7 more: list_tasks\nCheck this work and make any needed updates.',
-      )
+      expect(first).toContain('and 7 more: list_tasks\nUpdate outdated work with update_work.')
       expect(shown(first)).toEqual(ordinary.slice(0, 5).map((row) => row.label))
       expect(shown(render())).toEqual(shown(first))
       const [stalled, person] = [open[10]!, open[11]!]
@@ -831,8 +827,14 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
         expect(shown(urgent)).toEqual(
           [stalled, person, ...ordinary.slice(0, 3)].map((row) => row.label),
         )
-        expect(urgent).toContain(`${stalled.label} · Ali · no wait set`)
-        expect(urgent).toContain(`${person.label} · Ali · waiting on the person`)
+        // Each holder is a conversation of its own, so each task sits directly under its holder's line.
+        const underAli = (label: string, state: string) =>
+          new RegExp(
+            `^- conversation [^\\n]* · Ali(?: · context \\d+%)?\\n {2}- ${label.replace(/\./g, '\\.')} · ${state}`,
+            'm',
+          )
+        expect(urgent).toMatch(underAli(stalled.label, 'no wait set'))
+        expect(urgent).toMatch(underAli(person.label, 'waiting on the person'))
         expect(urgent).not.toContain("Helpers' status is not fully available")
       }
       const ended = open.pop()!
@@ -912,7 +914,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
       const held = store.piecesOwnedBy(worker).find((row) => row.piece === piece)
       expect(held?.state).toBe('waiting-on-the-person-who-wrote')
       const block = await theBlockOfATurn(pm, 'Fictional request to the giver.', window, window)
-      const row = block.split('\n').find((line) => line.includes(` · task ${held!.label} · `))
+      const row = block.split('\n').find((line) => line.startsWith(`  - ${held!.label} · `))
       expect(row).toContain(' · waiting on the person')
       expect(row).not.toContain(' · waiting on you')
     })
@@ -1062,7 +1064,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
       const stillEligible = () => {
         expect(session.turnBlockSnapshot).toBe(before)
         const words = session.pendingTurnBlock!.words
-        expect(words).toContain('W1.1 · Lena')
+        expect(words).toMatch(/ · Lena(?: · context \d+%)?\n {2}- W1\.1 · /)
         expect(words).toContain(TURN_BLOCK_WORDS.nobody)
         expect(words).toContain(TURN_BLOCK_WORDS.replyQuestion)
       }
@@ -1101,7 +1103,9 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
         const next = send()
         release()
         await next
-        expect(session.pendingTurnBlock!.words).toContain('task W1.1 · Lena')
+        expect(session.pendingTurnBlock!.words).toMatch(
+          / · Lena(?: · context \d+%)?\n {2}- W1\.1 · /,
+        )
         expect(session.pendingTurnBlock!.words).not.toContain(TURN_BLOCK_WORDS.nobody)
         expect(session.pendingTurnBlock!.words).not.toContain(TURN_BLOCK_WORDS.replyQuestion)
       } finally {
@@ -1676,7 +1680,7 @@ describe('this app adds a block at the end of what a turn hands its agent', () =
       expect(lines[7]).toBe('Waiting on you:')
       expect(lines[8]).toMatch(/^- .+ gave you the current task and is waiting for it\.$/)
       expect(lines[9]).toMatch(/^Your current work: task W\S+ · the work this dispatch is about,/)
-      expect(lines[10]).toBe('Check this work and make any needed updates.')
+      expect(lines[10]).toBe(TURN_BLOCK_WORDS.updateGivenWork)
       expect(lines).toHaveLength(11)
     })
 
