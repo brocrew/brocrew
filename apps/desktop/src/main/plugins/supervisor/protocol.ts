@@ -33,7 +33,7 @@ export const RENEW_RETRY = 'renew-retry'
 /** The owner takes a closed person channel as the end of its consumer, so the app may reconnect. */
 export const LOST_CHANNEL_ENDS = 'lost-channel-ends'
 /** Person configuration can explicitly negotiate checkpoint ledgers and safe-integer revisions. */
-export const CONFIGURATION_LEDGER_V2 = 'configuration-ledger-v2'
+const CONFIGURATION_LEDGER_V2 = 'configuration-ledger-v2'
 export const OWNER_RECOVERY = 'owner-recovery'
 /** Per-lease negotiation for served, pending, off and unknown route facts. */
 export const AGENT_ROUTES_FORMAT_2 = 'agent-routes-format-2'

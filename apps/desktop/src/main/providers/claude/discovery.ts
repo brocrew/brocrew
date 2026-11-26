@@ -23,7 +23,7 @@ import {
  * to the folder the file is actually in. If it does not, resume would look somewhere else and
  * report the session missing — so that file is skipped rather than adopted into a dead end.
  */
-export function discoverClaudeSessions(home: string, profileId: string): Discovery {
+function discoverClaudeSessions(home: string, profileId: string): Discovery {
   const projects = join(home, 'projects')
   if (!existsSync(projects)) return EMPTY
 

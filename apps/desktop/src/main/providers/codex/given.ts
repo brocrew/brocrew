@@ -6,7 +6,7 @@ import { conventionFileIn, repositoryConventionChain } from '../repository-instr
 import type { GivenPolicy } from '../given-policy'
 import { launchSetting } from './launch-settings'
 
-export function filesCodexWouldRead(cwd: string): string[] {
+function filesCodexWouldRead(cwd: string): string[] {
   return repositoryConventionChain(cwd).flatMap((dir) => conventionFileIn(dir) ?? [])
 }
 

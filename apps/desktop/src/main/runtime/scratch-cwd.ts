@@ -160,7 +160,7 @@ export function folderIsGone(cwd: string): boolean {
  * they typed"*. The real spelling is a separate question, asked by {@link filesystemSpelling} at the
  * moment a rule needs the filesystem's own answer.
  */
-export function cwdSpelling(requested: string): string {
+function cwdSpelling(requested: string): string {
   return resolve(expandHome(requested.trim()))
 }
 

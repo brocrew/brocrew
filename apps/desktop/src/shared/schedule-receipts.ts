@@ -20,8 +20,8 @@ export type ScheduleScope = {
   childId?: string
 }
 export type CalendarStamp = { identity: string; version: string }
-export type JobTarget = { jobId: string; generation: string }
-export type PublicCorrelation = {
+type JobTarget = { jobId: string; generation: string }
+type PublicCorrelation = {
   kind: 'provider-identity' | 'verified-public-correlation'
   reference: string
 }
@@ -31,7 +31,7 @@ export type SchedulingInput =
   | { kind: 'cancel'; target: JobTarget }
   | { kind: 'cancel'; targets: readonly JobTarget[] }
   | { kind: 'listing' | 'monitor' | 'unknown'; metadataRef?: string }
-export type ProviderTiming = {
+type ProviderTiming = {
   provenance: 'public-receipt'
   reference: string
   createdAt?: number
@@ -92,13 +92,13 @@ export type ScheduleObservation = ObservationBase &
   )
 type Call = Extract<ScheduleObservation, { kind: 'call' }>
 type Result = Extract<ScheduleObservation, { kind: 'result' }>
-export type CreationWindow = {
+type CreationWindow = {
   lo: number
   hi: number
   provenance: 'provider-time' | 'pre/post-execution-bracket'
   clockEra: string
 }
-export type ReceiptPlacement = {
+type ReceiptPlacement = {
   generation: string
   evidenceRevision: string
   candidates: readonly number[]
@@ -203,7 +203,7 @@ function stable(v: unknown): string {
     )
   return JSON.stringify(v) ?? 'null'
 }
-export function scopeKey(scope: ScheduleScope): string {
+function scopeKey(scope: ScheduleScope): string {
   return stable([
     scope.conversationId,
     scope.providerId,
@@ -212,7 +212,7 @@ export function scopeKey(scope: ScheduleScope): string {
     scope.childId ?? null,
   ])
 }
-export function lineageKey(scope: ScheduleScope): string {
+function lineageKey(scope: ScheduleScope): string {
   return stable([scope.conversationId, scope.providerId, scope.lineageId, scope.childId ?? null])
 }
 
@@ -923,14 +923,14 @@ export function acceptScheduleNotices(
   }
   return { acceptedIds: [...acceptedIds], mailbox }
 }
-export type NominalDisplay = {
+type NominalDisplay = {
   label: 'scheduled' | 'due-unconfirmed' | 'time-unknown' | 'not-present'
   time: string | null
   detail: string
   nominalAt: number | null
   provenance: ReceiptPlacement['provenance'] | 'derived-progress'
 }
-export function showNominalTime(
+function showNominalTime(
   at: number | undefined,
   provenance: NominalDisplay['provenance'],
   calendar: CalendarSource,
@@ -968,7 +968,7 @@ export function showNominalTime(
     detail: `${fields.year}-${pad(fields.month)}-${pad(fields.day)} ${wall}; epoch ${at}; ${provenance}; calendar ${calendar.identity}@${calendar.version}`,
   }
 }
-export type EvidenceJobState = {
+type EvidenceJobState = {
   generation: ReceiptGeneration
   placement?: ReceiptPlacement
   pendingNominalAt?: number

@@ -1,6 +1,6 @@
 export const SHARED_DATA_FEATURE = 'shared-data-v1'
 export const SHARED_DATA_PERMISSION = 'brocrew-shared-data'
-export const WORKSPACE_LABEL_LIMIT = 80
+const WORKSPACE_LABEL_LIMIT = 80
 
 /** Display text only; identity and paths never use this label. */
 export function sharedWorkspaceLabel(label: string): string {

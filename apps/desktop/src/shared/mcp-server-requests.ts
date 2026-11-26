@@ -21,7 +21,7 @@ export type McpServerRequestWho = (typeof MCP_SERVER_REQUEST_WHO)[number]
  * is an approval the registration refused, such as a tool name that clashes with this app's own.
  * `superseded` is the person registering a server of that name themselves while the request waited.
  */
-export const MCP_SERVER_REQUEST_ENDINGS = [
+const MCP_SERVER_REQUEST_ENDINGS = [
   'approved',
   'refused',
   'could-not-register',
@@ -35,7 +35,7 @@ export type McpServerRequestEnding = (typeof MCP_SERVER_REQUEST_ENDINGS)[number]
 export const MCP_SERVER_URL_CHARS = 2_048
 
 /** How many of the tools a registered server offered an agent is told by name. */
-export const MCP_SERVER_TOOLS_NAMED = 20
+const MCP_SERVER_TOOLS_NAMED = 20
 
 /**
  * An agent asked the person to register an external MCP server (`request_mcp_server`). The row is
@@ -127,7 +127,7 @@ export interface McpServerRequestEnded {
 }
 
 /** How the asking conversation's own transcript says a request ended, after it was waiting. */
-export function mcpServerRequestEndedSays({ ending, offered, why }: McpServerRequestEnded): string {
+function mcpServerRequestEndedSays({ ending, offered, why }: McpServerRequestEnded): string {
   switch (ending) {
     case 'approved':
       return offered === undefined

@@ -1,7 +1,7 @@
 import type { RulesAuthor } from './own-instructions'
 import type { ActedBy } from './who-did-it'
 
-export const OWN_NOTES_CHARACTERS = 4000
+const OWN_NOTES_CHARACTERS = 4000
 
 export interface OwnNotesBaseline {
   readonly expectedVersion: number

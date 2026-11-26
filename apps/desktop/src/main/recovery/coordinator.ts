@@ -131,7 +131,7 @@ export function createRecoveryService(deps: CoordinatorDeps): RecoveryService {
   }
 }
 
-export type FaultPoint = Step | CheckpointStep | { readonly move: string; readonly to: Moved['to'] }
+type FaultPoint = Step | CheckpointStep | { readonly move: string; readonly to: Moved['to'] }
 
 /** A fault a test asks for, to stop a copy, a restore or a return at a chosen point. */
 export interface RecoveryFaults {
@@ -142,7 +142,7 @@ export interface RecoveryFaults {
 }
 
 export const FAULT_CODES = ['EBUSY', 'ENOSPC', 'EACCES'] as const
-export type FaultCode = (typeof FAULT_CODES)[number]
+type FaultCode = (typeof FAULT_CODES)[number]
 
 const CHECKPOINT_STEPS: readonly CheckpointStep[] = ['copy', 'verify', 'files', 'manifest']
 

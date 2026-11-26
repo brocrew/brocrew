@@ -58,7 +58,7 @@ export async function applyWhatsAppSettings(
 }
 
 /** How long uninstalling waits for the plugin's log out; the plugin gives up after 40 seconds. */
-export const WHATSAPP_UNINSTALL_MS = 45_000
+const WHATSAPP_UNINSTALL_MS = 45_000
 /** Wait for the local wipe, then read whether WhatsApp confirmed removing the device. */
 export async function logOutBeforeUninstall(
   connection: PluginNodeReady,

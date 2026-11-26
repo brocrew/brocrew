@@ -26,7 +26,7 @@ import type {
 } from './tool-broker-types'
 export type * from './tool-broker-types'
 
-export const PLUGIN_BROKER_LIMITS = Object.freeze({
+const PLUGIN_BROKER_LIMITS = Object.freeze({
   total: 64,
   queueMs: 120_000,
   callMs: 120_000,

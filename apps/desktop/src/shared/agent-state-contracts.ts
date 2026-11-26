@@ -125,7 +125,7 @@ export interface ScheduleLevel {
  *  - **`id`** — the last resort, when the row carries no description either; it is what a Stop sends,
  *    so a row named by it can still be acted on.
  */
-export type BackgroundWhatFrom = 'command' | 'description' | 'id'
+type BackgroundWhatFrom = 'command' | 'description' | 'id'
 
 export interface BackgroundWhat {
   /** Which of the three answers this is. */

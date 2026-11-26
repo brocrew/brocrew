@@ -168,7 +168,7 @@ export function blockHeader(item: Pick<InjectedInstruction, 'path' | 'kind'>): s
 
 export const BLOCK_SEPARATOR = '\n\n'
 
-export function scopeWording(kind: InjectedInstructionKind): string {
+function scopeWording(kind: InjectedInstructionKind): string {
   // Each kind gets its own wording so none arrives under the CLI's phrase for a file it is not:
   // neither generated kind is "checked into the codebase". This conversation's own text is a
   // separate block, last.

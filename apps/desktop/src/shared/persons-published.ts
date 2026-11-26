@@ -33,7 +33,7 @@ export interface CountedRows<Row> {
 }
 
 /** One stamp for the whole queue, and each part's coverage under it, with `scope` its name. */
-export interface PersonsPublished {
+interface PersonsPublished {
   readonly epoch: PublicationEpoch
   readonly seq: number
   readonly covers: Readonly<Record<PersonsPart, Coverage>>

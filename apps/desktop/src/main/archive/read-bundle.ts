@@ -51,7 +51,7 @@ import type { SessionBundle } from './export-session'
  * incremental JSON reader — and it is not what closes the loop. Nothing is silently truncated: past
  * this size the answer is `no`, with the size in it.
  */
-export const MAX_BUNDLE_BYTES = 128 * 1024 * 1024
+const MAX_BUNDLE_BYTES = 128 * 1024 * 1024
 
 /**
  * The `meta` block, checked field by field.

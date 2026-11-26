@@ -98,7 +98,7 @@ export interface VisibleString {
  * lower-cased, because Vue's parser preserves the author's spelling and HTML does not care —
  * `TITLE="…"` draws a tooltip.
  */
-export const MACHINE_ATTRIBUTES: readonly string[] = [
+const MACHINE_ATTRIBUTES: readonly string[] = [
   'aria-controls',
   'aria-describedby',
   'aria-labelledby',

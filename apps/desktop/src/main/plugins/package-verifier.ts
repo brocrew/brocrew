@@ -12,7 +12,7 @@ import { PLUGIN_FRAMEWORK_FEATURES } from './hooks/definitions'
 import { strictPluginJson } from './strict-json'
 import { refusePlugin } from './verification-error'
 
-export interface PluginApiSupport {
+interface PluginApiSupport {
   readonly major: number
   readonly minor: number
   readonly features: readonly string[]

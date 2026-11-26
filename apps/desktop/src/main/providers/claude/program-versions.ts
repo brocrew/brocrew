@@ -19,7 +19,7 @@ import TESTED from './claude-code-tested.json'
  * and the Providers screen says so — as a warning only when it is older ({@link A_STANDING_WARNS}).
  * CI reads the same file to install them.
  */
-export const CLAUDE_CODE_TESTED: { readonly oldest: string; readonly newest: string } = TESTED
+const CLAUDE_CODE_TESTED: { readonly oldest: string; readonly newest: string } = TESTED
 
 /** Bind once without resolving a program; cache only the same file's answers. */
 export function claudeVersionReader(

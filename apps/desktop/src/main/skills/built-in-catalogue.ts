@@ -9,7 +9,7 @@ import { BUILT_IN_SKILL_NAMES } from '../../shared/built-in-skills'
  * build reads the folder a newer commit wrote, so a label it cannot know must not stop a launch.
  * The format is `formatVersion`; this build reads the neutral format and normalizes legacy pairs.
  */
-export const SKILLS_VERSION_LABEL = /^v\d+(?:\.\d+)?$/
+const SKILLS_VERSION_LABEL = /^v\d+(?:\.\d+)?$/
 
 const legacySkill = z.strictObject({
   name: z.enum(BUILT_IN_SKILL_NAMES),

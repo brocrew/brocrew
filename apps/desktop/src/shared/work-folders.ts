@@ -38,7 +38,7 @@ export type ProtectedPlaceNotice =
   | { readonly kind: 'could-not-check' }
 
 /** How this app used a give's folder. */
-export type GivenFolderUse =
+type GivenFolderUse =
   /** The folder a conversation the give started works in. */
   | 'working-folder'
   /** A grant on a conversation that already existed: it may also work there while the piece is open. */

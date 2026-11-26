@@ -35,7 +35,7 @@ export interface TurnAsked {
  */
 
 /** Who wrote a part of the turn. */
-export type AsSentAuthor =
+type AsSentAuthor =
   /** The message as BroBot handed it over: its lines and the words. */
   | 'the-message'
   /** The provider's own addition: a reminder, a context record, a developer message. */

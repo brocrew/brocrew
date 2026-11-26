@@ -48,7 +48,7 @@ export const ASSET_SCHEME = 'brobot-asset'
  * `new URL()` fold the first path segment into the host and quietly change the path. Naming it
  * removes the question.
  */
-export const ASSET_HOST = 'file'
+const ASSET_HOST = 'file'
 
 /**
  * The URL that displays the image at absolute path `path`.

@@ -27,7 +27,7 @@ export interface ConversationControlsSources {
 export const CHANGES_APPLY_NEXT = 'Changes apply from your next message.'
 
 const PLAN_OFF_WORD = 'Plan off'
-export const PLANNING_WORD = 'Planning'
+const PLANNING_WORD = 'Planning'
 
 const NOT_A_SAFETY_GATE =
   'It is not a safety gate — a planning agent still runs commands; approvals are what gate those.'

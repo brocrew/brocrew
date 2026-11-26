@@ -363,7 +363,7 @@ export type InstructionAsk = (typeof INSTRUCTION_ASKS)[number]
  * version while this was waiting*, and it exists so a proposal nobody answered does not sit in
  * front of them describing a world that moved.
  */
-export const INSTRUCTION_ENDINGS = ['approved', 'refused', 'superseded', 'withdrawn'] as const
+const INSTRUCTION_ENDINGS = ['approved', 'refused', 'superseded', 'withdrawn'] as const
 
 /** One of {@link INSTRUCTION_ENDINGS}. */
 export type InstructionEnding = (typeof INSTRUCTION_ENDINGS)[number]
@@ -543,7 +543,7 @@ export interface AgentInstructionsReading {
 }
 
 /** ⛔ **Is this a member of the vocabulary, asked of a value that has crossed the LEDGER?** */
-export function isInstructionEnding(said: unknown): said is InstructionEnding {
+function isInstructionEnding(said: unknown): said is InstructionEnding {
   return typeof said === 'string' && (INSTRUCTION_ENDINGS as readonly string[]).includes(said)
 }
 

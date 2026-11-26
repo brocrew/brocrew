@@ -10,7 +10,7 @@ import type { ChildWorkResult } from '../../../shared/runtime-ipc'
 import { errorFactsForEvent } from '../error-diagnostic'
 import { completeTranscriptLines } from '../complete-transcript-lines'
 /** Bound sidecar reads so an unexpectedly large file cannot stall the window. */
-export const MAX_SIDECAR_BYTES = 64 * 1024
+const MAX_SIDECAR_BYTES = 64 * 1024
 
 export interface ChildWorkLocation {
   path: string

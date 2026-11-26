@@ -8,7 +8,7 @@ export type BrokerValue =
   | readonly BrokerValue[]
   | { readonly [key: string]: BrokerValue }
 export type BrokerInput = Readonly<Record<string, BrokerValue>>
-export interface BrokerBinding {
+interface BrokerBinding {
   readonly pluginId: string
   readonly installId: string
   readonly epoch: string
