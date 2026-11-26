@@ -1,4 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { ResumeError } from '@brobot2/runtime'
+import { FakeRuntime, type FakeSessionHandle } from '@brobot2/runtime/testing'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { agentCallerId } from '../src/main/runtime/conversation-caller'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
@@ -95,7 +97,13 @@ describe('ending notices ride the next input', () => {
   }
 
   /** A conversation of `profile` given a task by `giver`, waiting on a time, idle. */
-  const aTaskFor = async (giver: string, profile: string, title: string, under?: string) => {
+  const aTaskFor = async (
+    giver: string,
+    profile: string,
+    title: string,
+    under?: string,
+    provider?: 'claude' | 'codex',
+  ) => {
     if (!profiles.has(profile)) {
       profiles.add(profile)
       await host.close(await open(profile), world.window)
@@ -108,6 +116,7 @@ describe('ending notices ride the next input', () => {
       brief: `Do ${title}.`,
       definition_of_done: 'A checked result.',
       ...(under === undefined ? {} : { under }),
+      ...(provider === undefined ? {} : { provider }),
     })
     expect(given.outcome, given.said).toBe('ok')
     const holder = given.agent as string
@@ -454,6 +463,259 @@ describe('ending notices ride the next input', () => {
         text: 'Use the second table.',
       })
       expect(waitsOnPurpose(holder, piece)).toBe(true)
+    })
+  })
+
+  /**
+   * Card 584 · when the handback or answer a holder waits on reaches that holder, it is the one
+   * wake-up: no "what it waited on has ended" notice goes with it. The notice stays for a result
+   * that reaches someone else or no one, and for a holder that does not settle its wait after it.
+   */
+  describe('the result a holder waits on wakes it once', () => {
+    const ended = 'what it waited on has ended'
+    const notices = (id: string): number => handed(id).filter((one) => one.includes(ended)).length
+
+    /** A PM on `provider` holding the plan, waiting on the index it gave a worker, both idle. */
+    const aPmWaitingOnItsWorker = async (provider?: 'claude' | 'codex') => {
+      const boss = await open('boss')
+      const pmTask = await aTaskFor(boss, 'pm', 'the plan', undefined, provider)
+      const target = await aTaskFor(pmTask.holder, 'worker', 'the index', pmTask.label)
+      await waitsOn(pmTask.holder, pmTask.label, { agent: target.label })
+      return { boss, pm: pmTask.holder, plan: pmTask.label, target }
+    }
+
+    /** The holder settles its wait, as an agent does: it now waits on a time, not on the result. */
+    const settleOnATime = async (pm: string, plan: string): Promise<void> => {
+      const status = 'Settled on the result; checking again later.'
+      const set = await call(pm, 'update_work', { piece: plan, status, on: { time: later() } })
+      expect(set.outcome, set.said).toBe('ok')
+      const line = world.store.piecesOwnedBy(pm).find((one) => one.label === plan)?.statusLine
+      expect(line).toMatchObject({ text: status, waiting: true, on: { kind: 'time' } })
+    }
+
+    /**
+     * A PM on `provider` holding the plan, waiting on a question it asked a helper the boss gave work
+     * to. ⚑ No child of its own: an open one is a wait of its own, and no reminder is owed.
+     */
+    const aPmWaitingOnItsQuestion = async (provider?: 'claude' | 'codex') => {
+      const boss = await open('boss')
+      const pmTask = await aTaskFor(boss, 'pm', 'the plan', undefined, provider)
+      const { holder: pm, label: plan } = pmTask
+      const other = await aTaskFor(boss, 'helper', 'the other')
+      const asked = await call(pm, 'ask_question', {
+        who_answers: 'an-agent',
+        agent: other.label,
+        piece: plan,
+        question: 'Which table holds the index?',
+      })
+      expect(asked.outcome, asked.said).toBe('ok')
+      const question = asked.question as string
+      await waitsOn(pm, plan, { agent: question })
+      const answer = () =>
+        call(other.holder, 'answer_question', {
+          question,
+          answers: [{ part: 'answer', answer: ['The second table.'] }],
+          interrupt: false,
+        })
+      return { pm, plan, answer }
+    }
+
+    const handBack = async (holder: string, label: string): Promise<void> => {
+      const replied = await call(holder, 'reply_to_parent', {
+        piece: label,
+        outcome: 'done',
+        summary: 'The index is built.',
+      })
+      expect(replied.outcome, replied.said).toBe('ok')
+    }
+
+    it.each(['claude', 'codex'] as const)(
+      'a child handback to an idle %s holder is the one wake-up',
+      async (provider) => {
+        const { pm, plan, target } = await aPmWaitingOnItsWorker(provider)
+        const before = handed(pm).length
+        const card = cards(pm).length + 1
+        await handBack(target.holder, target.label)
+        await waitFor(() => handed(pm).length === before + 1, 'the holder woken')
+        await settle()
+        expect(notices(pm)).toBe(0)
+        expect(handed(pm)[before], handed(pm)[before]).toContain('The index is built.')
+        await settleOnATime(pm, plan)
+        await endTheTurn(pm, card)
+        await settle()
+        expect(handed(pm)).toHaveLength(before + 1)
+        expect(notices(pm)).toBe(0)
+      },
+    )
+
+    it.each(['claude', 'codex'] as const)(
+      'an answer to a question an idle %s holder waits on is the one wake-up',
+      async (provider) => {
+        const { pm, plan, answer } = await aPmWaitingOnItsQuestion(provider)
+        const before = handed(pm).length
+        const card = cards(pm).length + 1
+        const answered = await answer()
+        expect(answered.outcome, answered.said).toBe('ok')
+        await waitFor(() => handed(pm).length === before + 1, 'the holder woken')
+        await settle()
+        expect(notices(pm)).toBe(0)
+        expect(handed(pm)[before], handed(pm)[before]).toContain('The second table.')
+        await settleOnATime(pm, plan)
+        await endTheTurn(pm, card)
+        await settle()
+        expect(handed(pm)).toHaveLength(before + 1)
+        expect(notices(pm)).toBe(0)
+      },
+    )
+
+    it('a holder that does not settle its wait after the result is reminded once, after it, and its giver after that', async () => {
+      const { boss, pm, plan, target } = await aPmWaitingOnItsWorker()
+      const before = handed(pm).length
+      const card = cards(pm).length + 1
+      await handBack(target.holder, target.label)
+      await waitFor(() => handed(pm).length === before + 1, 'the holder woken')
+      expect(handed(pm)[before]).toContain('The index is built.')
+      await host.respondPermission(pm, cards(pm)[card - 1]!.id, { outcome: 'allow' }, world.window)
+      await waitFor(() => handed(pm).length === before + 2, 'the reminder after the result')
+      expect(handed(pm)[before + 1]).toContain(`${plan} needs attention: ${ended}`)
+      expect(notices(pm)).toBe(1)
+      const bossTurns = handed(boss).length
+      await waitFor(() => cards(pm).length === card + 1, 'the reminded turn parked')
+      await host.respondPermission(pm, cards(pm)[card]!.id, { outcome: 'allow' }, world.window)
+      await waitFor(() => handed(boss).length > bossTurns, 'the giver told')
+      expect(handed(boss).at(-1)).toContain(`${plan} still needs attention`)
+      expect(notices(pm)).toBe(1)
+    })
+
+    it('a holder busy with a turn gets the handback when that turn ends, and no notice', async () => {
+      const { pm, plan, target } = await aPmWaitingOnItsWorker()
+      await host.send(pm, 'Keep this turn open.', world.window)
+      await waitFor(() => cards(pm).length === 2, 'the holder busy')
+      const before = handed(pm).length
+      await handBack(target.holder, target.label)
+      await settle()
+      expect(handed(pm)).toHaveLength(before)
+      await host.respondPermission(pm, cards(pm)[1]!.id, { outcome: 'allow' }, world.window)
+      await waitFor(() => handed(pm).length === before + 1, 'the held handback')
+      expect(handed(pm)[before]).toContain('The index is built.')
+      await settleOnATime(pm, plan)
+      await endTheTurn(pm, 3)
+      await settle()
+      expect(notices(pm)).toBe(0)
+    })
+
+    it('a handback that goes to another conversation leaves the waiting holder its notice', async () => {
+      // ⚑ A PM with no open child of its own: an open one is a wait of its own, and no notice comes.
+      const boss = await open('boss')
+      const { holder: pm, label: plan } = await aTaskFor(boss, 'pm', 'the plan')
+      const other = await aTaskFor(boss, 'helper', 'the other')
+      await waitsOn(pm, plan, { agent: other.label })
+      await handBack(other.holder, other.label)
+      await waitFor(() => notices(pm) === 1, 'the waiting holder told')
+      expect(handed(pm).some((one) => one.includes('The index is built.'))).toBe(false)
+      expect(handed(boss).some((one) => one.includes('The index is built.'))).toBe(true)
+    })
+
+    /** `pm` stopped, and its next start fails once. */
+    const stoppedAndItsNextStartFails = async (pm: string) => {
+      await host.close(pm, world.window)
+      const ref = world.store.find(pm)?.ref
+      if (ref === undefined) throw new Error('the holder has no provider ref')
+      return vi
+        .spyOn(FakeRuntime.prototype, 'resume')
+        .mockRejectedValueOnce(new ResumeError(ref, 'resume failed: the handshake died'))
+    }
+
+    it('a handback only kept because its holder could not be started leaves it the notice that wakes it', async () => {
+      const { pm, target } = await aPmWaitingOnItsWorker()
+      const resume = await stoppedAndItsNextStartFails(pm)
+      try {
+        const replied = await call(target.holder, 'reply_to_parent', {
+          piece: target.label,
+          outcome: 'done',
+          summary: 'The index is built.',
+        })
+        expect(replied.outcome, replied.said).toBe('ok')
+        expect(replied.delivered).toBe('kept')
+        await waitFor(() => notices(pm) === 1, 'the reminder that starts the holder')
+        await waitFor(
+          () => handed(pm).some((one) => one.includes('The index is built.')),
+          'the kept handback delivered at that start',
+        )
+        expect(notices(pm)).toBe(1)
+      } finally {
+        resume.mockRestore()
+      }
+    })
+
+    it('a handback kept for a start, read by the next launch, still wakes its holder', async () => {
+      const { pm, target } = await aPmWaitingOnItsWorker()
+      const resume = await stoppedAndItsNextStartFails(pm)
+      // ⚑ This launch quits before any reminder pass reads the kept handback.
+      Object.defineProperty(host, 'reconcileWork', { value: () => undefined, configurable: true })
+      try {
+        const replied = await call(target.holder, 'reply_to_parent', {
+          piece: target.label,
+          outcome: 'done',
+          summary: 'The index is built.',
+        })
+        expect(replied.delivered).toBe('kept')
+      } finally {
+        resume.mockRestore()
+      }
+      await host.closeAll()
+      host = world.buildHost(false, { startGapMs: 0 })
+      await waitFor(() => notices(pm) === 1, 'the next launch to wake the holder')
+      await waitFor(
+        () => handed(pm).some((one) => one.includes('The index is built.')),
+        'the kept handback delivered at that start',
+      )
+    })
+
+    it('an answer only kept because its asker could not be started leaves it the notice that wakes it', async () => {
+      const { pm, answer } = await aPmWaitingOnItsQuestion()
+      const resume = await stoppedAndItsNextStartFails(pm)
+      try {
+        const answered = await answer()
+        expect(answered.outcome, answered.said).toBe('ok')
+        expect(answered.kept, answered.said).toBeDefined()
+        await waitFor(() => notices(pm) === 1, 'the reminder that starts the asker')
+        await waitFor(
+          () => handed(pm).some((one) => one.includes('The second table.')),
+          'the kept answer delivered at that start',
+        )
+        expect(notices(pm)).toBe(1)
+      } finally {
+        resume.mockRestore()
+      }
+    })
+
+    it.each([
+      {
+        what: 'a background task',
+        id: 'fake_task',
+        starts: (handle: FakeSessionHandle) => handle.simulateBackgroundWork(),
+        ends: (handle: FakeSessionHandle) => handle.simulateBackgroundWork({ running: [] }),
+      },
+      {
+        what: 'a scheduled job',
+        id: 'fake_cron',
+        starts: (handle: FakeSessionHandle) => handle.simulateScheduledWork(),
+        ends: (handle: FakeSessionHandle) => handle.simulateScheduledWork({ jobs: [] }),
+      },
+    ])('$what a holder waits on that ends without a word leaves it the notice', async (event) => {
+      const boss = await open('boss')
+      const { holder: pm, label: plan, handle } = await aTaskFor(boss, 'pm', 'the plan')
+      event.starts(handle)
+      await settle()
+      await waitsOn(pm, plan, { event: event.id })
+      event.ends(handle)
+      await settle()
+      ;(host as unknown as { reconcileWork(holders: Set<string>): void }).reconcileWork(
+        new Set([pm]),
+      )
+      const gone = `${plan} needs attention: what it waited on is no longer available`
+      await waitFor(() => handed(pm).some((one) => one.includes(gone)), 'the holder told')
     })
   })
 
