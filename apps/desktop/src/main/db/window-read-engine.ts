@@ -186,6 +186,7 @@ export class WindowReadEngine {
         if (listingOnly)
           return {
             kind: 'listing',
+            startedHereCounts: store.startedHereCounts(),
             routes,
             work: readWindowWork(cancellable, store, true),
           }

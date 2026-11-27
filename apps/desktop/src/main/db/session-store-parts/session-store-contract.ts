@@ -542,9 +542,11 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
     conversation: string,
     unread?: RowsUnread,
     folded?: readonly PieceRow[],
+    includeNamingStatus?: boolean,
   ): {
     readonly named: WorkThatNamesIt | null
     readonly waitingOnPurpose: PieceRow | null
+    readonly namingTaskStatus?: string
   }
   workThatNamesUnder(
     conversation: string,
@@ -637,6 +639,7 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
   piecesGivenBy(sessionId: string, unread?: RowsUnread): readonly PieceRow[]
   workGivenOutBy(sessionId: string): LedgerWalk<WorkGivenOut>
   spawnedBy(sessionId: string): LedgerWalk<SpawnedConversation>
+  startedHereCounts(): readonly (readonly [conversation: string, count: number])[]
   /** A conversation and every conversation below it (`conversation-tree.ts`): itself first. */
   conversationTree(root: string): string[]
   /** What ties a tree's conversations to conversations outside it (`conversation-tree.ts`). */

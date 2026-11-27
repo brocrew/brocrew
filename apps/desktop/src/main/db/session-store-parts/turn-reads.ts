@@ -33,7 +33,7 @@ import type {
   ExchangeRow,
   GenerationRow,
   OpenTurnRow,
-  PieceForAName,
+  PieceNamingStatus,
   RaisedQuestionRow,
   TurnEndReason,
 } from './session-store-rows'
@@ -493,7 +493,7 @@ export function createTurnReadsPart(deps: TurnReadsPartDeps) {
     {
       readonly generation: number
       readonly through: number | null
-      readonly pieces: readonly PieceForAName[]
+      readonly pieces: readonly PieceNamingStatus[]
       readonly waiting: PieceRow | null
     }
   >()

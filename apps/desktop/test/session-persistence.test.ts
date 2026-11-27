@@ -504,6 +504,9 @@ describe('session persistence', () => {
         // `store.create` wrote the root a person gave it in the same transaction — the first root,
         // and its title is `null` until its owner names it.
         named: { label: 'W1', title: null, definitionOfDone: null },
+        // A known zero, not an unavailable count: the row is stored and started no conversation.
+        // No status line was set on its root, so `namingTaskStatus` stays absent.
+        startedHereCount: 0,
         profileId: 'default',
         // We ran this one ourselves, so it is not adopted from anywhere.
         adoptedAt: null,

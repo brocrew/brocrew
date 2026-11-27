@@ -1,3 +1,4 @@
+import type { ConversationCardFacts } from '../../../shared/conversation-listing-contracts'
 import type { AgentState } from '../../../shared/agent-state-contracts'
 import type { WorkEdge } from '../../../shared/who-called-whom'
 import { TASK_IS_OPEN } from '../../../shared/tasks'
@@ -34,7 +35,7 @@ import { waitOnSays } from './work-waits'
  */
 
 /** One conversation the host lists, as the rail and the palette draw it. */
-export interface ListedConversation extends ProviderBlockFacts {
+export interface ListedConversation extends ProviderBlockFacts, ConversationCardFacts {
   readonly worker?: WorkerBindingReading
   /** The piece it holds waiting on purpose, with its status line — the host's. */
   readonly waitingOnPurpose?: PieceWaitingOnPurpose
@@ -105,6 +106,8 @@ export function conversationList(input: ConversationListInput): ListedConversati
       place: basenameOf(row.cwd) || null,
       state: input.said?.get(row.sessionId) ?? row.state,
       named: row.named,
+      ...(row.startedHereCount === undefined ? {} : { startedHereCount: row.startedHereCount }),
+      ...(row.namingTaskStatus === undefined ? {} : { namingTaskStatus: row.namingTaskStatus }),
       inAnotherWindow: row.running === 'in-a-window',
       updatedAt: row.updatedAt,
     })
