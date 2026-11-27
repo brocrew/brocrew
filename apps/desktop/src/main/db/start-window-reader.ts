@@ -3,6 +3,7 @@ import startWorker from '../window-reader.worker?nodeWorker'
 import { debugIsOn, logDebug } from '../logging/log'
 import { WindowReaderLifetime, WindowWorkerReader } from './window-worker-reader'
 import type { WindowStoreReader } from './window-read-protocol'
+import { checkpointMaker } from './window-fold-checkpoint'
 
 export function startWindowReader(file: string): WindowStoreReader {
   return new WindowReaderLifetime(() => {
@@ -10,7 +11,7 @@ export function startWindowReader(file: string): WindowStoreReader {
     const worker = withWorkerMemory('window-reader', () =>
       startWorker({
         env: { ...process.env, BROCREW_WINDOW_READ_TIMING: debug ? '1' : '0' },
-        workerData: { file },
+        workerData: { file, madeBy: checkpointMaker() },
         resourceLimits: { maxOldGenerationSizeMb: 512, maxYoungGenerationSizeMb: 16 },
       }),
     )

@@ -168,6 +168,7 @@ export const NULL_SESSION_STORE: SessionStore = {
   defaultConversationTitle: () => null,
   rootOf: () => null,
   startedByAPerson: () => new Set(),
+  keepWindowFoldCheckpoint: () => false,
   serviceBorn: () => false,
   servicesBorn: () => [],
   workersBorn: () => [],

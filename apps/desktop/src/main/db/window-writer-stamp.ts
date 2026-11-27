@@ -201,7 +201,9 @@ export function windowWriterSampler(
       )
       .all() as { name: string }[]
     for (const { name } of tables) {
-      if (['events', 'derived_generation', 'raw_frame'].includes(name)) continue
+      // The fold checkpoint is the reader's own derived copy: writing it changes no answer.
+      if (['events', 'derived_generation', 'raw_frame', 'window_fold_checkpoint'].includes(name))
+        continue
       const columns = (db.prepare(`PRAGMA table_info(${quote(name)})`).all() as { name: string }[])
         .map((column) => column.name)
         .filter((column) => name !== 'provider_session' || column !== 'updated_at')

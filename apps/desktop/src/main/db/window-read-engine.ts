@@ -3,6 +3,7 @@ import Database from 'better-sqlite3'
 import { randomUUID } from 'node:crypto'
 import type { SnapshotFoldAnswers } from './ledger-fold-state'
 import { windowFoldCache } from './window-fold-cache'
+import { checkpointRowsOf, foldHeads, seedFromCheckpoint } from './window-fold-checkpoint'
 import { readWindowWork, projectWindowPieces, type WindowPieces } from './window-work-reading'
 import { recentActivity } from '../runtime/recent-activity'
 import { createSessionStore, type ThreadLeadRow } from './session-store'
@@ -43,8 +44,14 @@ export class WindowReadEngine {
    * behind a newer lineage keeps them.
    */
   private readonly tokensGiven = new Set<string>()
+  /** The kept folds already in the checkpoint, so each is written once. */
+  private readonly written = new WeakSet<object>()
 
-  constructor(file: string) {
+  /** `madeBy` names this build exactly; without it the checkpoint is neither read nor written. */
+  constructor(
+    file: string,
+    private readonly madeBy?: string,
+  ) {
     this.db = new Database(file, { readonly: true, fileMustExist: true, timeout: 1000 })
     try {
       this.db.pragma('query_only = ON')
@@ -65,12 +72,15 @@ export class WindowReadEngine {
       query.kind === 'listing' ||
       query.kind === 'publication' ||
       query.kind === 'incidents' ||
+      query.kind === 'checkpoint' ||
       // Work and Files read the same piece folds; they use them only when asked to reuse.
       ((query.kind === 'work-given' || query.kind === 'files') && query.reuse !== undefined)
+    let cold = false
     if (keepsFolds) {
       if (query.reuse === undefined || !this.tokensGiven.has(query.reuse.token)) {
         this.answers.clear()
         this.cacheToken = undefined
+        cold = true
       } else
         for (const answers of this.answers.values())
           for (const owner of query.reuse.changed) answers.delete(owner)
@@ -122,6 +132,9 @@ export class WindowReadEngine {
     this.db.exec('BEGIN')
     try {
       this.db.prepare("SELECT rootpage FROM sqlite_schema WHERE name = 'events'").get()
+      // A cold read starts from the checkpoint, each kept fold proven current in this snapshot.
+      if (cold && query.kind !== 'checkpoint' && this.madeBy !== undefined)
+        seedFromCheckpoint(this.db, this.madeBy, foldHeads(this.db), this.answers, this.written)
       // Made for this snapshot alone, so a fold that read every row is not read again.
       const store = createSessionStore(
         cancellable,
@@ -185,7 +198,16 @@ export class WindowReadEngine {
         }
       }
       let result: WindowReadResult
-      if (query.kind === 'listing') {
+      if (query.kind === 'checkpoint') {
+        // Only folds kept under a reuse token are current in this snapshot; a cold read has none.
+        result = {
+          kind: 'checkpoint',
+          rows:
+            cold || this.madeBy === undefined
+              ? []
+              : checkpointRowsOf(this.answers, foldHeads(this.db), this.written),
+        }
+      } else if (query.kind === 'listing') {
         result = readRoutes(true)
       } else if (query.kind === 'forest') {
         result = { kind: 'forest', ...readTheForestFirst(store, query.asked) }

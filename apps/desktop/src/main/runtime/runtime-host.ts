@@ -860,6 +860,12 @@ import {
   type WindowReadQuery,
   type WindowReadResult,
 } from '../db/window-read-protocol'
+import {
+  checkpointMaker,
+  WINDOW_CHECKPOINT_EVERY_MS,
+  WINDOW_CHECKPOINT_FIRST_MS,
+  WINDOW_CHECKPOINT_ROWS_AT_ONCE,
+} from '../db/window-fold-checkpoint'
 // ⚑ **624 · the app's own report, as a subject a turn carries** — see `app-notice.ts`.
 import { NOTICE_MEANS, type AppNotice } from '../../shared/app-notice'
 // ⚑ **582 · the `configured` layer.** ⛔ Type-only but for the vocabulary the doors below spell —
@@ -1843,6 +1849,8 @@ export class RuntimeHost implements LiveHost {
   private workReconciler: WorkReconciler | undefined
   private initialReconciliation: Promise<void> | undefined
   private reconciliationTimer: ReturnType<typeof setInterval> | undefined
+  private windowCheckpointTimer: ReturnType<typeof setTimeout> | undefined
+  private windowCheckpointing = false
   /** When the last start in that line ended, on a clock that is never set. */
   private lastPacedStart = Number.NEGATIVE_INFINITY
   /**
@@ -2753,6 +2761,7 @@ export class RuntimeHost implements LiveHost {
         if (this.launches.closed) return
         this.reconciliationTimer = setInterval(() => this.reconcileWork(), WORK_RECONCILIATION_MS)
         this.reconciliationTimer.unref?.()
+        this.keepTheWindowCheckpointNowAndThen()
         this.initialReconciliation = new Promise<void>((resolve) => setImmediate(resolve))
           .then(() => {
             this.reconcileWork()
@@ -11683,6 +11692,74 @@ export class RuntimeHost implements LiveHost {
       }
     }
     throw new WindowReadMissed('writer-moved')
+  }
+
+  /** The first checkpoint once the first lists are read, then one every so often. */
+  private keepTheWindowCheckpointNowAndThen(after = WINDOW_CHECKPOINT_FIRST_MS): void {
+    this.windowCheckpointTimer = setTimeout(() => {
+      this.keepTheWindowCheckpointNowAndThen(WINDOW_CHECKPOINT_EVERY_MS)
+      void this.keepTheWindowCheckpoint()
+    }, after)
+    this.windowCheckpointTimer.unref?.()
+  }
+
+  /**
+   * Keeps the window reader's folds, so the next start folds only the ledgers that moved since. The
+   * worker gives the folds it kept under the current token; a ledger rewritten while it answered is
+   * left out, and its fold is kept next time. A checkpoint not kept costs one full fold at start.
+   */
+  private async keepTheWindowCheckpoint(): Promise<void> {
+    const reader = this.deps.windowReader
+    const madeBy = checkpointMaker()
+    const kept = this.windowFoldKept
+    const changedSince = this.deps.windowWriterStamp?.changedOwners
+    if (
+      reader === undefined ||
+      madeBy === undefined ||
+      kept === undefined ||
+      changedSince === undefined ||
+      this.windowCheckpointing ||
+      this.launches.closed
+    )
+      return
+    const before = this.sampleWindowWriter({ kind: 'routes' })
+    const changed = before === null ? null : changedSince(kept.stamp, before)
+    if (before === null || changed === null) return
+    this.windowCheckpointing = true
+    try {
+      const result = await reader.read({
+        kind: 'checkpoint',
+        reuse: { token: kept.token, changed: [...changed] },
+      })
+      if (result.kind !== 'checkpoint' || result.rows.length === 0 || this.launches.closed) return
+      for (let at = 0; at < result.rows.length; at += WINDOW_CHECKPOINT_ROWS_AT_ONCE) {
+        if (this.launches.closed) return
+        // A ledger rewritten since the worker's snapshot, up to this very write, is left out.
+        this.deps.store.checkCommitted()
+        const now = this.sampleWindowWriter({ kind: 'routes' })
+        if (now === null) return
+        const moved = changedSince(before, now)
+        if (moved === null) return
+        const overtaken = new Set(moved)
+        // No await between the look and the write: this connection writes nothing in between,
+        // and the store refuses the write if another connection committed since.
+        if (
+          !this.deps.store.keepWindowFoldCheckpoint(
+            madeBy,
+            result.rows
+              .slice(at, at + WINDOW_CHECKPOINT_ROWS_AT_ONCE)
+              .filter((row) => !overtaken.has(row.sessionId)),
+            now.dataVersion,
+          )
+        )
+          return
+        await new Promise((resolve) => setImmediate(resolve))
+      }
+    } catch (error) {
+      console.warn(`runtime host could not keep the window checkpoint: ${errorMessage(error)}`)
+    } finally {
+      this.windowCheckpointing = false
+    }
   }
 
   /**
@@ -33663,6 +33740,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
       this.windowIncidentsKept = undefined
       this.windowFoldKept = undefined
       clearInterval(this.reconciliationTimer)
+      clearTimeout(this.windowCheckpointTimer)
       this.launches.closeAdmission()
       if (this.providerLimitExpiry !== null) clearTimeout(this.providerLimitExpiry)
       this.providerLimitExpiry = null

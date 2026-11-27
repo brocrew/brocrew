@@ -9,11 +9,12 @@ const key = (row: string): string =>
 export const DERIVED_TABLES: ReadonlySet<string> = new Set([
   'question_copy',
   'question_copy_progress',
+  'window_fold_checkpoint',
 ])
 
 /** The persistent tables a write to a table may also change through its triggers. */
 export const TRIGGER_WRITES: ReadonlyMap<string, readonly string[]> = new Map([
-  ['events', ['question_copy']],
+  ['events', ['question_copy', 'window_fold_checkpoint']],
 ])
 
 export const CASCADE_DELETE_WRITES: ReadonlyMap<string, readonly string[]> = new Map([
