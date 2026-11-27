@@ -9,8 +9,8 @@ import {
   endingsBetween,
   readTerminalPage,
   retryDelay,
-  type TerminalTimers,
 } from '../src/codex/background-terminals'
+import type { UnrefTimers } from '../src/internal/stall-watchdog'
 import type { RuntimeEvent } from '../src/events'
 
 /**
@@ -61,7 +61,7 @@ function fakeWire(answers: Record<string, unknown[]>) {
  * ⚠️ `delays` records the ms each arming asked for — 287 finding 3 added a SECOND interval to this
  * file (the backoff after a failed read), and a counter alone cannot tell the two apart.
  */
-function fakeTimers(): TerminalTimers & { fire(): void; armed(): number; delays: number[] } {
+function fakeTimers(): UnrefTimers & { fire(): void; armed(): number; delays: number[] } {
   let pending: (() => void) | null = null
   let armedCount = 0
   const delays: number[] = []

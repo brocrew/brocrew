@@ -4,14 +4,14 @@ import {
   isReasoning,
   StallWatchdog,
   stallNotice,
-  type WatchdogTimers,
+  type UnrefTimers,
 } from '../src/internal/stall-watchdog'
 
 /** A hand-driven clock: the watchdog is about time, so tests must control it, not sleep through it. */
 function fakeTimers() {
   let seq = 0
   const pending = new Map<number, () => void>()
-  const timers: WatchdogTimers = {
+  const timers: UnrefTimers = {
     setTimeout: (fn) => {
       const id = ++seq
       pending.set(id, fn)

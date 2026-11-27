@@ -1,14 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import type { RuntimeEvent } from '@brobot2/runtime'
+import type { RuntimeEvent, UnrefTimers } from '@brobot2/runtime'
 // Read-only reach into the runtime's internals: the stall window is not on the
 // package's public surface, and the package is GO-locked, so this import exists
 // purely to prove the host's copy has not drifted from it.
 import { DEFAULT_STALL_TIMEOUT_MS } from '../../../packages/runtime/src/internal/stall-watchdog'
-import {
-  DEFAULT_SILENCE_WINDOW_MS,
-  LivenessTracker,
-  type LivenessTimers,
-} from '../src/main/runtime/liveness'
+import { DEFAULT_SILENCE_WINDOW_MS, LivenessTracker } from '../src/main/runtime/liveness'
 import type { SessionLiveness } from '../src/shared/runtime-ipc'
 
 /**
@@ -21,7 +17,7 @@ import type { SessionLiveness } from '../src/shared/runtime-ipc'
 function harness(windowMs = 1000) {
   let clock = 1_000_000
   let pending: { fn: () => void; at: number } | null = null
-  const timers: LivenessTimers = {
+  const timers: UnrefTimers = {
     setTimeout: (fn, ms) => {
       pending = { fn, at: clock + ms }
       return pending
