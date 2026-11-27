@@ -1,10 +1,11 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { deferred } from './helpers/quit-open-list-cases'
 import { forestOf } from './lib/forest-of-host'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { claudeProjectDirName } from '@brobot2/runtime/claude'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
-import { F093World, waitFor } from './lib/f093-host'
+import { CapturingRuntime, F093World, waitFor } from './lib/f093-host'
 
 /**
  * Archiving and deleting a conversation, read off the real host and store.
@@ -213,6 +214,45 @@ describe('deleting a conversation', () => {
     expect(existsSync(files.transcript)).toBe(false)
     expect(existsSync(files.note)).toBe(true)
     expect(readFileSync(files.other, 'utf8')).toContain('someone-else')
+  })
+
+  it('keeps the records when a provider start outlasts the shutdown bound during delete', async () => {
+    host = world.buildHost(false, { closeDrainTimeoutMs: 10 })
+    const root = await world.open(host, 'claude', 'pm')
+    await host.close(root, world.window)
+    const files = itsFiles(world.store.recordedOne(root)!.providerSessionId!)
+    const entered = deferred()
+    const release = deferred()
+    const delayed = vi
+      .spyOn(CapturingRuntime.prototype, 'resume')
+      .mockImplementationOnce(async () => {
+        entered.resolve()
+        await release.promise
+        throw new Error('the held launch ended')
+      })
+    const sent = host.startAndSend(root, 'still waiting', world.window)
+    try {
+      await entered.promise
+      const deleting = host.deleteConversation(root, ['records', `files:${root}`])
+      let closed = false
+      const closing = host.closeAll().then(() => {
+        closed = true
+      })
+      await waitFor(() => closed, 'shutdown while the provider still owns its launch')
+      await closing
+      expect(await deleting).toMatchObject({
+        done: false,
+        refusal: expect.stringContaining('nothing was deleted'),
+      })
+      expect(world.store.recordedOne(root)).not.toBeNull()
+      expect(existsSync(files.transcript)).toBe(true)
+    } finally {
+      release.resolve()
+      await sent
+      delayed.mockRestore()
+    }
+    expect(world.store.recordedOne(root)).not.toBeNull()
+    expect(existsSync(files.transcript)).toBe(true)
   })
 
   it('keeps its provider transcript when the person deletes only the records', async () => {

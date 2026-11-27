@@ -16,10 +16,12 @@ import {
   MAX_SCHEDULE_HISTORY_WALKED,
   type SessionStore,
 } from '../src/main/db/session-store'
+import type { createScheduleAttemptsOwner } from '../src/main/runtime/schedule-attempts-owner'
 import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
 import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import { scheduleAttemptsIn } from '../src/main/schedule-attempts-file'
+import { scheduleAttemptsIn, type KeptAttempts } from '../src/main/schedule-attempts-file'
+import { deferred } from './helpers/quit-open-list-cases'
 import { RecordingSink, neutralHostDeps } from './lib/host-fixture'
 
 /**
@@ -120,6 +122,7 @@ interface Stops {
   beforeTheWordsAreTaken?: Held
   /** What the app does about scheduled jobs cannot be written to its file. */
   attemptsCannotBeKept?: boolean
+  beforeAttemptWrite?: (kept: KeptAttempts) => Promise<void> | undefined
 }
 
 type WordsInARow = TranscriptEvent & {
@@ -224,7 +227,10 @@ describe('scheduled jobs across a crash', () => {
           read: () => scheduleAttemptsIn(db).read(),
           write: (kept) => {
             if (stops.attemptsCannotBeKept === true) throw new Error('the disk is full')
-            scheduleAttemptsIn(db).write(kept)
+            const writing = scheduleAttemptsIn(db)
+            const wait = stops.beforeAttemptWrite?.(kept)
+            if (wait !== undefined) return wait.then(() => writing.write(kept))
+            writing.write(kept)
           },
         },
         startGapMs: GAP,
@@ -656,7 +662,10 @@ describe('scheduled jobs across a crash', () => {
       })
     }
 
-    it('a real write that fails makes no start; once it can be kept, one start', async () => {
+    it.each([
+      { outcome: 'completes', archive: false },
+      { outcome: 'loses to an archive', archive: true },
+    ])('a failed write makes no start, then the held retry $outcome', async ({ archive }) => {
       const a = await aConversationWith((id) => makes(id, ONE_SHOT))
       now.db.exec(`CREATE TRIGGER full BEFORE INSERT ON schedule_attempt
         BEGIN SELECT RAISE(ABORT, 'the disk is full'); END`)
@@ -668,7 +677,51 @@ describe('scheduled jobs across a crash', () => {
       await refused.host.closeAll()
 
       refused.db.exec('DROP TRIGGER full')
-      starts(AFTER_DUE + 60_000)
+      const commit = deferred()
+      let entered = false
+      const waiting = starts(AFTER_DUE + 60_000, {
+        beforeAttemptWrite: (book) => {
+          if (entered || !book.conversations[a]?.attempts.some((one) => one.attempted))
+            return undefined
+          entered = true
+          return commit.promise
+        },
+      })
+      const running = waiting.host as unknown as {
+        scheduleAttemptBook: ReturnType<typeof createScheduleAttemptsOwner>
+        scheduleReservationCompletions: Promise<void>
+      }
+      const owner = running.scheduleAttemptBook
+      let reservationFinished: Promise<void> | undefined
+      const other = 'a different conversation with a reset to keep'
+      const resetAt = AFTER_DUE + 60_001
+      let savingReset: Promise<void> | undefined
+      try {
+        await waitFor(() => entered, 'the reservation write to be held')
+        reservationFinished = running.scheduleReservationCompletions
+        const completed = vi.fn()
+        void reservationFinished.then(completed)
+        await Promise.resolve()
+        expect(completed).not.toHaveBeenCalled()
+        expect(askedFor(waiting, a)).toBe(0)
+        expect(keptAsMade(a)).toBe(false)
+        expect(owner.of(a).attempts.some((one) => one.attempted)).toBe(false)
+        savingReset = owner.markResetUnrecorded(other, resetAt)
+        expect(owner.resetUnmarkedAt(other)).toBe(resetAt)
+        expect(kept(other)).toBeUndefined()
+        if (archive) expect((await waiting.host.archiveConversation(a)).done).toBe(true)
+      } finally {
+        commit.resolve()
+        await savingReset
+      }
+      expect(kept(other)?.resetUnmarkedAt).toBe(resetAt)
+      if (archive) {
+        await reservationFinished
+        expect(askedFor(waiting, a)).toBe(0)
+        expect(keptAsMade(a)).toBe(false)
+        expect(saidWords(a)).toEqual([])
+        return
+      }
       await waitFor(() => saidWords(a).length === 1, 'the words to be said')
       await settle()
       expect(askedFor(now, a)).toBe(1)

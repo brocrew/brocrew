@@ -1057,14 +1057,11 @@ import { clockTimeFrom } from '../../shared/clock'
 import { theZoneReadNow, type LocalZone } from '../../shared/local-time'
 import { type CalendarSource } from '../../shared/schedule-wake'
 import { type ReceiptSchedulePlan } from '../../shared/schedule-receipts'
-import { recordScheduleAdmission } from '../../shared/schedule-wake-admission'
+import type { ToldNotice } from '../schedule-attempts-file'
 import {
-  MAX_ATTEMPTS_A_CONVERSATION,
-  NO_ATTEMPTS_KEPT,
-  type ConversationAttempts,
-  type KeptAttempts,
-  type ToldNotice,
-} from '../schedule-attempts-file'
+  createScheduleAttemptsOwner,
+  type ScheduleStartReservation,
+} from './schedule-attempts-owner'
 import {
   entryWithout,
   kindOf,
@@ -1259,7 +1256,6 @@ import {
   aTurnTheAppCutText,
   theTurnWasCut,
   AT_ONCE_START_GAPS,
-  NOTHING_DONE_FOR_ITS_JOBS,
   type WakeUp,
   sayTheSweep,
 } from './host-split/wakes-and-restarts'
@@ -1687,7 +1683,7 @@ export class RuntimeHost implements LiveHost {
    * and asks a start for, and the one timer that starts it in time ({@link armItsWakeUp}). ⚑ Its
    * level is what {@link stateOf} reads for a conversation this app is not running, and what its
    * next life begins from ({@link register}), whoever starts it. ⛔ One per conversation; it belongs
-   * to this host and dies with it — what it has already done is kept ({@link attemptsKept}).
+   * to this host and dies with it — what it has already done is kept ({@link scheduleAttemptBook}).
    */
   private readonly wakeUps = new Map<string, WakeUp>()
 
@@ -1710,7 +1706,7 @@ export class RuntimeHost implements LiveHost {
    * the notices it handed over — as kept across a restart
    * ({@link RuntimeHostDeps.scheduleAttempts}).
    */
-  private attemptsKept: KeptAttempts = NO_ATTEMPTS_KEPT
+  private readonly scheduleAttemptBook: ReturnType<typeof createScheduleAttemptsOwner>
   /** How each profile runs its work, as read and settled at the start ({@link takeTheProfileExecution}). */
   private keptProfileExecution: ProfileExecutionRead = {
     readable: true,
@@ -1926,11 +1922,13 @@ export class RuntimeHost implements LiveHost {
    * ⚑ For each start this app reserved and has not seen register, what was kept before it
    * ({@link reserveItsStart}).
    */
-  private readonly startsReserved = new Map<string, ConversationAttempts>()
+  private readonly startsReserved = new Map<string, ScheduleStartReservation>()
   /** ⚑ The wake-ups whose time came, waiting their turn in that line ({@link itsTimeCame}). */
   private readonly wakeUpsDue = new Map<string, WakeUp>()
   /** Whether a turn in that line is taken for them ({@link takeATurnInTheLine}). */
   private aWakeUpHoldsATurn = false
+  private scheduleStartsClosed = false
+  private scheduleReservationCompletions = Promise.resolve()
   /**
    * ⚑ **The conversations this app stopped to reopen on the current sign-in, until a start answers**
    * ({@link reopenForWhatWaits}) — kept here, by id, because the start that follows may be any
@@ -2211,14 +2209,25 @@ export class RuntimeHost implements LiveHost {
       liveSessionForHistory: (id) => this.slots.get(id)?.session,
       freshWindowQuery: (query, compose, signal) => this.freshWindowQuery(query, compose, signal),
     })
+    this.scheduleAttemptBook = createScheduleAttemptsOwner(deps.scheduleAttempts)
     this.schedulePlanning = new SchedulePlanning(this.deps, {
       itsCalendar: () => this.itsCalendar(),
       itsEvidence: (conversation) => this.itsEvidence(conversation),
-      itsAttempts: (conversation) => this.itsAttempts(conversation),
-      keepItsAttempts: (conversation, record) => this.keepItsAttempts(conversation, record),
+      itsAttempts: (conversation) => this.scheduleAttemptBook.of(conversation),
+      settleNotices: (conversation, notices, now) =>
+        void this.keepItsAttempts(
+          conversation,
+          this.scheduleAttemptBook.settleNotices(conversation, notices, now),
+        ),
+      forgetJobs: (conversation, named, now) =>
+        void this.keepItsAttempts(
+          conversation,
+          this.scheduleAttemptBook.forgetJobs(conversation, named, now),
+        ),
+      hasKeptAttempts: (conversation) =>
+        this.scheduleAttemptBook.keptFor(conversation) !== undefined,
       hasSlot: (id) => this.slots.has(id),
-      startReservedFor: (id) => this.startsReserved.get(id),
-      keptAttemptsFor: (id) => this.attemptsKept.conversations[id],
+      startReservedFor: (id) => this.startsReserved.get(id)?.before,
     })
     this.giveWorkRunner = new GiveWork({
       store: () => this.deps.store,
@@ -6225,10 +6234,8 @@ export class RuntimeHost implements LiveHost {
 
   /** What was kept of the starts and notices already made, taken as the host starts. */
   private takeTheKeptAttempts(): void {
-    const kept = this.deps.scheduleAttempts
-    if (kept === undefined) return
     try {
-      this.attemptsKept = kept.read()
+      this.scheduleAttemptBook.hydrate()
     } catch (error) {
       console.warn(
         `runtime host could not read what it had done about scheduled jobs: ${errorMessage(error)}`,
@@ -6236,26 +6243,9 @@ export class RuntimeHost implements LiveHost {
     }
   }
 
-  /** What was kept for one conversation's jobs ({@link attemptsKept}), or nothing done. */
-  private itsAttempts(conversation: string): ConversationAttempts {
-    return this.attemptsKept.conversations[conversation] ?? NOTHING_DONE_FOR_ITS_JOBS
-  }
-
-  /** What is kept, with one conversation's record in place of what it held. */
-  private withItsAttempts(conversation: string, record: ConversationAttempts): KeptAttempts {
-    return {
-      conversations: {
-        ...this.attemptsKept.conversations,
-        [conversation]: { ...record, told: record.told.slice(-MAX_ATTEMPTS_A_CONVERSATION) },
-      },
-    }
-  }
-
-  /** One conversation's record of starts made and notices handed over, kept ({@link attemptsKept}). */
-  private keepItsAttempts(conversation: string, record: ConversationAttempts): void {
-    this.attemptsKept = this.withItsAttempts(conversation, record)
+  private async keepItsAttempts(conversation: string, saved: Promise<void>): Promise<void> {
     try {
-      this.deps.scheduleAttempts?.write(this.attemptsKept)
+      await saved
     } catch (error) {
       console.warn(
         `runtime host could not keep what it did about ${conversation}'s jobs: ${errorMessage(error)}`,
@@ -6270,39 +6260,26 @@ export class RuntimeHost implements LiveHost {
    * start is made then. ⚑ What was kept before is held until the start registers
    * ({@link startsReserved}), so a start that fails puts it back ({@link letGoOfItsReservation}).
    */
-  private reserveItsStart(
+  private async reserveItsStart(
     conversation: string,
     planned: PlannedWake,
     now: number,
-    /** What was kept before the start; a start reserved already keeps what it held then. */
-    before: ConversationAttempts = this.startsReserved.get(conversation) ??
-      this.itsAttempts(conversation),
-  ): void {
-    const runs = { ...before.runs }
-    // ⚑ A start made long before a run is not that run's: a life it began may end before it.
-    for (const run of planned.runs) {
-      if (run.startAt > now) continue
-      runs[run.making] = { runAt: run.runAt, startedAt: now, unanswered: run.unanswered }
-    }
-    const record: ConversationAttempts = {
-      ...before,
-      attempts: recordScheduleAdmission(planned.admission, now),
-      admittedAt: now,
-      runs,
-      at: now,
-    }
-    const next = this.withItsAttempts(conversation, record)
-    // ⛔ Written first, and kept in memory only once written.
+    reserved?: ScheduleStartReservation,
+  ): Promise<ScheduleStartReservation | null> {
     try {
-      this.deps.scheduleAttempts?.write(next)
+      return await this.scheduleAttemptBook.reserveStart(
+        conversation,
+        planned.admission,
+        planned.runs,
+        now,
+        reserved,
+      )
     } catch (error) {
       throw new Error(
         `what this start is made for cannot be kept, so it is not made: ${errorMessage(error)}`,
         { cause: error },
       )
     }
-    this.attemptsKept = next
-    this.startsReserved.set(conversation, before)
   }
 
   /**
@@ -6311,14 +6288,14 @@ export class RuntimeHost implements LiveHost {
    * be written, the start stays kept as made, in memory as on disk, and no second one is made for
    * it — the safe side; its jobs then wait for a start from elsewhere. ⛔ It never throws.
    */
-  private letGoOfItsReservation(conversation: string): void {
-    const before = this.startsReserved.get(conversation)
-    if (before === undefined) return
-    this.startsReserved.delete(conversation)
-    const next = this.withItsAttempts(conversation, { ...before, at: this.now() })
+  private async letGoOfItsReservation(
+    conversation: string,
+    reserved = this.startsReserved.get(conversation),
+  ): Promise<void> {
+    if (reserved === undefined) return
+    if (this.startsReserved.get(conversation) === reserved) this.startsReserved.delete(conversation)
     try {
-      this.deps.scheduleAttempts?.write(next)
-      this.attemptsKept = next
+      await this.scheduleAttemptBook.releaseStart(conversation, reserved, this.now())
     } catch (error) {
       console.warn(
         `runtime host could not put back the start it reserved for ${conversation}, so it stays ` +
@@ -6327,14 +6304,33 @@ export class RuntimeHost implements LiveHost {
     }
   }
 
+  private get scheduleStartAdmissionClosed(): boolean {
+    return this.scheduleStartsClosed || this.launches.closed
+  }
+
+  /** Includes decisions made on the write acknowledgement, independent of provider completion. */
+  private keepScheduleReservation<T>(result: Promise<T>): Promise<T> {
+    this.scheduleReservationCompletions = Promise.allSettled([
+      this.scheduleReservationCompletions,
+      result,
+    ]).then(() => undefined)
+    return result
+  }
+
+  private async finishScheduleReservations(): Promise<void> {
+    await this.scheduleReservationCompletions
+    // Registration consumes its reservation. The ones still here never registered a life.
+    await Promise.all(
+      [...this.startsReserved].map(([id, reservation]) =>
+        this.letGoOfItsReservation(id, reservation),
+      ),
+    )
+  }
+
   /** What was kept of the starts made for conversations that are gone goes with them. */
-  private forgetTheirAttempts(conversations: readonly string[]): void {
-    const kept = Object.entries(this.attemptsKept.conversations)
-    const left = kept.filter(([id]) => !conversations.includes(id))
-    if (left.length === kept.length) return
-    this.attemptsKept = { conversations: Object.fromEntries(left) }
+  private async forgetTheirAttempts(conversations: readonly string[]): Promise<void> {
     try {
-      this.deps.scheduleAttempts?.write(this.attemptsKept)
+      await this.scheduleAttemptBook.forgetConversations(conversations)
     } catch (error) {
       console.warn(
         `runtime host could not forget what it did about deleted conversations' jobs: ${errorMessage(error)}`,
@@ -6369,7 +6365,7 @@ export class RuntimeHost implements LiveHost {
     const evidence = new ScheduleEvidence(conversation, () => THE_ONE_CLOCK_ERA)
     const read = this.deps.store.scheduleEvidenceRows(conversation)
     for (const row of read.rows) evidence.add(row)
-    const unmarked = this.attemptsKept.conversations[conversation]?.resetUnmarkedAt
+    const unmarked = this.scheduleAttemptBook.resetUnmarkedAt(conversation)
     if (unmarked !== undefined) evidence.itsProviderWasResetAt(unmarked)
     if (read.cut) {
       evidence.itsHistoryIsCut()
@@ -6665,7 +6661,8 @@ export class RuntimeHost implements LiveHost {
    * wake-up there is nothing to judge, and the answer is yes. ⛔ **It never throws** — a start
    * follows it.
    */
-  private judgeItsWakeUpAgain(conversation: string): boolean {
+  private judgeItsWakeUpAgain(conversation: string): boolean | Promise<boolean> {
+    if (this.scheduleStartAdmissionClosed) return false
     const wakeUp = this.wakeUps.get(conversation)
     if (wakeUp === undefined) return true
     try {
@@ -6694,22 +6691,47 @@ export class RuntimeHost implements LiveHost {
       // ⛔ A start of this app's own is made on this plan, so what this plan asks of it is what is
       // kept as made: the reservation is written again from it, and a write that fails is no
       // start (it throws, and the answer is no).
-      if (asksNow && this.startsReserved.has(conversation)) {
-        this.reserveItsStart(conversation, planned, now)
+      const reserved = this.startsReserved.get(conversation)
+      if (asksNow && reserved !== undefined) {
+        return this.keepScheduleReservation(
+          this.reserveItsStart(conversation, planned, now, reserved).then(
+            async (renewed) => {
+              if (renewed === null) return false
+              if (
+                this.scheduleStartAdmissionClosed ||
+                this.wakeUps.get(conversation) !== wakeUp ||
+                this.startsReserved.get(conversation) !== reserved
+              ) {
+                await this.letGoOfItsReservation(conversation, renewed)
+                return false
+              }
+              this.startsReserved.set(conversation, renewed)
+              return true
+            },
+            (error: unknown) => {
+              this.warnOfWakeRejudgmentFailure(conversation, error)
+              return false
+            },
+          ),
+        )
       }
       return asksNow
     } catch (error) {
-      console.warn(
-        `runtime host could not judge ${conversation}'s wake-up again: ${errorMessage(error)}`,
-      )
+      this.warnOfWakeRejudgmentFailure(conversation, error)
       return false
     }
   }
 
+  private warnOfWakeRejudgmentFailure(conversation: string, error: unknown): void {
+    console.warn(
+      `runtime host could not judge ${conversation}'s wake-up again: ${errorMessage(error)}`,
+    )
+  }
+
   /**
    * 🔴 **A start was made for a stopped conversation's jobs: what it was made for is kept**
-   * ({@link attemptsKept}) — the starts its plan asked for whose time had come
-   * ({@link recordScheduleAdmission}) and the runs of its repeating jobs it was made in time for, so
+   * ({@link scheduleAttemptBook}) — the starts its plan asked for whose time had come
+   * and the runs of its repeating jobs it was made in time for, so
    * none is made again by a later stop or a restart. ⚑ Whoever made the start: a wake-up's own, or
    * a message's that got there first. ⛔ **Not the words it carries**: those are kept as told once
    * they are sent ({@link theWordsAboutItsJobsWereSent}), so a life that dies before taking them
@@ -6721,22 +6743,15 @@ export class RuntimeHost implements LiveHost {
       const reserved = this.startsReserved.delete(conversation)
       if (wakeUp === undefined || reserved) return
       const now = this.now()
-      const before = this.itsAttempts(conversation)
-      const runs = { ...before.runs }
-      // ⚑ A start a person or a message made, with the wake-up still waiting, is that run's start
-      // and no unanswered start of this app's.
-      for (const run of wakeUp?.runs ?? []) {
-        if (run.startAt > now) continue
-        runs[run.making] = { runAt: run.runAt, startedAt: now, unanswered: run.unanswered - 1 }
-      }
-      this.keepItsAttempts(conversation, {
-        ...before,
-        ...(wakeUp === undefined
-          ? {}
-          : { attempts: recordScheduleAdmission(wakeUp.admission, now), admittedAt: now }),
-        runs,
-        at: now,
-      })
+      void this.keepItsAttempts(
+        conversation,
+        this.scheduleAttemptBook.recordExternalStart(
+          conversation,
+          wakeUp.admission,
+          wakeUp.runs,
+          now,
+        ),
+      )
     } catch (error) {
       console.warn(
         `runtime host could not note ${conversation}'s start for its jobs: ${errorMessage(error)}`,
@@ -6751,15 +6766,15 @@ export class RuntimeHost implements LiveHost {
    * launch holds them again. ⚠️ A crash between this send and this write tells them twice, which is
    * the side a word that must not be lost errs on. ⛔ **It never throws** — it runs as a turn begins.
    */
-  private theWordsAboutItsJobsWereSent(conversation: string): void {
+  private async theWordsAboutItsJobsWereSent(conversation: string): Promise<void> {
     try {
       const words = this.wordsHeld.get(conversation) ?? []
       this.wordsHeld.delete(conversation)
       if (words.length === 0) return
-      const before = this.itsAttempts(conversation)
-      const known = new Set(before.told.map((one) => one.id))
-      const told = [...before.told, ...words.filter((one) => !known.has(one.id))]
-      this.keepItsAttempts(conversation, { ...before, told, at: this.now() })
+      return this.keepItsAttempts(
+        conversation,
+        this.scheduleAttemptBook.recordTold(conversation, words, this.now()),
+      )
     } catch (error) {
       console.warn(
         `runtime host could not note that ${conversation} was told of its jobs: ${errorMessage(error)}`,
@@ -6845,7 +6860,7 @@ export class RuntimeHost implements LiveHost {
    */
   private itsTimeCame(conversation: string, wakeUp: WakeUp): void {
     wakeUp.timer = null
-    if (this.launches.closed || this.wakeUps.get(conversation) !== wakeUp) return
+    if (this.scheduleStartAdmissionClosed || this.wakeUps.get(conversation) !== wakeUp) return
     const wait = wakeUp.startAt - this.now()
     if (wait > 0) {
       this.setItsWakeUpTimer(conversation, wakeUp, wait)
@@ -6892,7 +6907,7 @@ export class RuntimeHost implements LiveHost {
         if (next === undefined) return
         const [conversation, wakeUp] = next
         this.wakeUpsDue.delete(conversation)
-        if (this.launches.closed || this.wakeUps.get(conversation) !== wakeUp) return
+        if (this.scheduleStartAdmissionClosed || this.wakeUps.get(conversation) !== wakeUp) return
         await this.wakeItUp(conversation, wakeUp)
         this.lastPacedStart = performance.now()
       })
@@ -6933,7 +6948,7 @@ export class RuntimeHost implements LiveHost {
    * nothing, and neither does any once a quit has begun.
    */
   private async wakeItUp(conversation: string, wakeUp: WakeUp): Promise<void> {
-    if (this.launches.closed || this.wakeUps.get(conversation) !== wakeUp) return
+    if (this.scheduleStartAdmissionClosed || this.wakeUps.get(conversation) !== wakeUp) return
     try {
       if (this.slots.has(conversation) || this.startsInFlight.has(conversation)) {
         this.setItsWakeUpTimer(conversation, wakeUp, WAKE_CHECK_MS)
@@ -6962,7 +6977,7 @@ export class RuntimeHost implements LiveHost {
       }
       // ⚠️ The launch registry refuses the id until its last life's provider has gone.
       await settledWithin(wakeUp.lastLifeEnded, this.closeDrainTimeoutMs)
-      if (this.launches.closed || this.wakeUps.get(conversation) !== wakeUp) return
+      if (this.scheduleStartAdmissionClosed || this.wakeUps.get(conversation) !== wakeUp) return
       if (this.slots.has(conversation) || this.startsInFlight.has(conversation)) {
         this.setItsWakeUpTimer(conversation, wakeUp, WAKE_CHECK_MS)
         return
@@ -6985,17 +7000,46 @@ export class RuntimeHost implements LiveHost {
       }
       wakeUp.admission = planned.admission
       wakeUp.runs = planned.runs
-      // ⛔ Kept as made before it is made: unkept, the next launch would make it again.
-      this.reserveItsStart(conversation, planned, now)
-      console.info(`runtime host: starting ${conversation} for its scheduled jobs`)
-      this.wakingForItsJobs.add(conversation)
       try {
-        await this.ensureRunning(conversation, null)
+        const start = await this.keepScheduleReservation(
+          this.reserveItsStart(conversation, planned, now).then(async (acquired) => {
+            if (acquired === null) return
+            let stillOwed: boolean
+            try {
+              stillOwed =
+                !this.scheduleStartAdmissionClosed &&
+                this.wakeUps.get(conversation) === wakeUp &&
+                !this.keptStopped(conversation) &&
+                this.startable(conversation) !== null &&
+                !this.startsInFlight.has(conversation)
+            } catch (error) {
+              await this.letGoOfItsReservation(conversation, acquired)
+              throw error
+            }
+            if (!stillOwed) {
+              await this.letGoOfItsReservation(conversation, acquired)
+              if (
+                !this.scheduleStartAdmissionClosed &&
+                this.wakeUps.get(conversation) === wakeUp &&
+                !this.keptStopped(conversation)
+              )
+                this.setItsWakeUpTimer(conversation, wakeUp, WAKE_CHECK_MS)
+              return
+            }
+            this.startsReserved.set(conversation, acquired)
+            console.info(`runtime host: starting ${conversation} for its scheduled jobs`)
+            this.wakingForItsJobs.add(conversation)
+            // Pass the provider promise out without making it part of the reservation completion.
+            return { running: this.ensureRunning(conversation, null) }
+          }),
+        )
+        if (start !== undefined) await start.running
       } finally {
         this.wakingForItsJobs.delete(conversation)
       }
     } catch (error) {
-      this.letGoOfItsReservation(conversation)
+      if (!this.scheduleStartAdmissionClosed)
+        await this.keepScheduleReservation(this.letGoOfItsReservation(conversation))
       this.itsStartFailed(conversation, wakeUp, error)
     }
   }
@@ -7017,7 +7061,7 @@ export class RuntimeHost implements LiveHost {
    * ⛔ A wake-up a later arm or a start replaced, and any once a quit has begun, is only warned about.
    */
   private itsStartFailed(conversation: string, wakeUp: WakeUp, error: unknown): void {
-    if (this.launches.closed || this.wakeUps.get(conversation) !== wakeUp) {
+    if (this.scheduleStartAdmissionClosed || this.wakeUps.get(conversation) !== wakeUp) {
       console.warn(
         `runtime host could not start ${conversation} for its scheduled jobs: ${errorMessage(error)}`,
       )
@@ -24049,6 +24093,8 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
             ],
       ),
     )
+    // ⚑ The save of this app's words about its jobs, once `finish` has told them as sent.
+    const jobWords: { saved?: Promise<void> } = {}
     const finish = (committedEndings?: readonly RuntimeEventMessage[] | null): void => {
       if (askAttempt !== undefined) session.handingOver = []
       // The mailbox is updated before each disclosure, so a sent item can no longer be cancelled.
@@ -24066,7 +24112,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
           ({ queued }) => queued.authorship.appNotice === 'a-scheduled-job-that-will-not-run',
         )
       ) {
-        this.theWordsAboutItsJobsWereSent(session.id)
+        jobWords.saved = this.theWordsAboutItsJobsWereSent(session.id)
       }
       for (const { queued } of went) {
         if (queued.authorship.appNotice === 'a-turn-the-app-cut') {
@@ -24093,6 +24139,13 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
           }
     if (askReceipt === undefined) finish()
     else session.handingOver = went.map(({ queued }) => queued)
+    // ⚑ After its `user_turn`: the input is noted, and this app's words about its jobs are saved.
+    // ⛔ With no save, it answers at once: a flush that settled a tick later would miss a turn
+    // that ended meanwhile, and what waits behind it would wait for nothing.
+    const recorded = (): false | Promise<false> => {
+      if (askReceipt === undefined) handover.noteInputRecorded?.()
+      return jobWords.saved === undefined ? false : jobWords.saved.then(() => false)
+    }
     // ⚠️ **`user_turn` LAST, and only now.** This is the event 045 opens a turn row from, so it is
     // written at the moment the provider actually has the messages — never when they were queued.
     // 🔴 **D-027 · ONE for the turn, however many messages it delivered** — with each message as a
@@ -24129,8 +24182,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
         personalHandover,
         askReceipt,
       )
-      if (askReceipt === undefined) handover.noteInputRecorded?.()
-      return false
+      return recorded()
     }
     const { queued, words, handed } = alone
     this.publishOurs(
@@ -24175,8 +24227,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
       personalHandover,
       askReceipt,
     )
-    if (askReceipt === undefined) handover.noteInputRecorded?.()
-    return false
+    return recorded()
   }
 
   /**
@@ -28479,7 +28530,26 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
    * ({@link QuestionRecipientEndedEvent}); a conversation whose records stay carries on as after
    * any stop.
    */
-  async deleteConversation(sessionId: string, ticked: readonly string[]): Promise<DeleteOutcome> {
+  deleteConversation(sessionId: string, ticked: readonly string[]): Promise<DeleteOutcome> {
+    if (!ticked.includes('records')) return this.deleteSelectedParts(sessionId, ticked)
+    let stopWaiting!: () => void
+    const quitReachedProviderBound = new Promise<void>((resolve) => {
+      stopWaiting = resolve
+    })
+    const deletion = this.deleteSelectedParts(sessionId, ticked, quitReachedProviderBound)
+    this.recordDeletions.set(deletion, stopWaiting)
+    const settled = () => this.recordDeletions.delete(deletion)
+    void deletion.then(settled, settled)
+    return deletion
+  }
+
+  private readonly recordDeletions = new Map<Promise<DeleteOutcome>, () => void>()
+
+  private async deleteSelectedParts(
+    sessionId: string,
+    ticked: readonly string[],
+    quitReachedProviderBound?: Promise<void>,
+  ): Promise<DeleteOutcome> {
     if (this.startupRepairs.size > 0) {
       for (const owner of this.deps.store.conversationTree(sessionId)) {
         await this.settleBeforeUse(owner)
@@ -28527,11 +28597,16 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
     let normalPoolsMarked = false
     try {
       await this.stopTheTree(stopping)
-      // A start that began during the stop is refused; it is let finish before anything is asked.
-      await Promise.allSettled(
-        stopping.flatMap((conversation) => this.startsInFlight.get(conversation) ?? []),
+      // Once quit has finished its bounded provider wait, a still-starting conversation keeps its records.
+      const starts = stopping.flatMap((conversation) => this.startsInFlight.get(conversation) ?? [])
+      const settled = Promise.allSettled(starts)
+      const reachedBound =
+        (await (starts.length && quitReachedProviderBound
+          ? Promise.race([settled, quitReachedProviderBound])
+          : settled)) === undefined
+      const running = stopping.find(
+        (id) => this.slots.has(id) || (reachedBound && this.startsInFlight.has(id)),
       )
-      const running = stopping.find((conversation) => this.slots.has(conversation))
       if (running !== undefined) {
         return {
           done: false,
@@ -28614,7 +28689,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
       if (service !== null) this.theServiceConversationIs(service, sessionId, 'gone')
       if (normalPoolsMarked) this.takeTheProfileExecution()
       // Forgotten at once, so a start planned for one of them finds nothing in the awaits below.
-      this.forgetTheConversations(tree)
+      const attemptsForgotten = this.forgetTheConversations(tree)
       removed.push('records')
       this.endTheQuestions(sessionId, questions)
       const root = this.deps.resourcesRoot?.() ?? null
@@ -28632,6 +28707,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
           `runtime host could not take deleted conversations out of the archive: ${errorMessage(error)}`,
         )
       }
+      await attemptsForgotten
       return { done: true, removed, left, recordsKept: null }
     } finally {
       this.linkAnswers.invalidate()
@@ -28681,7 +28757,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
    * and waiting its turn finds its plan gone, and does nothing ({@link wakeForStoppedWork},
    * {@link doReopenOnARenewedSignIn}, {@link startToSendWhatItHeld}, {@link wakeItUp}).
    */
-  private forgetTheConversations(ids: readonly string[]): void {
+  private forgetTheConversations(ids: readonly string[]): Promise<void> {
     const gone = new Set(ids)
     const keptByConversation: readonly { delete(id: string): boolean }[] = [
       this.statesToAsk,
@@ -28724,7 +28800,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
       // The windows that had it open.
       this.lookingAtItsRecord,
     ]
-    this.forgetTheirAttempts(ids)
+    const attemptsForgotten = this.forgetTheirAttempts(ids)
     this.forgetTheirCuts(gone)
     this.invalidateProviderLimitFacts()
     for (const id of ids) {
@@ -28742,6 +28818,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
     for (const askers of this.routedTo?.values() ?? []) for (const id of ids) askers.delete(id)
     for (const session of this.signInStops)
       if (gone.has(session.id)) this.signInStops.delete(session)
+    return attemptsForgotten
   }
 
   /**
@@ -31656,11 +31733,8 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
       if (waiting !== null) {
         this.refusalsTranslated(() => this.assertSurfaceIsStillThere(waiting, sessionId))
       }
-      // ⚠️ **After the wait, before the reservation, and synchronously** (100). After, because a
-      // session still tearing down is not one to hand back and 075's wait is what decides that;
-      // before, because {@link reserve} is the thing that refuses and there is now a case that must
-      // not be refused. Nothing is awaited between this line and `reserve`, so the slot cannot change
-      // between being inspected and being taken.
+      // ⚠️ After teardown and before reserving. An automatic start may renew an attempt
+      // reservation below. It checks the surface and slot again after that acknowledgement.
       //
       // ⚑ **652 · only a surface can re-attach.** Attaching hands a session back to the surface that
       // already OWNS it and lost sight of it; a caller with no surface owns nothing, so a conversation
@@ -31688,9 +31762,28 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
         )
       }
       if (restoreArchive) broughtBack = this.bringBackFromTheArchive(sessionId)
-      // ⚑ **D-029** — what this start brings back, judged as it begins, whichever door starts it
-      // ({@link judgeItsWakeUpAgain}). ⚑ Synchronous, like everything down to {@link reserve}.
-      if (!this.judgeItsWakeUpAgain(sessionId) && this.wakingForItsJobs.has(sessionId)) {
+      // This stays synchronous for a start with no reservation to renew.
+      const wake = this.wakeUps.get(sessionId)
+      const start = this.startsInFlight.get(sessionId)
+      const slotBefore = this.slots.get(sessionId)
+      const wasArchived = this.archived.has(sessionId)
+      const judgment = this.judgeItsWakeUpAgain(sessionId)
+      let stillOwed = judgment === true
+      let wakeChanged = false
+      if (typeof judgment !== 'boolean') {
+        stillOwed = await judgment
+        if (waiting !== null)
+          this.refusalsTranslated(() => this.assertSurfaceIsStillThere(waiting, sessionId))
+        wakeChanged =
+          this.launches.closed ||
+          this.wakeUps.get(sessionId) !== wake ||
+          this.startsInFlight.get(sessionId) !== start ||
+          this.slots.get(sessionId) !== slotBefore ||
+          this.settingAside.has(sessionId) ||
+          this.archived.has(sessionId) !== wasArchived ||
+          this.replacedBy.has(sessionId)
+      }
+      if (wakeChanged || (!stillOwed && this.wakingForItsJobs.has(sessionId))) {
         // ⛔ A start this app makes by itself is made only on a plan made now that asks for it; a
         // person's start, or a message's, goes on whatever this app can plan.
         throw new Error(
@@ -31736,7 +31829,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
       //
       // ⛔ **Read here rather than in `reopenSession`**, which runs after the reservation: the two
       // fields below are birth facts of the slot and there is no line that could write them later.
-      // ⚑ Synchronous, like everything between {@link attachHeldSession} and {@link reserve}.
+      // Read after any attempt-save acknowledgement and immediately before reserving.
       const parent = this.deps.store.parentOf(sessionId)
       // ⚑ **716 · translated as a REOPEN** ({@link saidOfAReopen}): a `still-closing` here is one
       // {@link settleTeardown} already waited on, and its sentence says to reopen again.
@@ -33839,6 +33932,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
   }
 
   private async closeAllOwned(): Promise<void> {
+    this.scheduleStartsClosed = true
     const readersClosed = Promise.allSettled(
       [
         () => this.deps.memoryKnowledge?.close(),
@@ -33901,7 +33995,17 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
         if (result.status === 'rejected') failures.push(result.reason)
       while (this.agentKnowledgeOperations.size > 0)
         await Promise.allSettled(this.agentKnowledgeOperations)
-      await this.flushInFlight
+      // An admitted deletion may still be stopping a conversation before it forgets its attempts.
+      for (const stopWaiting of this.recordDeletions.values()) stopWaiting()
+      await Promise.allSettled(this.recordDeletions.keys())
+      for (const result of await Promise.allSettled([this.flushInFlight]))
+        if (result.status === 'rejected') failures.push(result.reason)
+      try {
+        await this.finishScheduleReservations()
+      } catch (error) {
+        failures.push(error)
+      }
+      await this.scheduleAttemptBook.drain()
     }
     if (failures.length) throw new AggregateError(failures, 'Runtime shutdown did not finish')
     // Bounded like every other wait a quit makes, and for the same reason: one adapter that will not
@@ -34359,10 +34463,28 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
           this.noteStaleEvent(session)
           break
         }
+        const schedulingFrame =
+          event.type === 'scheduled_work' || event.type === 'conversation_reset'
+        if (schedulingFrame) {
+          const pending = this.scheduleAttemptBook.pendingSaveFor(session.id)
+          if (pending !== undefined) {
+            await pending
+            if (!this.isCurrentLife(session)) {
+              this.noteStaleEvent(session)
+              break
+            }
+          }
+        }
         try {
           this.deliver(session, event)
         } catch (error) {
           if (!(error instanceof RecordWriteFailed)) throw error
+        }
+        // Keep allocation and publication of the frame's ordinals together. Its ordinary
+        // save can settle after publication, before this pump takes another frame.
+        if (schedulingFrame) {
+          const pending = this.scheduleAttemptBook.pendingSaveFor(session.id)
+          if (pending !== undefined) await pending
         }
       }
     } catch (error) {
@@ -35460,7 +35582,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
    * its jobs by rules of its own: this app starts for none of them on its old record alone.
    * ⚑ Nothing for a conversation with no job on record. ⚑ The line is drawn at once in its evidence
    * where that is held, and none is read here; ⚑ unless the mark is known to be written, the
-   * reset's moment is kept in the attempts file instead ({@link ConversationAttempts.resetUnmarkedAt}),
+   * reset's moment is kept in the attempt book instead (`resetUnmarkedAt`),
    * and a rebuilt plan reads it there. ⚑ Answers the rows to send, after the reset's own. ⛔ It never
    * throws.
    */
@@ -35483,8 +35605,10 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
     }
     // ⚑ A mark not known to be written is kept as its moment, for the plan a restart rebuilds.
     if (marked === null) {
-      const kept = this.itsAttempts(session.id)
-      this.keepItsAttempts(session.id, { ...kept, resetUnmarkedAt: at, at })
+      void this.keepItsAttempts(
+        session.id,
+        this.scheduleAttemptBook.markResetUnrecorded(session.id, at),
+      )
       return []
     }
     let level: RuntimeEventMessage | null = null
@@ -35500,7 +35624,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
 
   /**
    * What the newest level in a conversation's ledger says this app does not start it for is kept
-   * ({@link ConversationAttempts.notStartedSaid}), when it changed: what a level written while it
+   * (`notStartedSaid`), when it changed: what a level written while it
    * is stopped is compared with. ⛔ It never throws.
    */
   private noteWhatItsNewestLevelSays(
@@ -35510,9 +35634,10 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
   ): void {
     try {
       const said = whatItSaysIsNotStarted(level)
-      const kept = this.itsAttempts(conversation)
-      if (theSameIsSaid(said, kept.notStartedSaid)) return
-      this.keepItsAttempts(conversation, { ...kept, notStartedSaid: said, at: now })
+      void this.keepItsAttempts(
+        conversation,
+        this.scheduleAttemptBook.noteNotStarted(conversation, said, now),
+      )
     } catch (error) {
       console.warn(
         `runtime host could not note what ${conversation}'s level says of its jobs: ${errorMessage(error)}`,
@@ -35536,13 +35661,16 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
   ): void {
     try {
       const said = whatItSaysIsNotStarted(level)
-      const kept = this.itsAttempts(conversation)
+      const kept = this.scheduleAttemptBook.of(conversation)
       if (theSameIsSaid(said, kept.notStartedSaid)) return
       // ⚑ Nor when the newest level in its ledger, read at a launch, already says it: a file that
       // could not be written must not make every launch write the same row again. ⚑ The file is
       // brought in step, so a later stop compares with what the ledger says.
       if (itsLedgerSays !== undefined && theSameIsSaid(said, itsLedgerSays)) {
-        this.keepItsAttempts(conversation, { ...kept, notStartedSaid: said, at: now })
+        void this.keepItsAttempts(
+          conversation,
+          this.scheduleAttemptBook.noteNotStarted(conversation, said, now),
+        )
         return
       }
       // ⚑ Into its ledger, and to the windows that have it open: it is stopped, so no life of it
@@ -35553,7 +35681,11 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
         ...(level.dropped > 0 ? { dropped: level.dropped } : {}),
         source: RECEIPTS_LEVEL_SOURCE,
       })
-      if (written) this.keepItsAttempts(conversation, { ...kept, notStartedSaid: said, at: now })
+      if (written)
+        void this.keepItsAttempts(
+          conversation,
+          this.scheduleAttemptBook.noteNotStarted(conversation, said, now),
+        )
     } catch (error) {
       console.warn(
         `runtime host could not say what ${conversation} is not started for: ${errorMessage(error)}`,

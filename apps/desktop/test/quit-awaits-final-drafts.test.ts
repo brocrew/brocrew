@@ -1,3 +1,4 @@
+import Database from 'better-sqlite3'
 import { EventEmitter } from 'node:events'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -6,8 +7,14 @@ import { afterEach, expect, it, vi } from 'vitest'
 import { createAppLifetime } from '../src/main/app-lifetime'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { createSqliteDraftStorage } from '../src/main/database/sqlite/workspace/drafts'
+import { scheduleAttemptsIn } from '../src/main/schedule-attempts-file'
 import { createDraftWriter, requestLastDraftSaves } from '../src/main/drafts-file'
 import { LAUNCHER_SLOT } from '../src/shared/saved-drafts'
+import { closeDatabase } from '../src/main/db/close-database'
+import { WindowWorkerReader } from '../src/main/db/window-worker-reader'
+import { createSessionStore } from '../src/main/db/session-store'
+import { aLibraryHost } from './helpers/files-library-fixture'
+import { fixtureDatabase } from './lib/host-fixture'
 import { deferred } from './helpers/quit-open-list-cases'
 
 let folder: string
@@ -30,24 +37,32 @@ function reader(token: string) {
   return { contents, token, frame }
 }
 
-function fixture(readers = [reader('main')]) {
+function fixture(
+  readers = [reader('main')],
+  lifetimeDb?: (directory: string) => {
+    db: AppDatabase
+    closeAllSessions: () => Promise<void>
+    closeWriter: () => void
+  },
+) {
   folder = mkdtempSync(join(tmpdir(), 'quit-drafts-'))
-  const file = join(folder, 'drafts.sqlite')
-  database = openDatabase(file)
-  database.exec('CREATE TABLE draft (slot TEXT PRIMARY KEY, entry TEXT NOT NULL)')
+  const owned = lifetimeDb?.(folder)
+  database = owned?.db ?? openDatabase(join(folder, 'drafts.sqlite'))
+  const file = database.name
+  if (!owned) database.exec('CREATE TABLE draft (slot TEXT PRIMARY KEY, entry TEXT NOT NULL)')
   const storage = createSqliteDraftStorage(database)
   const writer = createDraftWriter(storage)
   const quit = vi.fn()
   const lifetime = createAppLifetime({
     announceClosing: () => {},
     stopArchiveWork: () => {},
-    closeAllSessions: async () => {},
+    closeAllSessions: owned?.closeAllSessions ?? (async () => {}),
     keepUnsentDrafts: async () => {
       const result = await requestLastDraftSaves(writer, readers, 'last-draft')
       if (result !== 'saved') throw new Error('Drafts were not saved')
     },
     drainArchiveWork: async () => {},
-    closeDatabase: () => database.close(),
+    closeDatabase: owned?.closeWriter ?? (() => database.close()),
     quit,
     exit: vi.fn(),
     armLastResort: vi.fn(),
@@ -164,6 +179,128 @@ it('retires only the vanished frame and still waits for the other window', async
   expect(live.contents.listenerCount('render-process-gone')).toBe(0)
   database = openDatabase(file)
   expect(createSqliteDraftStorage(database).read()).toEqual({ version: 1, drafts: lastBook.drafts })
+})
+
+it('waits for reader exit and the final frame commit before checkpointing the same writer', async () => {
+  const frame = reader('main')
+  const stopping = deferred()
+  const worker = Object.assign(new EventEmitter(), {
+    postMessage: (message: unknown) => {
+      if ((message as { type: string }).type === 'close') stopping.resolve()
+    },
+    terminate: vi.fn(async () => 0),
+  })
+  const checkedClose = vi.fn(closeDatabase)
+  const workerReader = new WindowWorkerReader(worker)
+  const allowDelete = deferred()
+  const attemptWriting = deferred()
+  const allowAttemptSave = deferred()
+  let deletion: Promise<unknown> | undefined
+  const { file, storage, writer, lifetime, quit } = fixture([frame], (directory) => {
+    const db = fixtureDatabase(directory)
+    const store = createSessionStore(db)
+    store.create({
+      id: 'to-delete',
+      profileId: 'fictional-agent',
+      provider: 'codex',
+      cwd: directory,
+      approvalMode: 'ask',
+    })
+    const attempts = scheduleAttemptsIn(db)
+    attempts.write({
+      conversations: {
+        'to-delete': {
+          attempts: [],
+          admittedAt: null,
+          told: [],
+          runs: {},
+          notStartedSaid: {},
+          at: 1,
+        },
+      },
+    })
+    const host = aLibraryHost(directory, {
+      store,
+      windowReader: workerReader,
+      scheduleAttempts: {
+        read: attempts.read,
+        async write(value) {
+          attemptWriting.resolve()
+          await allowAttemptSave.promise
+          attempts.write(value)
+        },
+      },
+    })
+    vi.spyOn(host, 'close').mockImplementationOnce(() => allowDelete.promise)
+    deletion = host.deleteConversation('to-delete', ['records'])
+    return { db, closeAllSessions: () => host.closeAll(), closeWriter: () => checkedClose(db) }
+  })
+  const connection = new Database(file, { readonly: true })
+  const requested = deferred()
+  frame.frame.send.mockImplementation(() => requested.resolve())
+  const entered = deferred()
+  const release = deferred()
+  const persist = storage.persist
+  vi.spyOn(storage, 'persist').mockImplementation(async (packet) => {
+    entered.resolve()
+    await release.promise
+    return persist(packet)
+  })
+  try {
+    connection.exec('BEGIN')
+    connection.prepare('SELECT count(*) FROM draft').get()
+    worker.emit('message', { type: 'ready' })
+    lifetime.beforeQuit(event)
+    await stopping.promise
+    const firstQuit = lifetime.shuttingDown
+    lifetime.beforeQuit(event)
+    expect(lifetime.shuttingDown).toBe(firstQuit)
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    expect(checkedClose).not.toHaveBeenCalled()
+    expect(frame.frame.send).not.toHaveBeenCalled()
+    expect(database.open).toBe(true)
+    connection.close()
+    worker.emit('exit', 0)
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    expect(frame.frame.send).not.toHaveBeenCalled()
+    allowDelete.resolve()
+    await attemptWriting.promise
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    expect(checkedClose).not.toHaveBeenCalled()
+    expect(frame.frame.send).not.toHaveBeenCalled()
+    expect(database.open).toBe(true)
+    allowAttemptSave.resolve()
+    expect(await deletion).toMatchObject({ done: true, removed: ['records'] })
+    await requested.promise
+    const saved = writer.write(lastBook, 'main')
+    await entered.promise
+    await new Promise<void>((resolve) => setImmediate(resolve))
+    expect(checkedClose).not.toHaveBeenCalled()
+    expect(storage.read()).toEqual({ version: 1, drafts: [] })
+    expect(database.open).toBe(true)
+    expect(quit).not.toHaveBeenCalled()
+    release.resolve()
+    await saved
+    await firstQuit
+    expect(quit).toHaveBeenCalledOnce()
+    expect(checkedClose).toHaveBeenCalledExactlyOnceWith(database)
+    expect(database.open).toBe(false)
+    database = openDatabase(file)
+    expect(scheduleAttemptsIn(database).read().conversations).toEqual({})
+    expect(createSqliteDraftStorage(database).read()).toEqual({
+      version: 1,
+      drafts: lastBook.drafts,
+    })
+  } finally {
+    allowDelete.resolve()
+    allowAttemptSave.resolve()
+    if (connection.open) connection.close()
+    worker.emit('exit', 0)
+    release.resolve()
+    frame.frame.isDestroyed.mockReturnValue(true)
+    frame.contents.emit('destroyed')
+    await lifetime.shuttingDown
+  }
 })
 
 it('retires the old document only when its replacement commits', async () => {

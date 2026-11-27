@@ -18,7 +18,7 @@ import {
   planScheduleAdmission,
   type WakeAdmissionPlan,
 } from '../../../shared/schedule-wake-admission'
-import type { ConversationAttempts } from '../../schedule-attempts-file'
+import type { ConversationAttempts, ToldNotice } from '../../schedule-attempts-file'
 import {
   aConversationsScope,
   aJobsMaking,
@@ -94,10 +94,11 @@ interface SchedulePlanningOperations {
   itsCalendar(): CalendarSource
   itsEvidence(conversation: string): ScheduleEvidence
   itsAttempts(conversation: string): ConversationAttempts
-  keepItsAttempts(conversation: string, record: ConversationAttempts): void
+  settleNotices(conversation: string, notices: readonly ToldNotice[], now: number): void
+  forgetJobs(conversation: string, named: ReadonlySet<string>, now: number): void
+  hasKeptAttempts(conversation: string): boolean
   hasSlot(conversation: string): boolean
   startReservedFor(conversation: string): ConversationAttempts | undefined
-  keptAttemptsFor(conversation: string): ConversationAttempts | undefined
 }
 
 /** Derive starts, runs and notices from the current evidence and original kept attempts. */
@@ -193,14 +194,11 @@ export class SchedulePlanning {
         now,
       )
       if (settle.length === 0) return false
-      this.ops.keepItsAttempts(conversation, {
-        ...before,
-        told: [
-          ...before.told,
-          ...settle.map((notice) => dealtWith(aWordOfThePlanners(plan, notice), false)),
-        ],
-        at: now,
-      })
+      this.ops.settleNotices(
+        conversation,
+        settle.map((notice) => dealtWith(aWordOfThePlanners(plan, notice), false)),
+        now,
+      )
       return true
     } catch (error) {
       console.warn(
@@ -447,20 +445,10 @@ export class SchedulePlanning {
     plan: ReceiptSchedulePlan,
     now: number,
   ): void {
-    const kept = this.ops.keptAttemptsFor(conversation)
-    if (kept === undefined) return
+    if (!this.ops.hasKeptAttempts(conversation)) return
     // Partial history cannot prove a job is gone.
     if (this.ops.itsEvidence(conversation).historyIsCut) return
     const named = new Set(plan.states.map((one) => one.generation.jobId))
-    const stillNamed = (making: string): boolean => named.has(theJobOfAMaking(making)?.job ?? '')
-    const told = kept.told.filter((one) => stillNamed(one.of))
-    const runs = Object.entries(kept.runs).filter(([making]) => stillNamed(making))
-    if (told.length === kept.told.length && runs.length === Object.keys(kept.runs).length) return
-    this.ops.keepItsAttempts(conversation, {
-      ...kept,
-      told,
-      runs: Object.fromEntries(runs),
-      at: now,
-    })
+    this.ops.forgetJobs(conversation, named, now)
   }
 }

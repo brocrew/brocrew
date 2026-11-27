@@ -6,7 +6,6 @@ import { theStoppedWork } from '../reply-rails'
 import type { ScheduleLevel } from '../../../shared/agent-state-contracts'
 import { clockTimeFrom } from '../../../shared/clock'
 import { type WakeAdmissionPlan } from '../../../shared/schedule-wake-admission'
-import { type ConversationAttempts } from '../../schedule-attempts-file'
 import { type CutKind, type CutRecord } from '../../turns-the-app-cut-file'
 
 /** Every conversation's newest schedule level, as the launch reads it once. */
@@ -224,16 +223,6 @@ function theTurnWasCut(kind: CutKind, turn: TurnAsItEnded, generation: number): 
  */
 const AT_ONCE_START_GAPS = 4
 
-/** Nothing done yet for a conversation's jobs. */
-const NOTHING_DONE_FOR_ITS_JOBS: ConversationAttempts = {
-  attempts: [],
-  admittedAt: null,
-  told: [],
-  runs: {},
-  notStartedSaid: {},
-  at: 0,
-}
-
 /**
  * ⚑ **D-029 · one stopped conversation's wake-up** — see {@link RuntimeHost.wakeUps}.
  */
@@ -307,7 +296,6 @@ export {
   NEWER_WORDS_ABOUT_WHAT_THE_RESTART_STOPPED,
   NEWER_WORDS_AFTER_A_DELETE,
   NEWER_WORDS_AFTER_THE_ARCHIVE,
-  NOTHING_DONE_FOR_ITS_JOBS,
   RESTART_STOPPED_WITHIN_MS,
   RESTART_WAKE_GAP_MS,
   sayTheSweep,

@@ -6,8 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest'
 import { aJobCancelled, aJobMade, throughClaudesHooks } from './lib/scheduling-calls-fixture'
-import { FakeProviderSessions, FakeRuntime, FakeSessionHandle } from '@brobot2/runtime/testing'
-import type { ResumeOptions, SessionRef, StartOptions } from '@brobot2/runtime'
+import { FakeProviderSessions, FakeSessionHandle } from '@brobot2/runtime/testing'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
@@ -33,6 +32,16 @@ import {
   LATE,
   ONE_SHOT_A,
 } from './scheduled-jobs-clock-fixture'
+import {
+  fakeKeys,
+  LATER,
+  NIGHTLY,
+  ProviderDouble,
+  settle,
+  waitFor,
+  type Job,
+  type ProviderControl,
+} from './scheduled-jobs-provider-fixture'
 
 /**
  * Scheduled conversations use one wake-up per newest ledger level at launch and stop.
@@ -50,111 +59,6 @@ import {
 
 /** A delay no other timer in the host uses, and no test waits out. */
 const IDLE = 7_654_321
-
-async function waitFor(predicate: () => boolean, what: string): Promise<void> {
-  for (let attempt = 0; attempt < 1000; attempt++) {
-    if (predicate()) return
-    await new Promise((resolve) => setTimeout(resolve, 10))
-  }
-  throw new Error(`timed out waiting for ${what}`)
-}
-
-/** A stretch of the event loop long enough for everything a provider row starts to have run. */
-async function settle(): Promise<void> {
-  for (let round = 0; round < 2; round++) {
-    for (let turn = 0; turn < 5; turn++) await new Promise((resolve) => setImmediate(resolve))
-    await new Promise((resolve) => setTimeout(resolve, 30))
-  }
-}
-
-/** What a test can switch on the provider double, and what it reads off it. */
-interface ProviderControl {
-  /** While set, a resume fails the way a machine that cannot spawn a process does. */
-  failResume: boolean
-  /** When each resume was asked for, on a clock that is never set. */
-  resumedAt: number[]
-  /** While set, what the host does about scheduled jobs cannot be written. */
-  attemptsCannotBeKept?: boolean
-  /** While set, a resume waits for it before the provider is up. */
-  holdResume?: Promise<void>
-  /** While set, the disk fills as a resume is asked for: nothing can be written after it. */
-  diskFillsOnResume?: boolean
-  /** While set, the host has a saved key, read as a launch begins, before anything starts. */
-  keys?: FakeKeys
-}
-
-type KeyDeps = NonNullable<ConstructorParameters<typeof RuntimeHost>[0]['apiKeys']>
-const UNREADABLE_KEY = 'BroCrew can’t read the API key saved for Claude on this computer.'
-
-/** A saved key that cannot be read until it is saved again, and how often it was read. */
-interface FakeKeys {
-  broken: boolean
-  knownUnreadable: boolean
-  reads: number
-  readonly deps: KeyDeps
-}
-function fakeKeys(): FakeKeys {
-  const keys = { broken: true, knownUnreadable: false, reads: 0 } as FakeKeys
-  const deps: KeyDeps = {
-    status: (provider) =>
-      ({
-        provider,
-        set: true,
-        setAt: 1,
-        inUse: !keys.broken && !keys.knownUnreadable,
-        ...(keys.knownUnreadable
-          ? { readState: 'unreadable', unreadableReason: UNREADABLE_KEY }
-          : {}),
-      }) as ReturnType<KeyDeps['status']>,
-    remove: () => {
-      keys.broken = false
-      keys.knownUnreadable = false
-      return true
-    },
-    set: () => {
-      keys.broken = false
-      keys.knownUnreadable = false
-      return null
-    },
-    read: () => {
-      keys.reads += 1
-      if (keys.broken) {
-        keys.knownUnreadable = true
-        throw new Error(UNREADABLE_KEY)
-      }
-      return null
-    },
-  }
-  return Object.assign(keys, { deps })
-}
-
-/** The provider double: every handle it issues, a start and a resume alike. */
-class ProviderDouble extends FakeRuntime {
-  constructor(
-    provider: Provider,
-    private readonly handles: FakeSessionHandle[],
-    private readonly control: ProviderControl,
-    sessions: FakeProviderSessions,
-  ) {
-    super(provider, { sessions })
-  }
-  override async start(options: StartOptions): Promise<FakeSessionHandle> {
-    const handle = await super.start(options)
-    this.handles.push(handle)
-    return handle
-  }
-  override async resume(ref: SessionRef, options: ResumeOptions): Promise<FakeSessionHandle> {
-    if (this.control.diskFillsOnResume === true) this.control.attemptsCannotBeKept = true
-    if (this.control.failResume) throw new Error('the machine refused to spawn')
-    // The key is read as a launch begins, before anything is started.
-    if (this.control.keys !== undefined) await this.control.keys.deps.read('claude')
-    this.control.resumedAt.push(performance.now())
-    if (this.control.holdResume !== undefined) await this.control.holdResume
-    const handle = await super.resume(ref, options)
-    this.handles.push(handle)
-    return handle
-  }
-}
 
 /** A wake-up as the host holds it — read off the private map, as `reopen-while-closing` reads `slots`. */
 interface WakeUpRead {
@@ -178,20 +82,6 @@ type WordsInARow = TranscriptEvent & {
   type: 'user_turn' | 'message_queued'
   text: string
   appNotice?: string
-}
-
-interface Job {
-  readonly id: string
-  readonly schedule: string
-  readonly recurring: boolean
-  readonly prompt: string
-}
-
-const NIGHTLY: Job = {
-  id: 'nightly',
-  schedule: '0 3 * * *',
-  recurring: true,
-  prompt: 'run the nightly check',
 }
 
 /** The pause between two starts the host makes by itself, in these tests. */
@@ -252,9 +142,13 @@ describe('D-029 · the host starts a stopped conversation in time for the jobs i
         read: () => scheduleAttemptsIn(db).read(),
         write: (kept) => {
           if (control.attemptsCannotBeKept === true) throw new Error('the disk is full')
+          if (control.writeAttempts !== undefined) return control.writeAttempts(kept)
           scheduleAttemptsIn(db).write(kept)
         },
       },
+      ...(control.closeDrainTimeoutMs === undefined
+        ? {}
+        : { closeDrainTimeoutMs: control.closeDrainTimeoutMs }),
       startGapMs: GAP,
       ...(control.keys === undefined ? {} : { apiKeys: control.keys.deps }),
       idleStopAfterMs,
@@ -795,101 +689,190 @@ describe('D-029 · the host starts a stopped conversation in time for the jobs i
     await waitFor(told, 'the held words to be said')
   })
 
-  it('🔴 a start of its own is kept as made before the provider is asked: a restart meanwhile makes no second one, and a start that fails is put back and tried again', async () => {
-    const [a] = await aFirstLife(async ([first]) => makes(first!, ONE_SHOT_A), 'agent-a')
-    if (a === undefined) throw new Error('a conversation was opened')
-    const before = handlesOf(a).length
-    const attemptedIn = (): boolean =>
-      scheduleAttemptsIn(db)
-        .read()
-        .conversations[a]?.attempts.some((one) => one.attempted) === true
+  it.each(['restart', 'quit'] as const)(
+    '🔴 a start is kept before the provider is asked, through failure and %s',
+    async (ending) => {
+      const [a] = await aFirstLife(async ([first]) => makes(first!, ONE_SHOT_A), 'agent-a')
+      if (a === undefined) throw new Error('a conversation was opened')
+      const before = handlesOf(a).length
+      const attemptedIn = (): boolean =>
+        scheduleAttemptsIn(db)
+          .read()
+          .conversations[a]?.attempts.some((one) => one.attempted) === true
 
-    // A start that fails: what was kept is put back, so the start is asked for again.
-    control.failResume = true
-    restartsAt(LATE)
-    await waitFor(() => wakeUpsOf(host).get(a)?.failed === 1, 'the start to fail')
-    expect(attemptedIn()).toBe(false)
+      // A start that fails: what was kept is put back, so the start is asked for again.
+      control.failResume = true
+      if (ending === 'quit') control.closeDrainTimeoutMs = 10
+      restartsAt(LATE)
+      await waitFor(() => wakeUpsOf(host).get(a)?.failed === 1, 'the start to fail')
+      expect(attemptedIn()).toBe(false)
 
-    // Held while the provider comes up: the start is already kept as made…
-    control.failResume = false
-    let release = (): void => {}
-    control.holdResume = new Promise<void>((resolve) => {
-      release = resolve
-    })
-    clock += 60_000
-    timerCall(wakeUpsOf(host).get(a)?.timer ?? null).fn()
-    await waitFor(() => control.resumedAt.length > 0, 'the provider to be asked')
-    expect(attemptedIn()).toBe(true)
-    // …so a host that starts meanwhile, from the file, makes no second start.
-    const first = host
-    restartsAt(clock + 1_000)
-    await settle()
-    expect(wakeUpsOf(host).has(a)).toBe(false)
-    control.holdResume = undefined
-    release()
-    await waitFor(() => handlesOf(a).length === before + 1, 'the held start to come up')
-    expect(first).not.toBe(host)
-  })
+      // Held while the provider comes up: the start is already kept as made…
+      control.failResume = false
+      let release = (): void => {}
+      control.holdResume = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      clock += 60_000
+      timerCall(wakeUpsOf(host).get(a)?.timer ?? null).fn()
+      await waitFor(() => control.resumedAt.length > 0, 'the provider to be asked')
+      expect(attemptedIn()).toBe(true)
+      if (ending === 'quit') {
+        let allowRollback = (): void => {}
+        const heldRollback = new Promise<void>((resolve) => {
+          allowRollback = resolve
+        })
+        const write = vi.fn(async (kept: KeptAttempts) => {
+          await heldRollback
+          scheduleAttemptsIn(db).write(kept)
+        })
+        control.writeAttempts = write
+        let closed = false
+        const closing = host.closeAll().then(() => {
+          closed = true
+        })
+        try {
+          await settle()
+          expect(write).toHaveBeenCalledTimes(1)
+          expect(attemptedIn()).toBe(true)
+          expect(closed).toBe(false)
+          expect(handlesOf(a)).toHaveLength(before)
+          allowRollback()
+          await closing
+          expect(attemptedIn()).toBe(false)
+          expect(handlesOf(a)).toHaveLength(before)
 
-  it('🔴 a start of its own is kept as made from the plan made as it begins: a job that came due since it was reserved is kept as started for too', async () => {
-    const LATER: Job = {
-      id: 'job-later',
-      schedule: '46 14 28 9 *',
-      recurring: false,
-      prompt: 'then this',
-    }
-    const [a] = await aFirstLife(async ([first]) => makes(first!, ONE_SHOT_A, LATER), 'agent-a')
-    if (a === undefined) throw new Error('a conversation was opened')
-    const before = handlesOf(a).length
-    const consumed = (): Set<string> =>
-      new Set(
-        (scheduleAttemptsIn(db).read().conversations[a]?.attempts ?? [])
-          .filter((one) => one.attempted)
-          .map((one) => one.key),
-      )
-    // The provider is held as it comes up, so the file can be read before it is.
-    let release = (): void => {}
-    control.holdResume = new Promise<void>((resolve) => {
-      release = resolve
-    })
-    restartsAt(LATE)
-    // The last look before the start is made a minute on: LATER's start has come due meanwhile.
-    const looking = host as unknown as { judgeItsWakeUpAgain(id: string): boolean }
-    const look = looking.judgeItsWakeUpAgain.bind(host)
-    vi.spyOn(looking, 'judgeItsWakeUpAgain').mockImplementation((id) => {
-      clock = local(9, 28, 14, 45, 31)
-      return look(id)
-    })
-    await waitFor(() => control.resumedAt.length > 0, 'the provider to be asked')
-    // ⚑ Both are kept as started for before the provider is up.
-    expect(consumed()).toContain(JSON.stringify(['job', ONE_SHOT_A.id]))
-    expect(consumed()).toContain(JSON.stringify(['job', LATER.id]))
-    control.holdResume = undefined
-    release()
-    await waitFor(() => handlesOf(a).length === before + 1, 'A to be started')
-    await settle()
-    // …and a host rebuilt from the file, with no listing since and LATER's minute still ahead,
-    // starts nothing for either.
-    await host.close(a, THE_APP_ITSELF)
-    await host.closeAll()
-    restartsAt(local(9, 28, 14, 45, 40))
-    await settle()
-    expect(wakeUpsOf(host).has(a)).toBe(false)
-    expect(handlesOf(a)).toHaveLength(before + 1)
-  })
+          // The late provider result must not submit another attempt write.
+          const warnCount = warnSpy.mock.calls.length
+          release()
+          await waitFor(
+            () =>
+              warnSpy.mock.calls
+                .slice(warnCount)
+                .some(([line]) =>
+                  String(line).includes(`could not start ${a} for its scheduled jobs`),
+                ),
+            'the held resume to observe cancellation',
+          )
+          expect(write).toHaveBeenCalledTimes(1)
+          expect(attemptedIn()).toBe(false)
+        } finally {
+          allowRollback()
+          release()
+          await closing
+        }
+        return
+      }
+      // …so a host that starts meanwhile, from the file, makes no second start.
+      const first = host
+      restartsAt(clock + 1_000)
+      await settle()
+      expect(wakeUpsOf(host).has(a)).toBe(false)
+      control.holdResume = undefined
+      release()
+      await waitFor(() => handlesOf(a).length === before + 1, 'the held start to come up')
+      expect(first).not.toBe(host)
+    },
+  )
+
+  it.each(['launch', 'quit during reserve', 'quit during renewal'] as const)(
+    '🔴 the latest schedule plan owns the reservation through %s',
+    async (outcome) => {
+      const [a] = await aFirstLife(async ([first]) => makes(first!, ONE_SHOT_A, LATER), 'agent-a')
+      if (a === undefined) throw new Error('a conversation was opened')
+      const before = handlesOf(a).length
+      const earlierJob = JSON.stringify(['job', ONE_SHOT_A.id])
+      const laterJob = JSON.stringify(['job', LATER.id])
+      const consumed = (): Set<string> =>
+        new Set(
+          (scheduleAttemptsIn(db).read().conversations[a]?.attempts ?? [])
+            .filter((one) => one.attempted)
+            .map((one) => one.key),
+        )
+      // The provider is held as it comes up, so the file can be read before it is.
+      let release = (): void => {}
+      control.holdResume = new Promise<void>((resolve) => {
+        release = resolve
+      })
+      let allowSave = (): void => {}
+      let saveHeld = false
+      if (outcome !== 'launch') {
+        const heldSave = new Promise<void>((resolve) => {
+          allowSave = resolve
+        })
+        const heldJob = outcome === 'quit during reserve' ? earlierJob : laterJob
+        control.writeAttempts = async (kept) => {
+          if (
+            !saveHeld &&
+            kept.conversations[a]?.attempts.some((one) => one.key === heldJob && one.attempted)
+          ) {
+            saveHeld = true
+            await heldSave
+          }
+          scheduleAttemptsIn(db).write(kept)
+        }
+      }
+      restartsAt(LATE)
+      // The last look before the start is made a minute on: LATER's start has come due meanwhile.
+      const looking = host as unknown as {
+        judgeItsWakeUpAgain(id: string): boolean | Promise<boolean>
+      }
+      const look = looking.judgeItsWakeUpAgain.bind(host)
+      vi.spyOn(looking, 'judgeItsWakeUpAgain').mockImplementation((id) => {
+        clock = local(9, 28, 14, 45, 31)
+        return look(id)
+      })
+      if (outcome !== 'launch') {
+        let closing: Promise<void> | undefined
+        try {
+          await waitFor(() => saveHeld, 'the selected reservation receipt to be held')
+          expect(consumed()).toEqual(new Set(outcome === 'quit during renewal' ? [earlierJob] : []))
+          let closed = false
+          closing = host.closeAll().then(() => {
+            closed = true
+          })
+          await settle()
+          expect(closed).toBe(false)
+          expect(control.resumedAt).toEqual([])
+          allowSave()
+          await closing
+          expect(consumed()).toEqual(new Set())
+          expect(control.resumedAt).toEqual([])
+          expect(handlesOf(a)).toHaveLength(before)
+        } finally {
+          allowSave()
+          release()
+          await closing
+        }
+        return
+      }
+      await waitFor(() => control.resumedAt.length > 0, 'the provider to be asked')
+      // ⚑ Both are kept as started for before the provider is up.
+      expect(consumed()).toContain(earlierJob)
+      expect(consumed()).toContain(laterJob)
+      control.holdResume = undefined
+      release()
+      await waitFor(() => handlesOf(a).length === before + 1, 'A to be started')
+      await settle()
+      // …and a host rebuilt from the file, with no listing since and LATER's minute still ahead,
+      // starts nothing for either.
+      await host.close(a, THE_APP_ITSELF)
+      await host.closeAll()
+      restartsAt(local(9, 28, 14, 45, 40))
+      await settle()
+      expect(wakeUpsOf(host).has(a)).toBe(false)
+      expect(handlesOf(a)).toHaveLength(before + 1)
+    },
+  )
 
   it('⛔ the last look’s plan asks more than was reserved, and that cannot be kept: no start is made', async () => {
-    const LATER: Job = {
-      id: 'job-later',
-      schedule: '46 14 28 9 *',
-      recurring: false,
-      prompt: 'then this',
-    }
     const [a] = await aFirstLife(async ([first]) => makes(first!, ONE_SHOT_A, LATER), 'agent-a')
     if (a === undefined) throw new Error('a conversation was opened')
     const before = handlesOf(a).length
     restartsAt(LATE)
-    const looking = host as unknown as { judgeItsWakeUpAgain(id: string): boolean }
+    const looking = host as unknown as {
+      judgeItsWakeUpAgain(id: string): boolean | Promise<boolean>
+    }
     const look = looking.judgeItsWakeUpAgain.bind(host)
     vi.spyOn(looking, 'judgeItsWakeUpAgain').mockImplementation((id) => {
       clock = local(9, 28, 14, 45, 31)
@@ -916,9 +899,14 @@ describe('D-029 · the host starts a stopped conversation in time for the jobs i
     const attemptedIn = (kept: KeptAttemptsRead): boolean =>
       kept.conversations[a]?.attempts.some((one) => one.key === job && one.attempted) === true
     // Kept as made in this host's memory…
-    expect(attemptedIn((host as unknown as { attemptsKept: KeptAttemptsRead }).attemptsKept)).toBe(
-      true,
-    )
+    const owner = (
+      host as unknown as {
+        scheduleAttemptBook: {
+          keptFor(id: string): KeptAttemptsRead['conversations'][string] | undefined
+        }
+      }
+    ).scheduleAttemptBook
+    expect(owner.keptFor(a)?.attempts.some((one) => one.key === job && one.attempted)).toBe(true)
     // …and on disk…
     expect(attemptedIn(scheduleAttemptsIn(db).read())).toBe(true)
     // …so a host rebuilt from the file, the job's minute still ahead, starts nothing for it.

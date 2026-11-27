@@ -53,7 +53,7 @@ import type { SnapshotAnswer } from '../../shared/provider-snapshots'
 import type { KeptUsage } from '../provider-usage-file'
 import type { KeptAccounts } from '../provider-accounts-file'
 import type { LivenessOptions } from './liveness'
-import type { KeptAttempts } from '../schedule-attempts-file'
+import type { ScheduleAttemptsPersistence } from './schedule-attempts-owner'
 import type { KeptProfileExecution, ProfileExecutionRead } from '../profile-execution-file'
 import type { KeptCuts } from '../turns-the-app-cut-file'
 
@@ -226,10 +226,7 @@ export interface RuntimeHostDeps {
    * a job is made or a notice is handed over. Optional: without it that is remembered for this run
    * only, and each job this app cannot time costs one start a run.
    */
-  scheduleAttempts?: {
-    read(): KeptAttempts
-    write(kept: KeptAttempts): void
-  }
+  scheduleAttempts?: ScheduleAttemptsPersistence
   /**
    * How each profile runs its work: normal, or a service with one conversation
    * (`profile-execution-file.ts`). Read and settled against the database as the host starts.
