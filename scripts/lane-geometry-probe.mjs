@@ -20,9 +20,14 @@ import { existsSync, mkdirSync, mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { launchForCdp, RendererCdp, listenersOn, waitFor } from './lib/renderer-cdp.mjs'
+import {
+  ownershipNotTaken,
+  refuseAListenerNotOwned,
+  stopWhatItOwns,
+} from './lib/probe-ownership.mjs'
+import { launchForCdp, RendererCdp, waitFor } from './lib/renderer-cdp.mjs'
 import { checkProbeGatePath } from './lib/smoke-run.mjs'
-import { launchedProcessLifecycle, tearDownAndRemove } from './lib/owned-teardown.mjs'
+import { launchedProcessLifecycle } from './lib/owned-teardown.mjs'
 
 const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 const DESKTOP = join(REPO_ROOT, 'apps/desktop')
@@ -150,19 +155,10 @@ async function main() {
     } catch {
       // the group never existed, which is consistent with a launch that never started
     }
-    throw new Error(
-      `could not take ownership of the app this probe launched (pid ${String(child.pid)}): ` +
-        `${error.message}\n   ⚠️ ${userDataDir} is left in place.`,
-      { cause: error },
-    )
+    throw ownershipNotTaken(child, userDataDir, error)
   }
 
-  const stop = () => {
-    const outcome = tearDownAndRemove({ lifecycle, directory: userDataDir })
-    child.stdout.destroy()
-    child.stderr.destroy()
-    return outcome
-  }
+  const stop = stopWhatItOwns(lifecycle, child, userDataDir)
 
   let cdp = null
   /** Filled by the `finally` below; read after it, which is the whole point of the two facts. */
@@ -175,21 +171,7 @@ async function main() {
     lifecycle.refreshDescendants()
 
     // ── 🔒 the listener really is ours ────────────────────────────────────────────────────────
-    const owned = new Set(lifecycle.identities.map((identity) => identity.pid))
-    const listeners = listenersOn(port)
-    if (!listeners.asked) {
-      throw new Error(
-        `could not establish who is listening on 127.0.0.1:${String(port)} — ${listeners.why}. ` +
-          `A probe that cannot say the app it is driving is its own must not drive it.`,
-      )
-    }
-    if (listeners.pids.length === 0 || !listeners.pids.every((pid) => owned.has(pid))) {
-      throw new Error(
-        `the debugging port ${String(port)} is held by pid(s) ${listeners.pids.join(', ') || '<none>'}, ` +
-          `which this probe does not own (${[...owned].join(', ')}). ⛔ Refusing to drive an app ` +
-          `this process did not start — :9444 and the default userData are the PM's.`,
-      )
-    }
+    refuseAListenerNotOwned(port, lifecycle)
 
     await waitFor(
       'the app to draw its rail',

@@ -19,9 +19,14 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { launchForCdp, RendererCdp, listenersOn } from './lib/renderer-cdp.mjs'
+import {
+  ownershipNotTaken,
+  refuseAListenerNotOwned,
+  stopWhatItOwns,
+} from './lib/probe-ownership.mjs'
+import { launchForCdp, RendererCdp } from './lib/renderer-cdp.mjs'
 import { checkProbeGatePath } from './lib/smoke-run.mjs'
-import { launchedProcessLifecycle, tearDownAndRemove } from './lib/owned-teardown.mjs'
+import { launchedProcessLifecycle } from './lib/owned-teardown.mjs'
 import { HIDDEN_LAUNCH_ARG } from './lib/hidden-launch.mjs'
 
 const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
@@ -376,21 +381,12 @@ async function main() {
     // The userData is LEFT as evidence: a launch nobody could take ownership of is worth looking at.
     child.stdout.destroy()
     child.stderr.destroy()
-    throw new Error(
-      `could not take ownership of the app this probe launched (pid ${String(child.pid)}): ` +
-        `${error.message}\n   ⚠️ ${userDataDir} is left in place.`,
-      { cause: error },
-    )
+    throw ownershipNotTaken(child, userDataDir, error)
   }
 
   // ⚑ One directory, and the owned teardown owns it: the workspace the session ran in is INSIDE
   // `userDataDir`, so what used to need a second `rmSync` is now reaped by the same call.
-  const stop = () => {
-    const outcome = tearDownAndRemove({ lifecycle, directory: userDataDir })
-    child.stdout.destroy()
-    child.stderr.destroy()
-    return outcome
-  }
+  const stop = stopWhatItOwns(lifecycle, child, userDataDir)
 
   let cdp = null
   const written = []
@@ -399,24 +395,7 @@ async function main() {
     lifecycle.refreshDescendants()
 
     // ── 🔒 the listener really is ours ────────────────────────────────────────────────────────
-    // ⚑ `identities` is the launcher plus every descendant `refreshDescendants` has remembered —
-    // the same set the teardown holds authority over. Asking anything else would let this probe
-    // approve a listener it has no right to signal.
-    const owned = new Set(lifecycle.identities.map((identity) => identity.pid))
-    const listeners = listenersOn(port)
-    if (!listeners.asked) {
-      throw new Error(
-        `could not establish who is listening on 127.0.0.1:${String(port)} — ${listeners.why}. ` +
-          `A probe that cannot say the app it is driving is its own must not drive it.`,
-      )
-    }
-    if (listeners.pids.length === 0 || !listeners.pids.every((pid) => owned.has(pid))) {
-      throw new Error(
-        `the debugging port ${String(port)} is held by pid(s) ${listeners.pids.join(', ') || '<none>'}, ` +
-          `which this probe does not own (${[...owned].join(', ')}). ⛔ Refusing to drive an app ` +
-          `this process did not start — :9444 and the default userData are the PM's.`,
-      )
-    }
+    refuseAListenerNotOwned(port, lifecycle)
 
     // ── the one door: type the message, then send ─────────────────────────────────────────────
     // ⛔ **Two `SET_VALUE`s used to stand here — `provider-select` to `codex`, and `cwd-input` to
