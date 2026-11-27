@@ -29,55 +29,9 @@ import CardSection from './CardSection.vue'
 import { ROWS_UNREAD_LEAD } from '../lib/rows-unread'
 
 /**
- * 🔴 **Who called whom, drawn** (547) — the first consumer of `543`'s `whoCalledWhom`, and the
- * first tab's new subject.
- *
- * ## ⛔ What a person sees, and what they saw before
- *
- * Show who is calling whom and let the person navigate between conversations. A single avatar and local pending-card count cannot describe delegated work elsewhere.
- *
- * ## ⚑ 577 · this band is UNCHANGED, and `EXT-010` §3.2 was answered one component up
- *
- * ⛔ **The PO: *"it is mostly explanation — two paragraphs about spawned conversations, on a
- * conversation with no children"*, and the remedy *"behind a disclosure, or below"*.** ⚠️ `577`
- * built the disclosure first and then measured what would go behind it: `cast-covers` WAS
- * `WALK_COVERS`' sentence (631 deleted it, with `ListCoverage.says`), and the comment on it says why it exists — *because the child list is
- * the only one on this band that makes a positive empty claim*. 🔴 **It is the QUALIFIER of
- * `No spawned conversations`, and in the one state that draws that claim — `answered`, no doubt,
- * `rowsUnread === 0` — every other mark that could qualify it is absent by construction.**
- * ⛑ A completeness signal a person has to press for is a completeness signal `543` §4 did not ask
- * for, so the other remedy was taken: `SessionPanel.vue` now draws this band BELOW the pane's own
- * answer instead of above it.
- *
- * ## ⚑ One card is a CONVERSATION — not an identity and not a task (v2.8 §01)
- *
- * ⛔ **A task-first flat list duplicates the avatar and loses direction; a role-first list MERGES
- * distinct conversations made from one identity** — the exact case `543` §0 plants and
- * `WorkGivenOut` cannot tell apart. ⚑ So the recipient is never drawn twice; the work it was given
- * is drawn on its own card, by the Graph tab, not by this band.
- *
- * ## 🔴 Where the state comes from, and where it stops
- *
- * ⛔ **No navigation state is drawn** — D-017b: a chip opens its conversation whatever it is doing,
- * through the screen's one door, and draws no press at all where nothing above it can act (`118`).
- *
- * ⛔ **No liveness word, of any shape.** `509`'s ruled field may not go on a reader whose cadence is
- * longer than the silence window, and this band re-reads on the half-minute. ⚑ **A card that says
- * what a conversation IS without claiming whether it is still alive is a complete card.**
- *
- * ## ⚠️ Every blank here is a different fact, and none of them is `0 spawned`
- *
- *  - **first read in flight** → the screen supplies the conversation being read; the band shows
- *    loading only until that relationship read settles.
- *  - **a complete, empty child list** → `No spawned conversations`, and `ListCoverage.count === 0`
- *    is the only thing that can produce it.
- *  - **a read that could not look, or a word this build cannot spell** → {@link LIST_DOUBT_WORDS},
- *    per LIST, because those are facts about one walk.
- *  - **a read that did not answer** → `THE_READ_DID_NOT_ANSWER`, ONCE, beside the moment it is
- *    about. ⛔ **Not per list**: `answered` is one boolean over one round trip, so three lists would
- *    have drawn three blocks for one fact — which is what v2.8 §06's *same anchor* means and what a
- *    surviving mutation row cost to learn.
- *  - **rows the walk could not read** → counted, once per list, and never added to anything.
+ * The conversations this one started or gave work to, one card per conversation, and the
+ * warnings that say when that list may be incomplete. A complete, empty list is the only one
+ * that says there are none.
  */
 const props = defineProps<{
   /** ⚑ `null` until the first read for this conversation lands. */
@@ -88,10 +42,7 @@ const props = defineProps<{
   identities: readonly AgentIdentity[] | null
   /** ⚑ `false` where no caller can act on a press, so none is drawn. */
   canOpen: boolean
-  /**
-   * 🔴 **W4.183 · each card's model, effort, context and memory** — `useAgentPanel`'s sub-agent
-   * cards, by conversation. ⛔ Absent draws no telemetry row.
-   */
+  /** Each card's model, effort, context and memory, by conversation; absent draws none. */
   telemetry?: ReadonlyMap<string, AgentPanelSubAgent>
   /** What each provider can do, so a card's context figure can offer Compact now. */
   capabilities?: ProviderCapabilityMap | null
@@ -102,11 +53,7 @@ const emit = defineEmits<{
   openConversation: [conversation: string]
 }>()
 
-/**
- * ⛔ **A minute clock, never a mount-time constant** — `504`'s finding two surfaces over. The age
- * below is measured from the read's own completion point, so an instant frozen at mount would make
- * a band that has just been re-read look older than the reading it came from.
- */
+/** A minute clock, so the read's age stays current. */
 const minute = useMinuteClock()
 
 const view = computed(() =>
@@ -356,6 +303,14 @@ function onPurposeLine(card: CastCard): string | null {
     : null
 }
 
+/** What the card's agent last said: its wait while it waits on purpose, else its task's status. */
+function saysLine(card: CastCard): { text: string; waiting: boolean } | null {
+  const waiting = onPurposeLine(card)
+  if (waiting) return { text: waiting, waiting: true }
+  const status = listedCard(card)?.namingTaskStatus?.trim()
+  return status ? { text: status, waiting: false } : null
+}
+
 /** ⚑ The chip's word: its rail row's — or, F094, that it was replaced, and by whom; never *idle*. */
 function chipWord(card: CastCard): string | undefined {
   if (card.replacedBy !== undefined) return `replaced by ${card.replacedBy}`
@@ -496,9 +451,21 @@ function chipWord(card: CastCard): string | undefined {
                   }"
                 >
                   <template #aside>
-                    <svg v-if="canOpen" class="icon team-chevron" aria-hidden="true">
-                      <use href="#i-chevron" />
-                    </svg>
+                    <span class="chip-aside">
+                      <span
+                        v-if="(listedCard(card)?.startedHereCount ?? 0) > 0"
+                        class="chip-started"
+                        role="img"
+                        :title="`Started here: ${listedCard(card)!.startedHereCount}`"
+                        :aria-label="`Started here: ${listedCard(card)!.startedHereCount}`"
+                        :data-cy="`cast-tile-started-${card.conversation}`"
+                        ><svg class="icon" aria-hidden="true"><use href="#i-users" /></svg
+                        >{{ listedCard(card)!.startedHereCount }}</span
+                      >
+                      <svg v-if="canOpen" class="icon team-chevron" aria-hidden="true">
+                        <use href="#i-chevron" />
+                      </svg>
+                    </span>
                   </template>
                 </ConversationRow>
               </div>
@@ -523,12 +490,12 @@ function chipWord(card: CastCard): string | undefined {
                 >
               </div>
               <div
-                v-if="onPurposeLine(card)"
+                v-if="saysLine(card)"
                 class="chip-says"
-                :title="onPurposeLine(card)!"
-                :data-cy="`cast-tile-on-purpose-${card.conversation}`"
+                :title="saysLine(card)!.text"
+                :data-cy="`cast-tile-${saysLine(card)!.waiting ? 'on-purpose' : 'status'}-${card.conversation}`"
               >
-                <MarkdownWords :text="onPurposeLine(card)!" :session-id="card.conversation" />
+                <MarkdownWords :text="saysLine(card)!.text" :session-id="card.conversation" />
               </div>
               <span
                 v-if="telemetry?.get(card.conversation)"
@@ -775,6 +742,23 @@ function chipWord(card: CastCard): string | undefined {
   grid-template-columns: auto minmax(0, 1fr) auto;
 }
 
+.chip-aside {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+.chip-started {
+  display: inline-flex;
+  align-items: center;
+  color: var(--muted);
+  font-size: var(--type-caption);
+  font-variant-numeric: tabular-nums;
+  gap: var(--space-1);
+}
+.chip-started .icon {
+  width: 12px;
+  height: 12px;
+}
 .team-chevron {
   width: 10px;
   height: 10px;
