@@ -28,6 +28,25 @@ async function start(managed = true) {
 }
 const warnings = (events: RuntimeEvent[]) =>
   events.filter((event) => event.type === 'unknown' && event.label === 'managed-plugin/discovery')
+const statusReads = (wire: Wire) =>
+  wire.requests.filter((one) => one.method === 'mcpServerStatus/list')
+const statusReadsOn = (threadId: string, count = 1) =>
+  Array.from({ length: count }, () => ({
+    method: 'mcpServerStatus/list',
+    params: { threadId, serverName: route.name, detail: 'toolsAndAuthOnly' },
+  }))
+function claudeQuery(frames: AsyncQueue<SDKMessage>): ClaudeQuery {
+  return {
+    async interrupt() {},
+    close() {
+      frames.close()
+    },
+    async return() {
+      frames.close()
+    },
+    [Symbol.asyncIterator]: () => frames[Symbol.asyncIterator](),
+  }
+}
 
 it.each(
   (['start', 'resume'] as const).flatMap((launch) =>
@@ -102,16 +121,7 @@ it.each(
     expect(warnings(events)).toHaveLength(healthy ? 0 : 1)
     expect(JSON.stringify(observer.mock.calls)).not.toContain('fictional-private-discovery-marker')
     expect(JSON.stringify(observer.mock.calls)).not.toContain(route.capability)
-    expect(wire.requests.filter((one) => one.method === 'mcpServerStatus/list')).toEqual([
-      {
-        method: 'mcpServerStatus/list',
-        params: {
-          threadId: 'fictional-thread',
-          serverName: route.name,
-          detail: 'toolsAndAuthOnly',
-        },
-      },
-    ])
+    expect(statusReads(wire)).toEqual(statusReadsOn('fictional-thread'))
     const launchRequest = wire.requests.find((one) => one.method === `thread/${launch}`)
     expect(launchRequest).toBeDefined()
     expect(launchRequest!.params).not.toHaveProperty('observeManagedPlugins')
@@ -132,16 +142,7 @@ it.each(
     const frames = new AsyncQueue<SDKMessage>()
     const received: unknown[] = []
     let launchOptions: unknown
-    const query: ClaudeQuery = {
-      async interrupt() {},
-      close() {
-        frames.close()
-      },
-      async return() {
-        frames.close()
-      },
-      [Symbol.asyncIterator]: () => frames[Symbol.asyncIterator](),
-    }
+    const query = claudeQuery(frames)
     const observer = vi.fn<(event: ManagedPluginDiscovery) => void>(() => {
       if (throws) throw new Error('fictional-observer-marker')
     })
@@ -241,16 +242,7 @@ it('keeps a successful discovery on the fast path for the same thread and server
   await tick()
   expect(unexpected).not.toHaveBeenCalled()
   expect(wire.catalogsAtTurns).toEqual([['echo'], ['echo']])
-  expect(wire.requests.filter((one) => one.method === 'mcpServerStatus/list')).toEqual(
-    Array.from({ length: 2 }, () => ({
-      method: 'mcpServerStatus/list',
-      params: {
-        threadId: saved!.sessionId,
-        serverName: route.name,
-        detail: 'toolsAndAuthOnly',
-      },
-    })),
-  )
+  expect(statusReads(wire)).toEqual(statusReadsOn(saved!.sessionId, 2))
   expect(handle.ref).toEqual(saved)
 })
 
@@ -312,16 +304,7 @@ it.each(['refused', 'tools-error', 'timeout'] as const)(
     await handle.send('Fictional later turn after discovery recovered')
     await tick()
     expect(reread).toBe(true)
-    expect(wire.requests.filter((one) => one.method === 'mcpServerStatus/list')).toEqual(
-      Array.from({ length: 2 }, () => ({
-        method: 'mcpServerStatus/list',
-        params: {
-          threadId: saved!.sessionId,
-          serverName: route.name,
-          detail: 'toolsAndAuthOnly',
-        },
-      })),
-    )
+    expect(statusReads(wire)).toEqual(statusReadsOn(saved!.sessionId, 2))
     expect(wire.catalogsAtTurns).toEqual([[]])
     expect(handle.ref).toEqual(saved)
     expect(wire.requests.filter((one) => one.method === 'thread/start')).toHaveLength(1)
@@ -373,16 +356,7 @@ it.each(['tools-error', 'unknown', 'refused'] as const)(
     wire.discovery = () => recovered.promise
     await handle.send('Fictional later turn after an unknown health reading')
     await tick()
-    expect(wire.requests.filter((one) => one.method === 'mcpServerStatus/list')).toEqual(
-      Array.from({ length: 3 }, () => ({
-        method: 'mcpServerStatus/list',
-        params: {
-          threadId: saved!.sessionId,
-          serverName: route.name,
-          detail: 'toolsAndAuthOnly',
-        },
-      })),
-    )
+    expect(statusReads(wire)).toEqual(statusReadsOn(saved!.sessionId, 3))
     expect(wire.catalogsAtTurns).toEqual([['echo']])
     expect(wire.requests.filter((one) => one.method === 'thread/start')).toHaveLength(1)
     expect(wire.requests.some((one) => one.method === 'thread/resume')).toBe(false)
@@ -428,16 +402,7 @@ it('a late healthy reading cannot relatch readiness after a newer turn was cance
   await handle.send('Fictional replacement after cancellation')
   await tick()
   expect(wire.catalogsAtTurns).toEqual([['echo']])
-  expect(wire.requests.filter((one) => one.method === 'mcpServerStatus/list')).toEqual(
-    Array.from({ length: 4 }, () => ({
-      method: 'mcpServerStatus/list',
-      params: {
-        threadId: saved!.sessionId,
-        serverName: route.name,
-        detail: 'toolsAndAuthOnly',
-      },
-    })),
-  )
+  expect(statusReads(wire)).toEqual(statusReadsOn(saved!.sessionId, 4))
   currentReply.resolve(ready())
   await tick()
   expect(wire.catalogsAtTurns).toEqual([['echo'], ['echo']])
@@ -472,16 +437,7 @@ it('an older healthy reply cannot replace a newer unknown reading before the nex
   wire.discovery = () => currentReply.promise
   await handle.send('Fictional next turn after overlapping health reads')
   await tick()
-  expect(wire.requests.filter((one) => one.method === 'mcpServerStatus/list')).toEqual(
-    Array.from({ length: 4 }, () => ({
-      method: 'mcpServerStatus/list',
-      params: {
-        threadId: saved!.sessionId,
-        serverName: route.name,
-        detail: 'toolsAndAuthOnly',
-      },
-    })),
-  )
+  expect(statusReads(wire)).toEqual(statusReadsOn(saved!.sessionId, 4))
   expect(wire.catalogsAtTurns).toEqual([['echo']])
   expect(handle.ref).toEqual(saved)
   expect(wire.requests.filter((one) => one.method === 'thread/start')).toHaveLength(1)
@@ -565,16 +521,7 @@ it('stops an undispatched turn promptly and a late catalog cannot send it', asyn
   await handle.send('Fictional replacement turn')
   await tick()
   expect(wire.catalogsAtTurns).toEqual([])
-  expect(wire.requests.filter((one) => one.method === 'mcpServerStatus/list')).toEqual(
-    Array.from({ length: 2 }, () => ({
-      method: 'mcpServerStatus/list',
-      params: {
-        threadId: handle.ref!.sessionId,
-        serverName: route.name,
-        detail: 'toolsAndAuthOnly',
-      },
-    })),
-  )
+  expect(statusReads(wire)).toEqual(statusReadsOn(handle.ref!.sessionId, 2))
   replacement.resolve(ready())
   await tick()
   expect(wire.catalogsAtTurns).toHaveLength(1)
@@ -603,16 +550,7 @@ it('Claude still delivers its first prompt immediately with its authenticated ma
     frames = new AsyncQueue<SDKMessage>()
   const received: unknown[] = []
   let options: unknown
-  const query: ClaudeQuery = {
-    async interrupt() {},
-    close() {
-      frames.close()
-    },
-    async return() {
-      frames.close()
-    },
-    [Symbol.asyncIterator]: () => frames[Symbol.asyncIterator](),
-  }
+  const query = claudeQuery(frames)
   const runtime = new ClaudeRuntime(
     (params) => {
       options = params.options.mcpServers
@@ -740,16 +678,7 @@ it.each([
     ).managedPluginHealth
     expect(typeof health).toBe('function')
     expect(await health.call(handle, [route])).toEqual(expected)
-    expect(wire.requests.filter((one) => one.method === 'mcpServerStatus/list')).toEqual([
-      {
-        method: 'mcpServerStatus/list',
-        params: {
-          threadId: 'fictional-thread',
-          serverName: route.name,
-          detail: 'toolsAndAuthOnly',
-        },
-      },
-    ])
+    expect(statusReads(wire)).toEqual(statusReadsOn('fictional-thread'))
   },
 )
 it('an unscoped or missing Codex status row cannot authorize a recovery', async () => {
