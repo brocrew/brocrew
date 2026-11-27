@@ -16,12 +16,12 @@ import {
 } from '@brobot2/runtime'
 import { FakeRuntime } from '@brobot2/runtime/testing'
 import { PLUGIN_ATTACHMENT_WAIT_MS } from '../../../packages/runtime/src/managed-plugin-session'
-import type { PluginStateDisk } from '../src/main/plugins/state/disk'
 import {
   appendProjectionHistory,
   fixture,
   cleanupLifecycleFixtures,
   deferred,
+  journalHead,
 } from './plugin-lifecycle-fixtures'
 import { manifestFor, packageFixture, catalogueBytes } from './plugin-package-fixtures'
 import { bundleAWorker } from './helpers/bundle-a-worker'
@@ -145,10 +145,16 @@ it.each([
     ]
     const whatsapp = packageFixture({ manifest: whatsappManifest })
     const catalogue = catalogueBytes({ format: 1, entries: [pkg.release, whatsapp.release] })
-    const f = await fixture({
-      catalogue,
-      download: async (release) => (release.id === 'chrome' ? pkg.archive : whatsapp.archive),
-    })
+    // With history, the root starts as an earlier build's journal, which the new process migrates.
+    const f = await fixture(
+      {
+        catalogue,
+        download: async (release) => (release.id === 'chrome' ? pkg.archive : whatsapp.archive),
+      },
+      'chrome',
+      {},
+      { journal: history > 0 },
+    )
     f.opts.runtime.start = async (spec) => {
       const exited = deferred<void>()
       return {
@@ -173,14 +179,14 @@ it.each([
     await f.controller.install(f.handle, 'whatsapp')
     const historyWorkspace = randomUUID()
     await f.controller.drain()
-    const head = (f.state as unknown as { disk: PluginStateDisk }).disk.load()
-    const beforeHistory = head.sequence
+    const head = history > 0 ? journalHead(f) : undefined
     f.state.close()
-    // Seed the fictional closed journal once. Measuring route reads must not first
-    // perform O(n²) fsync/replay setup, especially under Windows Defender.
-    // The new process still opens and verifies every real record and seal.
-    appendProjectionHistory(f.root, head, historyWorkspace, history)
-    expect(head.sequence - beforeHistory).toBe(history)
+    if (head) {
+      // Seed the fictional closed journal once. The new process migrates it, reading every record.
+      const beforeHistory = head.sequence
+      appendProjectionHistory(f.root, head, historyWorkspace, history)
+      expect(head.sequence - beforeHistory).toBe(history)
+    }
     const bundle = await bundleAWorker(
       'test/fixtures/plugin-restart-process.ts',
       join(f.parent, 'bundle'),

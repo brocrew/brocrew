@@ -38,5 +38,10 @@ vi.mock('node:fs', async (original) => {
 
 vi.mock('node:fs/promises', async (original) => {
   const actual = await original<typeof import('node:fs/promises')>()
-  return { ...actual, open: vi.fn(actual.open), readdir: vi.fn(actual.readdir) }
+  return {
+    ...actual,
+    open: vi.fn(actual.open),
+    readdir: vi.fn(actual.readdir),
+    readFile: vi.fn(actual.readFile),
+  }
 })

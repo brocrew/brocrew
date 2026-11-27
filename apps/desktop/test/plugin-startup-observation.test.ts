@@ -2,8 +2,7 @@ import './plugin-startup-fixtures'
 import fs from 'node:fs'
 import * as asyncFs from 'node:fs/promises'
 import Database from 'better-sqlite3'
-import { join, dirname } from 'node:path'
-import { randomUUID } from 'node:crypto'
+import { join } from 'node:path'
 import { prepareFirst } from './plugin-startup-fixtures'
 import { afterEach, expect, it, vi } from 'vitest'
 import { fixture, cleanupLifecycleFixtures } from './plugin-lifecycle-fixtures'
@@ -35,67 +34,55 @@ it('matches committed installed, pending and empty evidence without touching the
   expect(await observeInstallations(pendingOptions)).toEqual({ installed: [], pending: 'chrome' })
 })
 
-it.each(['missing seal', 'changed seal', 'truncated record', 'record gap', 'unexpected entry'])(
-  'returns unknown for %s',
+it.each(['missing', 'truncated', 'another format', 'unexpected field'])(
+  'returns unknown for a %s state file',
   async (mode) => {
     const f = await fixture(),
       opts = options(f),
-      guard = join(opts.root, 'lifecycle-guard')
-    const seal = fs.readdirSync(guard).find((name) => name.endsWith('.seal'))!
-    if (mode === 'missing seal') fs.unlinkSync(join(guard, seal))
-    if (mode === 'changed seal') fs.writeFileSync(join(guard, seal), 'partial')
-    if (mode === 'truncated record') fs.writeFileSync(join(guard, '00000000.json'), '{')
-    if (mode === 'record gap')
-      fs.renameSync(join(guard, '00000000.json'), join(guard, '00000001.json'))
-    if (mode === 'unexpected entry') fs.writeFileSync(join(guard, 'unexpected'), '')
+      file = join(opts.root, 'plugin-state.json')
+    const state = JSON.parse(fs.readFileSync(file, 'utf8'))
+    if (mode === 'missing') fs.unlinkSync(file)
+    if (mode === 'truncated') fs.writeFileSync(file, '{')
+    if (mode === 'another format') fs.writeFileSync(file, JSON.stringify({ ...state, format: 1 }))
+    if (mode === 'unexpected field')
+      fs.writeFileSync(file, JSON.stringify({ ...state, history: [] }))
     expect(await observeInstallations(opts)).toBeNull()
   },
 )
 
-it('returns unknown for unreadable data and closes every directory already opened', async () => {
+it('returns unknown for an unreadable state file', async () => {
   const f = await fixture(),
-    opts = options(f),
-    native = vi.mocked(asyncFs.open).getMockImplementation()!
-  const closes: ReturnType<typeof vi.spyOn>[] = []
-  vi.mocked(asyncFs.open).mockImplementation(async (...args) => {
-    if (dirname(String(args[0])) === join(opts.root, 'lifecycle-guard'))
-      throw Object.assign(new Error('fictional unreadable'), { code: 'EACCES' })
-    const handle = await native(...args)
-    closes.push(vi.spyOn(handle, 'close'))
-    return handle
-  })
-  try {
-    expect(await observeInstallations(opts)).toBeNull()
-    expect(closes.length).toBe(5)
-    for (const close of closes) expect(close).toHaveBeenCalledOnce()
-  } finally {
-    vi.mocked(asyncFs.open).mockImplementation(native)
-  }
-})
-
-it('returns unknown if the writer publishes during the unlocked observation', async () => {
-  const f = await fixture(),
-    opts = options(f),
-    native = vi.mocked(asyncFs.open).getMockImplementation()!
-  let published = false
-  vi.mocked(asyncFs.open).mockImplementation(async (...args) => {
-    const handle = await native(...args)
-    if (!published && dirname(String(args[0])) === join(opts.root, 'lifecycle-guard')) {
-      published = true
-      f.state.requireUpdateReader()
-    }
-    return handle
-  })
-  try {
-    expect(await observeInstallations(opts)).toBeNull()
-  } finally {
-    vi.mocked(asyncFs.open).mockImplementation(native)
-  }
-  expect(published).toBe(true)
+    opts = options(f)
+  vi.mocked(asyncFs.readFile).mockRejectedValueOnce(
+    Object.assign(new Error('fictional unreadable'), { code: 'EACCES' }),
+  )
+  expect(await observeInstallations(opts)).toBeNull()
   expect(await observeInstallations(opts)).toEqual({ installed: [], pending: null })
 })
 
-it('may skip stable complete empty state under an idle held SQLite fence', async () => {
+it('sees the whole state before or after a write that lands during the read, never a mix', async () => {
+  const f = await fixture(),
+    opts = options(f),
+    native = vi.mocked(asyncFs.readFile).getMockImplementation()!
+  let published = false
+  vi.mocked(asyncFs.readFile).mockImplementation(async (...args) => {
+    const bytes = await native(...args)
+    if (!published) {
+      published = true
+      prepareFirst(f)
+    }
+    return bytes
+  })
+  try {
+    expect(await observeInstallations(opts)).toEqual({ installed: [], pending: null })
+  } finally {
+    vi.mocked(asyncFs.readFile).mockImplementation(native)
+  }
+  expect(published).toBe(true)
+  expect(await observeInstallations(opts)).toEqual({ installed: [], pending: 'chrome' })
+})
+
+it('reads under an idle held SQLite fence, which it never takes', async () => {
   const f = await fixture(),
     opts = options(f)
   const db = new Database(join(opts.root, 'writer-lock.sqlite'), { timeout: 0 })
@@ -108,29 +95,9 @@ it('may skip stable complete empty state under an idle held SQLite fence', async
   }
 })
 
-it('retains a complete journal with a private crash-stage hardlink', async () => {
+it('ignores an interrupted write left beside the state file', async () => {
   const f = await fixture(),
-    opts = options(f),
-    guard = join(opts.root, 'lifecycle-guard')
-  fs.linkSync(join(guard, '00000000.json'), join(guard, '.stage-' + randomUUID()))
+    opts = options(f)
+  fs.writeFileSync(join(opts.root, 'plugin-state.json.0123456789ab.tmp'), '{"format":2')
   expect(await observeInstallations(opts)).toEqual({ installed: [], pending: null })
-})
-
-it('returns unknown when first pending state publishes after the final enumeration but before its stats', async () => {
-  const f = await fixture(),
-    opts = options(f),
-    native = vi.mocked(asyncFs.readdir).getMockImplementation()!
-  let listings = 0
-  vi.mocked(asyncFs.readdir).mockImplementation(async (...args) => {
-    const names = await native(...args)
-    if (String(args[0]) === join(opts.root, 'lifecycle-guard') && ++listings === 2) prepareFirst(f)
-    return names
-  })
-  try {
-    expect(await observeInstallations(opts)).toBeNull()
-  } finally {
-    vi.mocked(asyncFs.readdir).mockImplementation(native)
-  }
-  expect(listings).toBe(2)
-  expect(await observeInstallations(opts)).toEqual({ installed: [], pending: 'chrome' })
 })

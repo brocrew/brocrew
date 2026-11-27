@@ -11,11 +11,6 @@ import { packageFixture, catalogueBytes } from './plugin-package-fixtures'
 import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
 import { servePersonPluginControl } from '../src/main/plugins/lifecycle/person-control'
 import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-client'
-import { GlobalPluginState } from '../src/main/plugins/state/store'
-import {
-  JournalRecord as ParentRecord,
-  decodeState as decodeParent,
-} from './fixtures/plugin-update-parent/state-format'
 import { pluginSha256 } from '../src/main/plugins/package-digests'
 import { GlobalPluginState as ParentState } from './fixtures/plugin-update-parent/state-store'
 import { PluginLifecycleController as ParentController } from './fixtures/plugin-update-parent/lifecycle-controller'
@@ -96,9 +91,10 @@ describe.skipIf(process.platform === 'win32')(
     it.each(['install', 'update'] as const)(
       'keeps raw %s refused with a historical v2 legacy-row vault',
       async (action) => {
-        const f = await fixture()
+        const f = await fixture({}, 'chrome', {}, { journal: true })
         exitable(f)
-        // The historical owner is an older copy with its own store over the same root.
+        // The historical owner is an older copy with its own store over the same journal, which
+        // the new owner then migrates.
         f.state.close()
         const older = ParentState.open({
           root: join(f.root, 'state'),
@@ -188,6 +184,7 @@ describe.skipIf(process.platform === 'win32')(
                 removal: { data: 'delete', note: 'Fictional local data is removed.' },
               }
             : {},
+          { journal: true },
         )
         exitable(f)
         f.state.close()
@@ -236,16 +233,8 @@ describe.skipIf(process.platform === 'win32')(
         }
       },
     )
-    it.each([
-      'staged',
-      'update-fenced',
-      'prepared',
-      'prepared-missing',
-      'ready',
-      'activated',
-      'complete',
-    ] as const)(
-      'the parent owner replays or refuses without recovery effects after %s, and the new owner recovers',
+    it.each(['staged', 'prepared', 'prepared-missing', 'ready', 'activated', 'complete'] as const)(
+      'the parent owner refuses the new state without recovery effects after %s, and the new owner recovers',
       async (boundary) => {
         const f = await prepared()
         const operationId = '00000000-0000-4000-8000-000000000001'
@@ -259,27 +248,6 @@ describe.skipIf(process.platform === 'win32')(
         await f.controller.drain()
         f.state.close()
         const before = await diskBytes(f.root)
-        const guard = join(f.root, 'state', 'lifecycle-guard')
-        const records = await Promise.all(
-          (await readdir(guard))
-            .filter((name) => /^\d{8}\.json$/.test(name))
-            .sort()
-            .map(async (name) => {
-              const bytes = await readFile(join(guard, name))
-              return { bytes, record: JSON.parse(JSON.parse(bytes.toString()).payload) }
-            }),
-        )
-        if (boundary !== 'staged') {
-          const floor = records.findIndex(({ record }) => record.event.kind === 'reader-floor')
-          expect(floor).toBeGreaterThan(0)
-          for (const entry of records.slice(0, floor))
-            expect(() => decodeParent(entry.bytes, ParentRecord)).not.toThrow()
-          expect(() => decodeParent(records[floor]!.bytes, ParentRecord)).toThrow()
-          const updating = records.findIndex(
-            ({ record }) => record.event.operation?.request.consent.action === 'update',
-          )
-          if (updating >= 0) expect(updating).toBeGreaterThan(floor)
-        }
         const start = vi.fn(f.opts.runtime.start),
           removeData = vi.fn(),
           removeCode = vi.fn()
@@ -301,15 +269,9 @@ describe.skipIf(process.platform === 'win32')(
             state.close()
           }
         }
-        if (boundary === 'staged') await expect(attempt()).resolves.toBeUndefined()
-        else {
-          await expect(attempt()).rejects.toMatchObject({
-            name: 'PluginStateError',
-            code: 'corrupt',
-          })
-          expect(await diskBytes(f.root)).toEqual(before)
-          expect(start).not.toHaveBeenCalled()
-        }
+        await expect(attempt()).rejects.toMatchObject({ name: 'PluginStateError' })
+        expect(await diskBytes(f.root)).toEqual(before)
+        expect(start).not.toHaveBeenCalled()
         expect(fetch).not.toHaveBeenCalled()
         expect(removeData).not.toHaveBeenCalled()
         expect(removeCode).not.toHaveBeenCalled()
@@ -319,69 +281,10 @@ describe.skipIf(process.platform === 'win32')(
         await current.attach(projection().sink)
         expect(state.inspect().pending).toBeNull()
         expect(state.exportActivation().entries[0]?.release.version).toBe(
-          boundary === 'staged' || boundary === 'update-fenced' ? f.pkg.manifest.version : '1.0.3',
+          boundary === 'staged' ? f.pkg.manifest.version : '1.0.3',
         )
         expect(await readFile(join(f.data, 'login'), 'utf8')).toBe('fictional-paired-phone')
         await current.drain()
-      },
-    )
-  },
-)
-
-describe.skipIf(process.platform === 'win32')(
-  'reader-floor publication interrupts on fictional roots',
-  () => {
-    it.each(['staged', 'published', 'durable'] as const)(
-      'the old reader stays safe when the floor is interrupted at %s',
-      async (point) => {
-        const f = await prepared()
-        await f.controller.drain()
-        f.state.close()
-        let armed = false
-        const state = GlobalPluginState.open({
-          root: join(f.root, 'state'),
-          workspaceRoots: [f.workspace],
-          fault(at) {
-            if (armed && at === point) throw new Error('fictional floor interruption')
-          },
-        })
-        armed = true
-        expect(() => state.requireUpdateReader()).toThrow()
-        state.close()
-        const before = await diskBytes(f.root)
-        const attempt = () => {
-          const parent = ParentState.open({
-            root: join(f.root, 'state'),
-            workspaceRoots: [f.workspace],
-          })
-          try {
-            expect(parent.exportActivation().entries[0]?.release.version).toBe(
-              f.pkg.manifest.version,
-            )
-          } finally {
-            parent.close()
-          }
-        }
-        if (point === 'staged') expect(attempt).not.toThrow()
-        else {
-          expect(attempt).toThrow()
-          expect(await diskBytes(f.root)).toEqual(before)
-        }
-        expect(await readFile(join(f.data, 'login'), 'utf8')).toBe('fictional-paired-phone')
-        const current = GlobalPluginState.open({
-          root: join(f.root, 'state'),
-          workspaceRoots: [f.workspace],
-        })
-        try {
-          expect(current.inspect().pending).toBeNull()
-          current.requireUpdateReader()
-          current.requireUpdateReader()
-          expect(current.exportActivation().entries[0]?.release.version).toBe(
-            f.pkg.manifest.version,
-          )
-        } finally {
-          current.close()
-        }
       },
     )
   },

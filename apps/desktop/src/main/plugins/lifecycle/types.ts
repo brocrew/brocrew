@@ -78,7 +78,7 @@ export interface LifecycleOptions {
   /** Current inventory stage while a binding is starting or retrying. */
   toolsPending?: (pluginId: string) => string | undefined
   /** Inert fault controls only; never a production launch option. */
-  fault?: (point: 'prepared' | 'staged' | 'ready' | 'activated' | 'update-fenced') => void
+  fault?: (point: 'prepared' | 'staged' | 'ready' | 'activated') => void
 }
 declare const workspaceBrand: unique symbol
 export interface LifecycleWorkspace {

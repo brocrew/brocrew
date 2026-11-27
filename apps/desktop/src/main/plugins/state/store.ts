@@ -9,30 +9,22 @@ import {
   type Operation,
 } from './format'
 import { PluginStateDisk, type PluginDiskOptions } from './disk'
-import { newLifecycle, planOperation, type LifecycleState } from './machine'
+import {
+  admitOperation,
+  keepLatestPerPlugin,
+  planOperation,
+  resolveOperation,
+  type LifecycleState,
+} from './machine'
 
 /** Storage only. The later person-command controller owns authentication and consent collection. */
 export class GlobalPluginState {
   private constructor(private readonly disk: PluginStateDisk) {}
   static create(options: PluginDiskOptions): GlobalPluginState {
-    const disk = new PluginStateDisk(options, true)
-    try {
-      disk.append(newLifecycle(), { kind: 'created', rootId: randomUUID(), epoch: randomUUID() })
-      return new GlobalPluginState(disk)
-    } catch (error) {
-      disk.close()
-      throw error
-    }
+    return new GlobalPluginState(PluginStateDisk.create(options))
   }
   static open(options: PluginDiskOptions): GlobalPluginState {
-    const disk = new PluginStateDisk(options)
-    try {
-      disk.reclaim()
-      return new GlobalPluginState(disk)
-    } catch (error) {
-      disk.close()
-      throw error
-    }
+    return new GlobalPluginState(PluginStateDisk.open(options))
   }
   close(): void {
     this.disk.close()
@@ -49,15 +41,8 @@ export class GlobalPluginState {
       sequence: state.sequence,
       guards: [...state.guards.values()],
       pending: state.pending,
-      reservation: state.reservation,
       operations: [...state.operations.values()],
     })
-  }
-  /** Older readers must refuse before any update can reach their removal recovery. */
-  requireUpdateReader(): void {
-    const state = this.disk.load()
-    if (state.pending) refuseState('busy')
-    if (!state.updateReader) this.disk.append(state, { kind: 'reader-floor', version: 2 })
   }
   /** Persist exact structured consent and stable identity allocation before any installer effect. */
   prepare(input: unknown): Readonly<Operation> {
@@ -66,13 +51,17 @@ export class GlobalPluginState {
     const previous = state.operations.get(request.operationId)
     if (previous !== undefined) {
       if (!equalState(previous.operation.request, request)) refuseState('conflict')
-      if (previous.status === 'prepared' && state.reservation === null) refuseState('corrupt')
       return frozen(previous.operation)
     }
+    // Workspace receipts are no longer kept, so no new operation may ask for them.
+    if (request.workspaces !== undefined) refuseState('conflict')
     if (request.consent.action !== 'global-restore') this.active(state)
     const allocated = { installId: randomUUID(), incarnation: randomUUID(), epoch: randomUUID() }
     const operation = planOperation(state, request, allocated)
-    this.disk.prepare(state, operation)
+    const next = structuredClone(state)
+    admitOperation(next, operation)
+    keepLatestPerPlugin(next)
+    this.disk.update(state, next)
     return frozen(operation)
   }
   /** Caller must finish required readiness/drain work first. This starts/stops no consumer. */
@@ -92,52 +81,23 @@ export class GlobalPluginState {
       refuseState('conflict')
     }
     if (state.pending?.request.operationId !== operationId) refuseState('conflict')
-    this.disk.resolve(state, success)
+    const next = structuredClone(state)
+    resolveOperation(next, success)
+    this.disk.update(state, next)
   }
   private active(state: LifecycleState): ActivationSnapshot {
     if (state.pending !== null) refuseState('busy')
-    const snapshot = this.committed(state)
-    if (this.disk.load().head !== state.head) refuseState('conflict')
-    return snapshot
+    return committed(state)
   }
-  /**
-   * The last committed activation, less what a pending operation is changing: its plugin, whose
-   * guard already names the next state, or every plugin for one that names none (a global
-   * restore). Every other plugin is exactly as committed until the operation resolves.
-   */
-  private committed(state: LifecycleState): ActivationSnapshot {
-    const changing = pendingPlugin(state)
-    const kept = (id: string) => changing !== '*' && id !== changing
-    if (state.activation === null) {
-      if ([...state.guards.keys()].some(kept)) refuseState('corrupt')
-      return { format: 1, rootId: state.rootId, epoch: state.epoch, entries: [] }
-    }
-    const snapshot = this.disk.activationSnapshot(state.activation)
-    if (
-      snapshot.rootId !== state.rootId ||
-      snapshot.epoch !== state.epoch ||
-      new Set(snapshot.entries.map((entry) => entry.pluginId)).size !== snapshot.entries.length ||
-      snapshot.entries.some(
-        (entry) =>
-          kept(entry.pluginId) &&
-          (entry.phase !== 'active' || !equalState(state.guards.get(entry.pluginId), entry)),
-      )
-    )
-      refuseState('corrupt')
-    return changing === null
-      ? snapshot
-      : { ...snapshot, entries: snapshot.entries.filter((entry) => kept(entry.pluginId)) }
-  }
-  /** Back up only this data. lifecycle-guard is explicitly excluded from every restore set. */
+  /** Back up only this data. The plugin state is explicitly excluded from every restore set. */
   exportActivation(): Readonly<ActivationSnapshot> {
-    const state = this.disk.load()
-    return frozen(this.active(state))
+    return frozen(this.active(this.disk.load()))
   }
   /** What agents and the Plugins page may read while another plugin's operation is pending. */
   committedActivation(): Readonly<ActivationSnapshot> {
-    return frozen(this.committed(this.disk.load()))
+    return frozen(committed(this.disk.load()))
   }
-  /** Display evidence from this owner's current state, without reopening the journal. */
+  /** Display evidence from this owner's current state, without reading the file again. */
   installationEvidence() {
     const state = this.disk.loadForAdmission()
     return {
@@ -154,26 +114,17 @@ export class GlobalPluginState {
     decide: (read: WorkspaceAdmission) => T extends PromiseLike<unknown> ? never : T,
   ): T {
     const state = this.disk.loadForAdmission()
-    const installations = this.committed(state).entries
     const read = frozen({
       sequence: state.sequence,
       pendingPlugin: pendingPlugin(state),
       pending: state.pending,
       guardIds: [...state.guards.keys()],
-      installations,
+      installations: committed(state).entries,
     })
     const result = decide(read)
     if (result && typeof (result as { then?: unknown }).then === 'function') refuseState('conflict')
     const after = this.disk.loadForAdmission()
-    if (
-      after.rootId !== state.rootId ||
-      after.epoch !== state.epoch ||
-      after.sequence !== state.sequence ||
-      after.head !== state.head ||
-      !equalState(after.pending, state.pending) ||
-      !equalState(after.activation, state.activation)
-    )
-      refuseState('conflict')
+    if (after.rootId !== state.rootId || after.sequence !== state.sequence) refuseState('conflict')
     return result
   }
 }
@@ -189,4 +140,16 @@ export interface WorkspaceAdmission {
 
 function pendingPlugin(state: LifecycleState): string | null {
   return state.pending ? (state.pending.request.consent.pluginId ?? '*') : null
+}
+/**
+ * The admitted plugins, less what a pending operation is changing: its plugin, whose guard already
+ * names the next state, or every plugin for one that names none (a global restore). Every other
+ * plugin is exactly as committed until the operation resolves.
+ */
+function committed(state: LifecycleState): ActivationSnapshot {
+  const changing = pendingPlugin(state)
+  const entries = [...state.admitted.values()].filter(
+    (entry) => changing === null || (changing !== '*' && entry.pluginId !== changing),
+  )
+  return { format: 1, rootId: state.rootId, epoch: state.epoch, entries }
 }

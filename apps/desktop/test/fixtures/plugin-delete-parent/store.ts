@@ -13,9 +13,9 @@ import {
   stateInput,
   type Operation,
   type ProjectionReceipt as Receipt,
-} from '../../../src/main/plugins/state/format'
-import { PluginStateDisk, type PluginDiskOptions } from '../../../src/main/plugins/state/disk'
-import { newLifecycle, planOperation, type LifecycleState } from '../../../src/main/plugins/state/machine'
+} from '../plugin-journal-parent/format'
+import { PluginStateDisk, type PluginDiskOptions } from '../plugin-journal-parent/disk'
+import { newLifecycle, planOperation, type LifecycleState } from '../plugin-journal-parent/machine'
 
 /** Storage only. The later person-command controller owns authentication and consent collection. */
 export class GlobalPluginState {

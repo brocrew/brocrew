@@ -1,5 +1,6 @@
+import { randomUUID } from 'node:crypto'
 import { afterEach, expect, it, vi } from 'vitest'
-import { fixture, cleanupLifecycleFixtures } from './plugin-lifecycle-fixtures'
+import { fixture, cleanupLifecycleFixtures, moveTheSequence } from './plugin-lifecycle-fixtures'
 
 afterEach(async () => {
   vi.restoreAllMocks()
@@ -22,7 +23,7 @@ it('returns detached frozen data and preserves the final scope sequence conflict
   const ready = run.ready.bind(run)
   vi.spyOn(run, 'ready').mockImplementation(() => {
     const view = ready()
-    f.state.requireUpdateReader()
+    moveTheSequence(f.state)
     return view
   })
   expect(() => f.controller.agentScope(f.local.sink.workspaceId)).toThrow()
@@ -67,12 +68,23 @@ it('rejects asynchronous admission computations instead of carrying snapshot aut
   ).toThrow()
 })
 
-it('refuses a reentrant journal append after the admission snapshot is built', async () => {
+it('refuses a reentrant state write after the admission snapshot is built', async () => {
   const f = await fixture()
   await f.controller.install(f.handle, 'chrome')
   expect(() =>
     f.state.withWorkspaceAdmission((read) => {
-      f.state.requireUpdateReader()
+      f.state.prepare({
+        operationId: randomUUID(),
+        snapshot: null,
+        consent: {
+          action: 'uninstall',
+          pluginId: 'chrome',
+          at: 0,
+          expectedSequence: read.sequence,
+          expectedInstallId: read.installations[0]!.installId,
+          release: null,
+        },
+      })
       return read
     }),
   ).toThrow()

@@ -1,15 +1,10 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { readdirSync } from 'node:fs'
-import { join } from 'node:path'
-import * as format from '../src/main/plugins/state/format'
-import * as machine from '../src/main/plugins/state/machine'
 import type { GlobalPluginState } from '../src/main/plugins/state/store'
 import type { PluginStateDisk } from '../src/main/plugins/state/disk'
 import { fixture, cleanupLifecycleFixtures } from './plugin-lifecycle-fixtures'
 
-// The plugin service is the journal's only writer while it holds its owner lock, so it reads the
-// state once and again only after it changes the journal itself. With a long history, a read per
-// admission made plugin tools late for an agent's first message.
+// The plugin service is the state file's only writer while it holds its owner lock, so it reads
+// the file once and again only to check that nothing else changed it before each write.
 
 afterEach(async () => {
   vi.restoreAllMocks()
@@ -17,59 +12,41 @@ afterEach(async () => {
 })
 const diskOf = (state: GlobalPluginState) => (state as unknown as { disk: PluginStateDisk }).disk
 const readsOf = (disk: PluginStateDisk) =>
-  vi.spyOn(disk as unknown as { loadLocked(...args: unknown[]): unknown }, 'loadLocked')
+  vi.spyOn(disk as unknown as { onDisk(): unknown }, 'onDisk')
 async function installed() {
   const f = await fixture()
   await f.controller.install(f.handle, 'chrome')
-  const disk = diskOf(f.state)
-  disk.load()
-  return { ...f, disk }
+  return { ...f, disk: diskOf(f.state) }
 }
 
-it('reads the journal once for many admissions', async () => {
+it('reads the state file no more for many admissions', async () => {
   const f = await installed()
-  // The first admission reads the current activation snapshot once, beside the held state.
-  f.state.readWorkspaceAdmission()
-  const reads = readsOf(f.disk),
-    decode = vi.spyOn(format, 'decodeState'),
-    fold = vi.spyOn(machine, 'foldRecord')
+  const reads = readsOf(f.disk)
   for (let i = 0; i < 20; i++) {
     expect(f.controller.agentAttachments(f.local.sink.workspaceId)).toHaveLength(1)
     f.state.readWorkspaceAdmission()
+    f.state.inspect()
   }
   expect(reads).not.toHaveBeenCalled()
-  expect(decode).not.toHaveBeenCalled()
-  expect(fold).not.toHaveBeenCalled()
 })
 
-it("sees the writer's own change, then holds the state again", async () => {
+it("sees the writer's own change, reading the file only to check it before writing", async () => {
   const f = await installed()
-  await f.controller.uninstall(f.handle, 'chrome')
-  expect(f.disk.load().guards.get('chrome')?.phase).toBe('removed')
   const reads = readsOf(f.disk)
-  f.disk.load()
+  await f.controller.uninstall(f.handle, 'chrome')
+  const writes = reads.mock.calls.length
+  expect(writes).toBeGreaterThan(0)
+  expect(f.disk.load().guards.get('chrome')?.phase).toBe('removed')
   f.state.readWorkspaceAdmission()
-  expect(reads).not.toHaveBeenCalled()
+  expect(reads).toHaveBeenCalledTimes(writes)
 })
 
-it('does not let a caller change the held state through returned maps or sets', async () => {
+it('does not let a caller change the held state through returned maps', async () => {
   const f = await installed(),
     original = f.disk.load()
   const detached = f.disk.load()
   detached.guards.get('chrome')!.release.version = 'fictional-mutation'
   detached.operations.values().next().value!.operation.request.consent.at = 99
-  detached.usedIds.clear()
-  detached.projections.clear()
+  detached.admitted.clear()
   expect(f.disk.load()).toEqual(original)
-})
-
-it('keeps every historical completed activation during reclaim from the held state', async () => {
-  const f = await installed()
-  await f.controller.uninstall(f.handle, 'chrome')
-  f.disk.load()
-  const folder = join(f.root, 'state/activations')
-  const names = readdirSync(folder).sort()
-  expect(names.length).toBeGreaterThan(1)
-  f.disk.reclaim()
-  expect(readdirSync(folder).sort()).toEqual(names)
 })

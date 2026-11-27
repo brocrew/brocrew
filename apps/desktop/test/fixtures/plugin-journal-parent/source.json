@@ -1,0 +1,31 @@
+{
+  "commit": "c287c745bfbfa074c37a0ab624f9cfcc9cba7a4a",
+  "purpose": "The plugin lifecycle journal before it moved to one state file: writes fictional journals, gives the old recovery's answer to compare the migration against, and times the old display read.",
+  "files": [
+    {
+      "path": "apps/desktop/src/main/plugins/state/disk.ts",
+      "file": "disk.ts"
+    },
+    {
+      "path": "apps/desktop/src/main/plugins/state/journal.ts",
+      "file": "journal.ts"
+    },
+    {
+      "path": "apps/desktop/src/main/plugins/state/machine.ts",
+      "file": "machine.ts"
+    },
+    {
+      "path": "apps/desktop/src/main/plugins/state/format.ts",
+      "file": "format.ts"
+    },
+    {
+      "path": "apps/desktop/src/main/plugins/state/store.ts",
+      "file": "store.ts"
+    },
+    {
+      "path": "apps/desktop/src/main/plugins/state/observe-committed.ts",
+      "file": "observe-committed.ts"
+    }
+  ],
+  "imports": "Imports outside the state folder point at the live source under apps/desktop/src."
+}

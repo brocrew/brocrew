@@ -91,10 +91,9 @@ function fixture(fail, { corrupt = false, snapshotFails = false, missingRoute = 
     printFailure: (value) => printFailure(value, (line) => lines.push(line)),
     printPageState: (state) => lines.push(JSON.stringify(state)),
     unknownPluginState,
-    pluginStateSnapshot: async (root, global, workspace, port) => {
+    pluginStateSnapshot: async (root, global, port) => {
       expect(root).toBe('/fictional/root')
       expect(global).toBe(path.join('/fictional/root', 'g'))
-      expect(workspace).toBe(path.join('/fictional/root', 'wa'))
       expect(port).toBe(12004)
       return {
         ...unknownPluginState(),
@@ -104,7 +103,6 @@ function fixture(fail, { corrupt = false, snapshotFails = false, missingRoute = 
         errorCategory: 'none',
         diskObserved: true,
         installedRecordExists: true,
-        receiptExists: false,
       }
     },
     printPluginState: (state) => lines.push(JSON.stringify(state)),
@@ -239,7 +237,6 @@ describe('packaged restart journey without a native launch', () => {
         rowPresent: true,
         stateCategory: 'installed-stopped',
         installedRecordExists: true,
-        receiptExists: false,
       })
     else expect(summary.pluginState).toBeUndefined()
     expect(JSON.stringify(summary) + f.lines.join('')).not.toMatch(

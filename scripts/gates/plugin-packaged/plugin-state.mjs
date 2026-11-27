@@ -1,6 +1,5 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { createHash } from 'node:crypto'
 import { ownedRoot, requireCI } from './fixture-guards.mjs'
 import { connectDiagnosticPage } from './page-state.mjs'
 import { bounded } from './processes.mjs'
@@ -26,15 +25,14 @@ export const unknownPluginState = () => ({
   errorCategory: 'other',
   diskObserved: false,
   installedRecordExists: false,
-  receiptExists: false,
 })
 export function safePluginState(value) {
   return (
     value !== null &&
     typeof value === 'object' &&
     Object.keys(value).sort().join(',') ===
-      'buttonCategory,diskObserved,errorCategory,installedRecordExists,receiptExists,rowPresent,stateCategory' &&
-    ['rowPresent', 'diskObserved', 'installedRecordExists', 'receiptExists'].every(
+      'buttonCategory,diskObserved,errorCategory,installedRecordExists,rowPresent,stateCategory' &&
+    ['rowPresent', 'diskObserved', 'installedRecordExists'].every(
       (key) => typeof value[key] === 'boolean',
     ) &&
     states.includes(value.stateCategory) &&
@@ -87,8 +85,8 @@ export function chromeRowInPage(doc) {
 }
 
 /** Presence only, never state admission: do not open the product store or acquire its writer lock. */
-export function chromeDiskState(root, global, workspace) {
-  const absent = { diskObserved: false, installedRecordExists: false, receiptExists: false }
+export function chromeDiskState(root, global) {
+  const absent = { diskObserved: false, installedRecordExists: false }
   try {
     ownedRoot(root)
     const directory = (folder) => {
@@ -106,98 +104,50 @@ export function chromeDiskState(root, global, workspace) {
       return folder
     }
     directory(global)
-    directory(workspace)
     const state = path.join(global, 'state')
+    let fd
     try {
-      fs.lstatSync(state)
+      directory(state)
+      fd = fs.openSync(
+        path.join(state, 'plugin-state.json'),
+        fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK,
+      )
     } catch (error) {
       if (error.code === 'ENOENT') return { ...absent, diskObserved: true }
       throw error
     }
-    directory(state)
-    const guard = directory(path.join(state, 'lifecycle-guard'))
-    const activations = directory(path.join(state, 'activations'))
-    let total = 0
-    const json = (folder, name) => {
-      directory(folder)
-      const fd = fs.openSync(
-        path.join(folder, name),
-        fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK,
+    let file
+    try {
+      const info = fs.fstatSync(fd)
+      if (
+        !info.isFile() ||
+        info.uid !== process.getuid() ||
+        info.mode & 0o077 ||
+        info.size > 4 * 1024 * 1024
       )
-      try {
-        const info = fs.fstatSync(fd)
-        if (
-          !info.isFile() ||
-          info.uid !== process.getuid() ||
-          info.mode & 0o077 ||
-          info.size > 128 * 1024
-        )
-          throw new Error('Unsafe diagnostic record')
-        total += info.size
-        if (total > 32 * 1024 * 1024) throw new Error('Diagnostic limit')
-        const bytes = fs.readFileSync(fd)
-        if (bytes.length !== info.size) throw new Error('Changed diagnostic record')
-        return JSON.parse(bytes.toString('utf8'))
-      } finally {
-        fs.closeSync(fd)
-      }
+        throw new Error('Unsafe diagnostic record')
+      const bytes = fs.readFileSync(fd)
+      if (bytes.length !== info.size) throw new Error('Changed diagnostic record')
+      file = JSON.parse(bytes.toString('utf8'))
+    } finally {
+      fs.closeSync(fd)
     }
-    const names = () =>
-      fs
-        .readdirSync(guard)
-        .filter((name) => /^\d{8}\.json$/.test(name))
-        .sort()
-    const records = names()
-    if (records.length > 4096) throw new Error('Diagnostic limit')
-    const hash = createHash('sha256').update(workspace).digest('hex')
-    const workspaceId = `${hash.slice(0, 8)}-${hash.slice(8, 12)}-5${hash.slice(13, 16)}-a${hash.slice(17, 20)}-${hash.slice(20, 32)}`
-    let activation, receipt
-    const operations = new Map()
-    for (const name of records) {
-      const event = json(guard, name).event
-      if (!event || typeof event !== 'object') throw new Error('Invalid diagnostic record')
-      if (event.kind === 'prepared')
-        operations.set(event.operation.request.operationId, event.operation)
-      else if (event.kind === 'completed' || event.kind === 'aborted') {
-        activation = event.activation?.name
-        const operation = operations.get(event.operationId)
-        if (
-          operation?.request.consent.pluginId === 'chrome' &&
-          operation.request.workspaces?.includes(workspaceId)
-        )
-          receipt =
-            event.kind === 'completed' && operation.request.consent.action === 'install'
-              ? operation.next
-              : undefined
-      } else if (
-        event.kind === 'projected' &&
-        event.pluginId === 'chrome' &&
-        event.workspaceId === workspaceId
-      )
-        receipt = event.receipt ?? undefined
-    }
-    let installed
-    if (activation !== undefined) {
-      if (!/^\d{8}-[a-f0-9]{64}\.json$/.test(activation)) throw new Error('Invalid diagnostic name')
-      installed = json(activations, activation).entries?.find(
-        (entry) => entry.pluginId === 'chrome' && entry.phase === 'active',
-      )
-    }
-    if (records.join(',') !== names().join(',')) throw new Error('Diagnostic journal changed')
+    if (!file || typeof file !== 'object' || !Array.isArray(file.active))
+      throw new Error('Invalid diagnostic record')
     return {
       diskObserved: true,
-      installedRecordExists: !!installed,
-      receiptExists:
-        !!installed && receipt?.pluginId === 'chrome' && receipt.installId === installed.installId,
+      installedRecordExists: file.active.some(
+        (entry) => entry?.pluginId === 'chrome' && entry.phase === 'active',
+      ),
     }
   } catch {
     return absent
   }
 }
 
-export async function pluginStateSnapshot(root, global, workspace, port, io = {}) {
+export async function pluginStateSnapshot(root, global, port, io = {}) {
   if (!io.connect) requireCI()
-  const disk = (io.disk ?? chromeDiskState)(root, global, workspace)
+  const disk = (io.disk ?? chromeDiskState)(root, global)
   const unknown = { ...unknownPluginState(), ...disk }
   const abort = new AbortController()
   let client

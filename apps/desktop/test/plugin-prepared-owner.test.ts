@@ -2,6 +2,7 @@ import { randomBytes, randomUUID } from 'node:crypto'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   fixture,
+  moveTheSequence,
   projection,
   cleanupLifecycleFixtures,
   deferred,
@@ -281,7 +282,7 @@ describe('prepared mutations are an owner policy only for verified v2 sources', 
       })
       expect(f.snapshot()).toEqual(before)
       const newProof = await f.prepare(c, action)
-      f.state.requireUpdateReader()
+      moveTheSequence(f.state)
       const changed = f.snapshot()
       await expect(c.call(f.request(action, newProof))).rejects.toMatchObject({
         code: 'policy-refused',
@@ -298,7 +299,7 @@ describe('prepared mutations are an owner policy only for verified v2 sources', 
       const { entered, release } = holdFirstExclusive(f.state)
       const work = c.call(f.request(action, proof))
       await entered.promise
-      f.state.requireUpdateReader()
+      moveTheSequence(f.state)
       const before = f.snapshot()
       release.resolve()
       await expect(work).rejects.toMatchObject({ code: 'policy-refused' })

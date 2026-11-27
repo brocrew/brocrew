@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import { randomUUID } from 'node:crypto'
-import type { PluginStateDisk } from '../src/main/plugins/state/disk'
+import { readFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
 import { servePersonPluginControl } from '../src/main/plugins/lifecycle/person-control'
 import { connectPluginSettings } from '../src/main/plugins/lifecycle/settings-client'
@@ -9,6 +10,7 @@ import { PluginHostError } from '../src/main/plugins/node-host-files'
 import {
   appendProjectionHistory,
   cleanupLifecycleFixtures,
+  journalHead,
   fixture,
   projection,
   reopenLifecycleFixture,
@@ -20,10 +22,9 @@ afterEach(async () => {
 })
 
 async function withHistory(history: number) {
-  const f = await fixture()
+  const f = await fixture({}, 'chrome', {}, { journal: true })
   await f.controller.install(f.handle, 'chrome')
-  const disk = (f.state as unknown as { disk: PluginStateDisk }).disk
-  const head = disk.load()
+  const head = journalHead(f)
   const workspaceId = randomUUID()
   f.state.close()
   // Earlier copies wrote these on every attach; seed them directly, as their journals hold them.
@@ -31,18 +32,15 @@ async function withHistory(history: number) {
   const state = reopenLifecycleFixture(f)
   const controller = await PluginLifecycleController.open({ ...f.opts, state })
   state.inspect()
-  return { state, controller, disk: (state as unknown as { disk: PluginStateDisk }).disk }
+  return { f, state, controller }
 }
 
 it.each([336, 1000])(
-  'with %i history records, a new agent attaches and reads its first routes without writing or replaying',
+  'with %i history records migrated, a new agent attaches and reads its first routes without writing',
   async (history) => {
-    const { state, controller, disk } = await withHistory(history)
-    const before = state.inspect().sequence
-    const replays = vi.spyOn(
-      disk as unknown as { loadLocked(...args: unknown[]): unknown },
-      'loadLocked',
-    )
+    const { f, state, controller } = await withHistory(history)
+    const file = join(f.root, 'state', 'plugin-state.json')
+    const before = { sequence: state.inspect().sequence, bytes: await readFile(file) }
     const agent = projection()
     await controller.attach(agent.sink)
     expect(
@@ -51,8 +49,7 @@ it.each([336, 1000])(
     expect(
       controller.agentScope(agent.sink.workspaceId).entries.map((one) => [one.pluginId, one.is]),
     ).toEqual([['chrome', 'admitted']])
-    expect(state.inspect().sequence).toBe(before)
-    expect(replays).not.toHaveBeenCalled()
+    expect({ sequence: state.inspect().sequence, bytes: await readFile(file) }).toEqual(before)
   },
   180_000,
 )

@@ -539,7 +539,7 @@ export async function journey(root) {
     if (['restart-installed', 'reinstall'].includes(step)) {
       summary.pluginState = unknownPluginState()
       try {
-        summary.pluginState = await pluginStateSnapshot(root, global, workspaceA, active?.port)
+        summary.pluginState = await pluginStateSnapshot(root, global, active?.port)
       } catch {
         // Preserve the journey failure if its independent diagnostic cannot be observed.
       }

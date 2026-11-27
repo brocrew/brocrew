@@ -5,10 +5,9 @@ import { strictPluginJson } from '../strict-json'
 
 export const STATE_LIMITS = {
   recordBytes: 128 * 1024,
-  records: 4096,
-  journalBytes: 32 * 1024 * 1024,
   plugins: 200,
-  projections: 4096,
+  /** The state file holds at most 200 plugins and one operation each: a few hundred KB at worst. */
+  stateBytes: 4 * 1024 * 1024,
 } as const
 const integer = z.number().int().nonnegative().safe()
 const uuid = z.uuid()
@@ -131,6 +130,7 @@ export const Event = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('aborted'), operationId: uuid, activation: ActivationRef }),
 ])
 export type Event = z.infer<typeof Event>
+/** One record of the journal the state file replaced; read only to migrate it. */
 export const JournalRecord = z.strictObject({
   sequence: integer,
   previous: SkillDigest.nullable(),
@@ -138,6 +138,28 @@ export const JournalRecord = z.strictObject({
   event: Event,
 })
 export type JournalRecord = z.infer<typeof JournalRecord>
+
+/** The plugin service's state, in its state folder. */
+export const STATE_FILE = 'plugin-state.json'
+const OperationStatus = z.enum(['prepared', 'completed', 'aborted'])
+/**
+ * The whole plugin lifecycle state, one file. Every plugin ever installed keeps its entry, removed
+ * ones too, so nothing can bring a removed plugin back. Each plugin keeps only its latest
+ * operation, which is all that retries and recovery read.
+ */
+export const StateFile = z.strictObject({
+  format: z.literal(2),
+  rootId: uuid,
+  epoch: uuid,
+  sequence: integer,
+  plugins: z.array(Installation).max(STATE_LIMITS.plugins),
+  active: z.array(Installation).max(STATE_LIMITS.plugins),
+  pending: Operation.nullable(),
+  operations: z
+    .array(z.strictObject({ operation: Operation, status: OperationStatus }))
+    .max(STATE_LIMITS.plugins + 1),
+})
+export type StateFile = z.infer<typeof StateFile>
 
 export class PluginStateError extends Error {
   constructor(

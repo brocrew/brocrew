@@ -67,7 +67,8 @@ it.each(['success', 'lost-reply', 'partial-removal'] as const)(
       OlderProposal.safeParse({ action: 'delete-profile', profile: 'fern', confirm: 'fern' })
         .success,
     ).toBe(false)
-    const f = await fixture()
+    // The root starts as the journal that the older copy reads after a rollback.
+    const f = await fixture({}, 'chrome', {}, { journal: true })
     const start = f.opts.runtime.start
     f.opts.runtime.start = async (spec) => {
       const run = await start(spec)

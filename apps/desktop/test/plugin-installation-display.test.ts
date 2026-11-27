@@ -6,7 +6,7 @@ import { observeInstallations } from '../src/main/plugins/state/observe-committe
 import { cleanupLifecycleFixtures, fixture } from './plugin-lifecycle-fixtures'
 afterEach(cleanupLifecycleFixtures)
 it.skipIf(process.platform === 'win32')(
-  'observes installed and removed journal data without changing it or admitting consumers',
+  'observes installed and removed state without changing it or admitting consumers',
   async () => {
     const f = await fixture()
     await f.controller.install(f.handle, 'chrome')
@@ -69,7 +69,7 @@ async function treeBytes(root: string): Promise<Record<string, string>> {
   return entries
 }
 it.skipIf(process.platform === 'win32').each(['created', 'prepared'] as const)(
-  'display refuses a missing %s seal without changing any state names or bytes; owner still repairs',
+  'display of %s state changes no state names or bytes, and the owner reopens it as it was',
   async (phase) => {
     const f = await fixture({
       fault(point) {
@@ -82,27 +82,15 @@ it.skipIf(process.platform === 'win32').each(['created', 'prepared'] as const)(
       expect(f.state.inspect().pending).not.toBeNull()
     }
     const options = { root: join(f.root, 'state'), workspaceRoots: [f.workspace] }
-    const guard = join(options.root, 'lifecycle-guard')
-    const seal = (await readdir(guard))
-      .filter((name) => name.endsWith('.seal'))
-      .sort()
-      .at(-1)!
-    await unlink(join(guard, seal)) // An interrupted publication in this fictional scratch tree.
     const before = await treeBytes(options.root)
-    const refused = (await observeInstallations(options)) === null
-    // Assert the tree first: base repairs the seal even though this was only a display read.
-    expect(await treeBytes(options.root)).toEqual(before)
-    expect(refused).toBe(true)
-    // The owner's own load repairs the seal: the owner holds its state, so that is its next start.
-    f.state.close()
-    const reopened = GlobalPluginState.open(options)
-    const owner = reopened.inspect()
-    expect(await readdir(guard)).toContain(seal)
-    expect(owner.pending !== null).toBe(phase === 'prepared')
     expect(await observeInstallations(options)).toEqual({
       installed: [],
       pending: phase === 'prepared' ? 'chrome' : null,
     })
+    expect(await treeBytes(options.root)).toEqual(before)
+    f.state.close()
+    const reopened = GlobalPluginState.open(options)
+    expect(reopened.inspect().pending !== null).toBe(phase === 'prepared')
     reopened.close()
   },
 )
