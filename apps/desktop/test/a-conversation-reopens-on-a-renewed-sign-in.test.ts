@@ -1,3 +1,4 @@
+import { ClaudeQueryDouble } from './lib/scripted-claude-query'
 import { neutralHostDeps } from './lib/host-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
@@ -5,7 +6,6 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { TheCliAnswersInOrder } from '../../../packages/runtime/test/the-cli-answers-in-order'
 import { AuthUnavailableError } from '@brobot2/runtime'
 import {
   CLAUDE_LOGIN_RENEWED,
@@ -32,52 +32,8 @@ import { everythingOverTheWire } from './lib/the-wire'
 
 const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 
-class FakeQuery {
-  private resolve: ((value: IteratorResult<SDKMessage>) => void) | null = null
-  private readonly buffer: SDKMessage[] = []
-  private done = false
+class FakeQuery extends ClaudeQueryDouble {
   readonly sent: unknown[] = []
-
-  emit(message: SDKMessage): void {
-    if (this.resolve) {
-      const resolve = this.resolve
-      this.resolve = null
-      resolve({ value: message, done: false })
-      return
-    }
-    this.buffer.push(message)
-  }
-
-  end(): void {
-    this.done = true
-    if (this.resolve) {
-      const resolve = this.resolve
-      this.resolve = null
-      resolve({ value: undefined as never, done: true })
-    }
-  }
-
-  async interrupt(): Promise<void> {}
-  async setPermissionMode(): Promise<void> {}
-  close(): void {
-    this.end()
-  }
-
-  [Symbol.asyncIterator](): AsyncIterator<SDKMessage> {
-    return this.cli.over({
-      next: (): Promise<IteratorResult<SDKMessage>> => {
-        const queued = this.buffer.shift()
-        if (queued) return Promise.resolve({ value: queued, done: false })
-        if (this.done) return Promise.resolve({ value: undefined as never, done: true })
-        return new Promise((resolve) => {
-          this.resolve = resolve
-        })
-      },
-    })
-  }
-
-  /** ⚑ F080: it reads what the adapter sends, and each `result` names the message it answers. */
-  readonly cli = new TheCliAnswersInOrder()
 }
 
 class Window {

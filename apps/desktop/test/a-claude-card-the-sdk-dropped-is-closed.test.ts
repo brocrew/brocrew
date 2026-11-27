@@ -1,3 +1,4 @@
+import { ClaudeQueryDouble as FakeQuery } from './lib/scripted-claude-query'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
@@ -5,7 +6,6 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import type { Options, SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import { ClaudeRuntime } from '@brobot2/runtime/claude'
-import { TheCliAnswersInOrder } from '../../../packages/runtime/test/the-cli-answers-in-order'
 import { openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
@@ -20,51 +20,6 @@ import { RecordingSink, fixtureProviderConfig, neutralHostDeps } from './lib/hos
  * A Claude card the SDK aborts while it waits, end to end: the real Claude adapter under the real
  * host and a real database, then the record folded as the window folds it for Waiting on you.
  */
-
-class FakeQuery {
-  private resolve: ((value: IteratorResult<SDKMessage>) => void) | null = null
-  private readonly buffer: SDKMessage[] = []
-  private done = false
-  readonly cli = new TheCliAnswersInOrder()
-
-  emit(message: SDKMessage): void {
-    if (this.resolve) {
-      const resolve = this.resolve
-      this.resolve = null
-      resolve({ value: message, done: false })
-      return
-    }
-    this.buffer.push(message)
-  }
-
-  end(): void {
-    this.done = true
-    if (this.resolve) {
-      const resolve = this.resolve
-      this.resolve = null
-      resolve({ value: undefined as never, done: true })
-    }
-  }
-
-  async interrupt(): Promise<void> {}
-  async setPermissionMode(): Promise<void> {}
-  close(): void {
-    this.end()
-  }
-
-  [Symbol.asyncIterator](): AsyncIterator<SDKMessage> {
-    return this.cli.over({
-      next: (): Promise<IteratorResult<SDKMessage>> => {
-        const queued = this.buffer.shift()
-        if (queued) return Promise.resolve({ value: queued, done: false })
-        if (this.done) return Promise.resolve({ value: undefined as never, done: true })
-        return new Promise((resolve) => {
-          this.resolve = resolve
-        })
-      },
-    })
-  }
-}
 
 async function waitFor(predicate: () => boolean, what: string, timeoutMs = 3_000): Promise<void> {
   const deadline = Date.now() + timeoutMs
