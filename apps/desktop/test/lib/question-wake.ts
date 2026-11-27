@@ -43,3 +43,38 @@ export function recordFailedQuestionTurn(
   }
   return { terminal, turnOrdinal: append(holder, terminal) }
 }
+
+/** A provider-failure notice the holder planned for its asker, still queued for the asker. */
+export function planProviderFailureNotice(
+  append: (conversation: string, event: TranscriptEvent) => number,
+  input: {
+    asker: string
+    holder: string
+    terminalOrdinal: number
+    since: number
+    incident: string
+    messageId: string
+    text: string
+  },
+) {
+  const { asker, holder, terminalOrdinal, since, incident, messageId, text } = input
+  append(holder, {
+    type: 'work_reconciliation',
+    incident,
+    kind: 'provider-turn-failed',
+    episode: { generation: 0, terminalOrdinal },
+    since,
+    step: 'giver',
+    outcome: 'planned',
+    target: asker,
+    messageId,
+  })
+  const held = {
+    messageId,
+    text,
+    attribution: 'app_authored',
+    appNotice: 'a-provider-turn-failed',
+  } as const
+  append(asker, { ...held, type: 'message_queued', kind: 'notice', providerFailureHolder: holder })
+  return held
+}
