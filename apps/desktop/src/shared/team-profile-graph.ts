@@ -24,7 +24,7 @@ const id = z.string().min(1).max(200)
 const token = z.string().min(1).max(2048)
 const count = z.number().int().nonnegative().safe()
 export const graphEpoch = z.number().int().min(-8_640_000_000_000_000).max(8_640_000_000_000_000)
-export const graphPhase = z.enum([
+const graphPhase = z.enum([
   'roster',
   'sessions',
   'work',
@@ -35,7 +35,7 @@ export const graphPhase = z.enum([
   'kind',
   'page',
 ])
-export const graphKindQuality = z.enum([
+const graphKindQuality = z.enum([
   'stable-record',
   'legacy-normal',
   'unknown-file',
@@ -43,7 +43,7 @@ export const graphKindQuality = z.enum([
   'unknown-conflict',
   'unknown-lineage',
 ])
-export const graphSettingSource = z.enum([
+const graphSettingSource = z.enum([
   'conversation-setting',
   'identity-model-choice',
   'identity-provider',
@@ -65,7 +65,7 @@ export const teamProfileGraphRequest = z.discriminatedUnion('operation', [
   }),
   z.strictObject({ operation: z.literal('release') }),
 ])
-export const GRAPH_COVERAGE_KEYS = [
+const GRAPH_COVERAGE_KEYS = [
   'unboundConversations',
   'missingIdentityConversations',
   'earlierIncarnationConversations',
@@ -84,7 +84,7 @@ export const GRAPH_COVERAGE_KEYS = [
   'unknownProviders',
   'unknownModels',
 ] as const
-export const graphCoverage = z.strictObject(
+const graphCoverage = z.strictObject(
   Object.fromEntries(GRAPH_COVERAGE_KEYS.map((key) => [key, count])) as Record<
     (typeof GRAPH_COVERAGE_KEYS)[number],
     typeof count
@@ -135,7 +135,7 @@ export const graphNode = z
       : n.kindQuality === 'stable-record' ||
         (n.kind === 'normal' && n.kindQuality === 'legacy-normal'),
   )
-export const graphEdge = z
+const graphEdge = z
   .strictObject({ source: id, target: id, work: count, messages: count, questions: count })
   .refine(
     (e) =>
@@ -144,14 +144,14 @@ export const graphEdge = z
       e.work + e.messages + e.questions > 0,
   )
 const stamp = { snapshot: token, readAt: graphEpoch, expiresAt: graphEpoch, stale: z.boolean() }
-export const graphMetrics = z.strictObject({
+const graphMetrics = z.strictObject({
   rows: count,
   projectedBytes: count,
   aggregateBytes: count,
   cacheBytes: count,
   elapsedMs: z.number().finite().nonnegative(),
 })
-export const graphUnavailableResult = z.strictObject({
+const graphUnavailableResult = z.strictObject({
   type: z.literal('unavailable'),
   cause: z.enum([
     'closed',

@@ -41,7 +41,7 @@ export interface OfferedCheckpoint {
 }
 
 /** Why a newer database is refused. */
-export interface NewerFacts {
+interface NewerFacts {
   /** Migrations recorded in the database. */
   readonly inTheDatabase: number
   /** Migrations this build knows. */

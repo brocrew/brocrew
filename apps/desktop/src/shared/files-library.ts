@@ -20,12 +20,12 @@ const words = z
   .string()
   .max(200)
   .refine((text) => libraryWords(text).length <= 20)
-export const filesLibraryScope = z.discriminatedUnion('type', [
+const filesLibraryScope = z.discriminatedUnion('type', [
   z.strictObject({ type: z.literal('workspace') }),
   z.strictObject({ type: z.literal('task'), id, includeSubtasks: z.boolean() }),
   z.strictObject({ type: z.literal('conversationWork'), id, includeSubtasks: z.boolean() }),
 ])
-export const filesLibraryQuery = z.strictObject({
+const filesLibraryQuery = z.strictObject({
   scope: filesLibraryScope,
   query: words,
   kind: z.enum(['all', 'documents', 'images']),
@@ -69,7 +69,7 @@ const task = z.strictObject({
   children: z.number().int().nonnegative(),
 })
 export type LibraryTask = z.infer<typeof task>
-export const libraryKeep = z.strictObject({
+const libraryKeep = z.strictObject({
   resourceId: id,
   title: display,
   name: display,
