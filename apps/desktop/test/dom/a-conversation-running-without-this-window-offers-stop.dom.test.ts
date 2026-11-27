@@ -59,6 +59,7 @@ describe('a conversation running without this window offers Stop', () => {
     expect(m.q('session-status').textContent).toContain('Active')
     expect(m.q('transcript-working'), 'the premise: the transcript says working…').toBeTruthy()
     expect(m.q('composer-hint').textContent).toContain('is working')
+    expect(m.q('queue-prompt').hasAttribute('disabled')).toBe(true)
     m.q('interrupt-session').click()
     expect(asked).toEqual(['stop'])
   })
@@ -86,14 +87,23 @@ describe('a conversation running without this window offers Stop', () => {
     expect(asked).toEqual(['stop'])
   })
 
-  it('🔴 with a draft it offers Queue and no Stop and send, and the chord only queues', async () => {
+  it('🔴 with a draft it offers Stop and Queue, and the chord only queues', async () => {
     const sends: string[] = []
+    const asked: string[] = []
     const m = shownFromItsLedger(
       'working',
       { is: 'active' },
-      { draft: 'then this', onSend: (_words: string, intent: string) => sends.push(intent) },
+      {
+        draft: 'then this',
+        onSend: (_words: string, intent: string) => sends.push(intent),
+        onInterrupt: () => asked.push('stop'),
+      },
     )
-    expect(m.q('queue-prompt')).toBeTruthy()
+    expect(m.q('queue-prompt').hasAttribute('disabled')).toBe(false)
+    m.q('interrupt-session').click()
+    expect(asked).toEqual(['stop'])
+    expect((m.q('prompt-input') as HTMLTextAreaElement).value).toBe('then this')
+    expect(sends).toEqual([])
     expect(m.all('interrupt-send-prompt')).toHaveLength(0)
     chord(m)
     await nextTick()

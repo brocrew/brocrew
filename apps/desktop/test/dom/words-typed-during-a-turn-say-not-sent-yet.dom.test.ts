@@ -82,7 +82,7 @@ describe('words typed while the agent works', () => {
   it('with an empty box the foot does not say it', async () => {
     const m = await pane(running(), '')
     expect(words(m.q('composer-hint'))).not.toContain('Not sent yet')
-    expect(m.all('queue-prompt')).toEqual([])
+    expect((m.q('queue-prompt') as HTMLButtonElement).disabled).toBe(true)
   })
 
   it('Queue is the filled button and Stop and send is a quiet link that still sends', async () => {

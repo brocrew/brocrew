@@ -415,13 +415,13 @@ describe('§5 · the words beside the Stop are untouched (scope)', () => {
    * answers `737` F-7 — *"Interrupt-and-send still claims a stop — "Stop Codex and send this
    * instead", "to interrupt and send now""* — so those words MOVED, and a pin on them is a subject
    * now: it is §5b's, below, outside this describe. ⚑ What stays here is what this draw left alone
-   * and is true on both trees: with a DRAFT the pair steps in for the Stop, the queue's title is as
+   * and is true on both trees: with a DRAFT the pair joins the Stop, the queue's title is as
    * it was, and neither the pair's title nor the foot is the busy Stop's own sentence (§4's census of
    * seven stays the Stop's own).
    */
-  it('⚑ THE CONTROL — `busy` with a draft: the pair, not the Stop, and neither its title nor its foot is the Stop’s sentence', async () => {
+  it('⚑ THE CONTROL — `busy` with a draft: the pair beside the Stop, and neither its title nor its foot is the Stop’s sentence', async () => {
     const html = await composer({ state: 'busy', draft: 'no, do this instead' })
-    expect(count(html, 'interrupt-session')).toBe(0)
+    expect(count(html, 'interrupt-session')).toBe(1)
     expect(count(html, 'interrupt-send-prompt')).toBe(1)
     expect(titlesOf(html, 'queue-prompt')).toEqual([
       `Let Codex finish, then send this (${SEND_KEY})`,

@@ -313,7 +313,7 @@ describe('the composer renders as a multi-line field', () => {
     expect(html).toContain('for a new line')
   })
 
-  it('busy with an EMPTY box: typing is allowed (077) and the only button is the stop', async () => {
+  it('busy with an EMPTY box: Stop is available and Queue waits for a draft', async () => {
     const html = await render({ state: 'busy', who: 'Codex' })
     // ⚠️ **The field is no longer disabled, and that is the premise of the whole dispatch.** It read
     // `toMatch(/<textarea[^>]* disabled/)` before 077.
@@ -321,10 +321,11 @@ describe('the composer renders as a multi-line field', () => {
     // Paired positive (086): proving the attribute is absent proves nothing unless the element is
     // there at all — this test would otherwise pass against a composer that rendered no textarea.
     expect(html).toContain('data-cy="prompt-input"')
-    // Nothing typed, so there is nothing to send and neither send control exists yet.
+    // Nothing typed: Queue is visible but cannot send an empty message.
     expect(html).toContain('data-cy="interrupt-session"')
     expect(html).not.toContain('data-cy="send-prompt"')
-    expect(html).not.toContain('data-cy="queue-prompt"')
+    expect(buttonTag(html, 'queue-prompt')).toContain('disabled')
+    expect(buttonTag(html, 'queue-prompt')).toContain('Type a message')
     expect(html).not.toContain('data-cy="interrupt-send-prompt"')
     // And the placeholder invites the typing the field now accepts, instead of describing a lock.
     expect(html).toContain('type to queue a message')
@@ -334,9 +335,7 @@ describe('the composer renders as a multi-line field', () => {
     const html = await render({ state: 'busy', who: 'Codex', draft: 'do this next' })
     expect(html).toContain('data-cy="queue-prompt"')
     expect(html).toContain('data-cy="interrupt-send-prompt"')
-    // The stop button steps aside: with text in the box, "interrupt and send" is the interrupting
-    // gesture, and two controls that both stop the turn would be the duplication 076 forbade.
-    expect(html).not.toContain('data-cy="interrupt-session"')
+    expect(html).toContain('data-cy="interrupt-session"')
     // The foot says the words are not sent yet; Stop and send's title says what it does.
     expect(html).toContain('Not sent yet · Queue sends it when Codex finishes')
     expect(html).toContain(
@@ -361,20 +360,19 @@ describe('the composer renders as a multi-line field', () => {
     })
     expect(html).toContain('data-cy="queue-prompt"')
     expect(html).toContain('data-cy="interrupt-send-prompt"')
-    // …and the stop steps aside exactly as it does for text, because the message is a message.
-    expect(html).not.toContain('data-cy="interrupt-session"')
+    expect(html).toContain('data-cy="interrupt-session"')
     // The hint agrees with the buttons — 223's tooltip defect was a second reading of one rule.
     expect(html).toContain('Not sent yet · Queue sends it when Codex finishes')
   })
 
   /**
    * ⚑ **The paired negative, and without it the test above is satisfied by a composer that always
-   * offers the pair.** Busy, no words, and nothing staged is still the plain stop.
+   * offers the pair.** Queue needs content; Stop remains available.
    */
-  it('⚑ …and with neither words nor an attachment, busy is still only the stop (234 §2)', async () => {
+  it('⚑ …and with neither words nor an attachment, busy keeps Stop and a disabled Queue', async () => {
     const html = await render({ state: 'busy', who: 'Codex', attachments: [] })
     expect(html).toContain('data-cy="interrupt-session"')
-    expect(html).not.toContain('data-cy="queue-prompt"')
+    expect(buttonTag(html, 'queue-prompt')).toContain('disabled')
     expect(html).not.toContain('data-cy="interrupt-send-prompt"')
   })
 
@@ -383,15 +381,17 @@ describe('the composer renders as a multi-line field', () => {
    * is `canSendNow`, which already refuses when a reason is in hand — so a staged file must NOT
    * bring the pair back on a conversation the pane has blocked.
    */
-  it('⛔ …and a blocked conversation gets neither, attachment or not (219 §1 kept)', async () => {
+  it('⛔ …and a blocked conversation cannot queue or send, attachment or not', async () => {
     const html = await render({
       state: 'busy',
       who: 'Codex',
       blocked: [{ words: 'This conversation is closing — nothing more can be sent to it.' }],
       attachments: [{ path: '/work/alpha/notes.md', kind: 'file', outsideCwd: false }],
     })
-    expect(html).not.toContain('data-cy="queue-prompt"')
+    expect(buttonTag(html, 'queue-prompt')).toContain('disabled')
     expect(html).not.toContain('data-cy="interrupt-send-prompt"')
+    expect(buttonTag(html, 'queue-prompt')).toContain('nothing more can be sent to it')
+    expect(buttonTag(html, 'queue-prompt')).not.toContain('Let Codex finish')
     expect(html).toContain('nothing more can be sent to it')
   })
 

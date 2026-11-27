@@ -311,16 +311,17 @@ describe('219 · the FIRST press is still allowed (217’s nuance)', () => {
 })
 
 describe('219 · the message-carrying controls while a turn runs', () => {
-  it('🔴 queue and interrupt-and-send are gone, and the plain stop is back', async () => {
+  it('🔴 queue is dark with the reason, interrupt-and-send is gone, and the plain stop stays', async () => {
     // ⛔ Both of those controls CARRY A MESSAGE, and the host refuses both on the same gate
     // (`assertCanTakeTurn(session, 'queue')`; twice for the interrupting one, before it kills
-    // anything). Left rendered they were lit and pressing either did nothing at all.
+    // anything). Lit, pressing either would do nothing at all.
     const { view } = open(working(true))
     await nextTick()
-    expect(view.all('queue-prompt')).toHaveLength(0)
+    const queue = view.q('queue-prompt') as HTMLButtonElement
+    expect(queue.disabled).toBe(true)
+    expect(queue.title).toBe(SIGN_IN_SUPERSEDED_BLOCK)
     expect(view.all('interrupt-send-prompt')).toHaveLength(0)
-    // ⚑ …and 094's lesson is not re-broken: greying them would have left a running turn with no stop
-    // button at all. The one gesture that still works — interrupting needs no credential — is back.
+    // ⚑ The one gesture that still works — interrupting needs no credential — stays.
     const stop = view.q('interrupt-session') as HTMLButtonElement
     expect(visible(stop)).toBe(true)
     expect(stop.disabled).toBe(false)

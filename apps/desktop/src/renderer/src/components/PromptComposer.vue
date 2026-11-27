@@ -1198,14 +1198,8 @@ defineExpose({
         @keydown.enter="onEnter"
       ></textarea>
 
-      <!-- ⚠️ **While a turn runs, what the buttons are depends on whether you have typed anything
-           (077).** With an empty box the only thing you can want is to take the turn back, so the
-           stop button stands alone as it did in 074. The moment there is text, there are two
-           different things you might mean by sending it, and BOTH are rendered — the choice has to
-           be visible at the moment of pressing rather than hidden behind knowing a chord.
-
-           Wrapped in one element so the form's grid keeps its two columns whether there is one
-           button here or two; a third grid child would wrap onto its own row. -->
+      <!-- Keep Stop independent of the draft actions. Queue stays visible while working and
+           becomes available when there is something to send. -->
       <div class="actions">
         <!-- ⛔ **The control `213` was missing** (216 §2). OUTSIDE the send/interrupt v-if chain —
              it is not one of the three things the primary button can be, it is a second control that
@@ -1241,25 +1235,6 @@ defineExpose({
         >
           <svg class="icon"><use href="#i-paperclip" /></svg>
         </button>
-        <!-- ⛔ **`blocked === null`, and 219 is what put it there.** Both controls in here CARRY A
-             MESSAGE — one queues it behind the running turn, the other asks the turn to stop and sends
-             it once the turn has ended (`739`: it said *stops the turn and sends it instead*) — and the host refuses both on the same gate a plain send passes
-             (`assertCanTakeTurn(session, 'queue')`, and twice for the interrupting one). So with a
-             reason in hand they cannot act, and `canSend` already refuses them: left rendered, they
-             were lit, full-accent, and pressing either did NOTHING AT ALL — no message, no error, no
-             sound. That is 106's *"no control that cannot act"* in its worst form, and it is the
-             defect 219 was dispatched to remove rather than to move one branch over.
-
-             ⚑ **Removed rather than greyed, because something better belongs in the slot.** These
-             two REPLACE the stop button while there is something to send — words OR a staged file
-             since 234 §2, and this sentence said "text" until then. Greying them out would leave a
-             busy turn with no stop control at all and only Esc, which is exactly 094's finding.
-             Falling through to `canInterrupt` puts the plain stop back — the one gesture that still
-             works, because interrupting needs no credential — and the reason the message cannot go
-             is in the foot, where 169 put it. -->
-        <!-- ⛔ **`busyChoices`, not `text.trim() !== ''`** (234 §2). See its docblock: a staged file
-             with an empty box is content, and this selector was the last place in the app that
-             still disagreed. -->
         <button
           v-if="voiceActive"
           type="button"
@@ -1294,15 +1269,17 @@ defineExpose({
             <path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3m-4 0h8" />
           </svg>
         </button>
-        <template v-if="busyChoices">
+        <template v-if="state === 'busy' && !props.awaitingSend">
           <button
             class="queue-button"
+            :disabled="!canSendNow"
             :class="{ secondary: stopWordOnly }"
             type="submit"
             :title="
-              props.hasQueued
+              sendRefusal ??
+              (props.hasQueued
                 ? `Let ${who} finish, then send this with what is already waiting — a command goes alone (${sendKey})`
-                : `Let ${who} finish, then send this (${sendKey})`
+                : `Let ${who} finish, then send this (${sendKey})`)
             "
             data-cy="queue-prompt"
           >
@@ -1322,7 +1299,7 @@ defineExpose({
             Stop now
           </button>
           <button
-            v-else-if="canInterrupt && props.stopAndSend"
+            v-else-if="busyChoices && canInterrupt && props.stopAndSend"
             class="interrupt-send-button"
             type="button"
             :title="`Stop and send — ${A_STOP_THEN_THIS_IS_SENT} (${interruptKey})`"
@@ -1338,7 +1315,7 @@ defineExpose({
              (`A_STOP_ASKS_THE_TURN`): it read *"Interrupt the running turn"* and *"Stop the turn
              instead of answering"*, claims a provider that finishes the turn anyway makes false. -->
         <button
-          v-else-if="canInterrupt"
+          v-if="canInterrupt && !stopWordOnly"
           class="interrupt-button"
           type="button"
           :title="
@@ -1369,7 +1346,7 @@ defineExpose({
              over a locked box. One evaluation, so a dark button always has a sentence and a lit one
              never does. -->
         <button
-          v-else-if="!props.awaitingSend"
+          v-else-if="state !== 'busy' && !props.awaitingSend"
           class="send-button"
           type="submit"
           :disabled="!canSendNow"

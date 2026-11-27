@@ -466,10 +466,13 @@ describe('§3 · `708` H-3a — a command with files is said BEFORE the press', 
     expect(foot(m)).not.toContain('takes no attachments')
   })
 
-  it('🔴 by alias, and while a turn runs: Queue and interrupt-and-send give way, the stop stays', async () => {
+  it('🔴 by alias, and while a turn runs: Queue is dark with the reason, interrupt-and-send gives way, the stop stays', async () => {
     const { m } = await composer({ draft: '/usage', files: [FILE], state: 'working' })
-    expect(foot(m)).toBe(aCommandTakesNoAttachmentsYet({ word: '/usage', listed: true }))
-    expect(m.all('queue-prompt')).toHaveLength(0)
+    const said = aCommandTakesNoAttachmentsYet({ word: '/usage', listed: true })
+    expect(foot(m)).toBe(said)
+    const queue = m.q('queue-prompt') as HTMLButtonElement
+    expect(queue.disabled).toBe(true)
+    expect(queue.title).toBe(said)
     expect(m.all('interrupt-send-prompt')).toHaveLength(0)
     expect(visible(m.q('interrupt-session'))).toBe(true)
   })

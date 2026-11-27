@@ -95,10 +95,10 @@ const R83_WORDS = stopJoinsThatAsk({ by: 'a-person', waitedMs: 2_000 }, 'codex')
 describe('§1 · `busy` with a draft: *Stop and send* says the turn is ASKED to stop, and this goes once it has ended', () => {
   it('🔴 the interrupt-and-send button is titled in R43’s words — the ask, the send once it has ended, and the limit, all in the clause', async () => {
     const html = await busyWithADraft()
-    // The pair is drawn, and the plain Stop has stepped aside for it.
+    // The pair is drawn, and the plain Stop stays beside it.
     expect(count(html, 'interrupt-send-prompt')).toBe(1)
     expect(count(html, 'queue-prompt')).toBe(1)
-    expect(count(html, 'interrupt-session')).toBe(0)
+    expect(count(html, 'interrupt-session')).toBe(1)
     expect(titlesOf(html, 'interrupt-send-prompt')).toEqual([TITLE])
   })
 
@@ -119,7 +119,7 @@ describe('§1 · `busy` with a draft: *Stop and send* says the turn is ASKED to 
 
   it('🔴 with R83’s standing ask the words are the same — Stop and send asks ANEW (`723` F-5), it does not join', async () => {
     const html = await busyWithADraft({ stopUnanswered: R83_WORDS })
-    expect(count(html, 'interrupt-session')).toBe(0)
+    expect(count(html, 'interrupt-session')).toBe(1)
     expect(titlesOf(html, 'interrupt-send-prompt')).toEqual([TITLE])
     expect(footOf(html)).toBe(FOOT)
     // ⚑ …beside the positive above: R83's *has not answered* is the plain Stop's, not this press's.
@@ -161,7 +161,7 @@ describe('§2 · with a message already waiting, the foot and Stop and send are 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
 describe('§4 · the words and the press beside Stop and send are untouched (scope)', () => {
-  it('⚑ THE CONTROL — `busy` with NO draft: the plain Stop, titled as `737` left it, and no pair', async () => {
+  it('⚑ THE CONTROL — `busy` with NO draft: the plain Stop, titled as `737` left it, and no Stop and send', async () => {
     const html = await composer({ state: 'busy' })
     expect(count(html, 'interrupt-send-prompt')).toBe(0)
     expect(titlesOf(html, 'interrupt-session')).toEqual([PLAIN_STOP_TITLE])

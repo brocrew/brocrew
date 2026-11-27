@@ -355,7 +355,7 @@ describe('§3 · `PromptComposer` says, while `busy`, that Stop joins the ask th
       stopUnanswered: CODEX_STOP_JOINS,
     })
     const without = await composer({ state: 'busy', draft: 'no, do this instead' })
-    expect(count(html, 'interrupt-session')).toBe(0)
+    expect(count(html, 'interrupt-session')).toBe(1)
     expect(count(html, 'interrupt-send-prompt')).toBe(1)
     expect(footOf(html)).toBe('Not sent yet · Queue sends it when Codex finishes')
     // ⚑ The same two outcomes, in the same words, as without R83's sentence — on either tree.

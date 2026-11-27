@@ -32,7 +32,7 @@ import { META, mount, paneProps, unmountAll, visible, type Mounted } from './har
  *
  * | § | surface | 🔴 subject | ⚑ control, one fact over |
  * |---|---|---|---|
- * | 1 | a running Codex conversation, a draft in the box | the button's title and the foot in R43's words, the foot drawn whole at 972 px | no draft: the plain Stop, and no pair |
+ * | 1 | a running Codex conversation, a draft in the box | the button's title and the foot in R43's words, the foot drawn whole at 972 px | no draft: the plain Stop beside a dark Queue, and no Stop and send |
  * | 2 | …with a message already waiting | the person's own: the foot drawn whole; one they did not write (688 R22): the foot drawn whole — with what waits, in one turn, since D-027 | — |
  * | 3 | …beside the drawer, the narrowest the composer is drawn at | the plain foot and the longest foot, each drawn whole | — |
  * | 4 | the press | — | one send with intent `interrupt` per click and per ⇧⌘↵; ⌘↵ alone queues |
@@ -181,7 +181,7 @@ describe('§1 · a running Codex conversation with a draft: Stop and send says t
     // ⚑ The premise, off the record the pane draws: running, a draft, so the pair is up.
     expect(visible(m.q('interrupt-send-prompt'))).toBe(true)
     expect(visible(m.q('queue-prompt'))).toBe(true)
-    expect(m.all('interrupt-session')).toEqual([])
+    expect(visible(m.q('interrupt-session'))).toBe(true)
     expect((m.q('prompt-input') as HTMLTextAreaElement).value).toBe(DRAFT)
 
     expect(stopAndSendTitle(m)).toBe(TITLE)
@@ -200,10 +200,11 @@ describe('§1 · a running Codex conversation with a draft: Stop and send says t
     expect(stopAndSendTitle(m)).toBe(`Stop and send — ${sent} (${INTERRUPT_KEY})`)
   })
 
-  it('⚑ THE CONTROL — the same conversation with NO draft: the plain Stop, titled as `737` left it, and no pair', async () => {
+  it('⚑ THE CONTROL — the same conversation with NO draft: plain Stop keeps its title and Queue waits for content', async () => {
     const m = await pane(conversation([started, asked, working]), { draft: '' })
     expect(m.all('interrupt-send-prompt')).toEqual([])
-    expect(m.all('queue-prompt')).toEqual([])
+    expect((m.q('queue-prompt') as HTMLButtonElement).disabled).toBe(true)
+    expect(m.q('queue-prompt').getAttribute('title')).toContain('Type a message')
     expect(m.q('interrupt-session').getAttribute('title')).toBe(PLAIN_STOP_TITLE)
     expect(text(m.q('composer-hint'))).not.toContain('Stop and send')
   })

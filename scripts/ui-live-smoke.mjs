@@ -12605,9 +12605,8 @@ async function main() {
         `a staged file with no words offered ${JSON.stringify(attachedOnly)} — 227 M4, live`,
       )
     }
-    // …and the stop button steps aside too, as it does for words; two controls that both stop the
-    // turn would be duplication.
-    if (attachedOnly.stop) throw new Error('the stop button stayed beside the two send outcomes')
+    // …and the stop button stays beside them, as it does for words: while working, Stop is always there.
+    if (!attachedOnly.stop) throw new Error('the stop button left when a file was staged mid-turn')
     // Detached again, so the queued message below is the one this step has always sent.
     await cdp.evaluate(CLICK('detach-file'))
     await waitFor(
@@ -12684,7 +12683,7 @@ async function main() {
       ),
       asserted(
         `3 · ⛔ **234 §2, live**: a file dropped mid-turn with an EMPTY box (chip: ` +
-          `"${attachedOnly.chip}") offered BOTH send outcomes and stood the stop button down. ` +
+          `"${attachedOnly.chip}") offered BOTH send outcomes and kept the stop button beside them. ` +
           `Before this dispatch the selector required words of its own, so the app offered nothing ` +
           `at all for a message 221 made legal and ⌘↵ sent perfectly well`,
       ),
