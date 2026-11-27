@@ -1,4 +1,4 @@
-import { conversationLine } from '../conversation-address'
+import { conversationLine } from '../../db/conversation-address'
 import { ABriefThatDidNotArrive, AGiveThatGaveNothing } from '../session-unavailable'
 import { RecordWriteFailed } from '../record-write'
 import { sendOverflowSaid } from '../send-overflow'

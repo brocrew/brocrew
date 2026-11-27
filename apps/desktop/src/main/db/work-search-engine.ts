@@ -19,10 +19,7 @@ import type { PieceRow, StatusLine } from '../../shared/task-contracts'
 import { derivePieces } from '../../shared/tasks'
 import { formOfName } from '../../shared/documents'
 import { workFileGroup } from '../../shared/work-file-groups'
-import {
-  describeConversationForRead,
-  isRecordedServiceConversation,
-} from '../runtime/conversation-address'
+import { describeConversationForRead, isRecordedServiceConversation } from './conversation-address'
 import { createSessionStore, type SessionStore } from './session-store'
 import { LimitsReadUnavailable } from './limits-read-protocol'
 import type { EventRow } from './ledger-row-types'

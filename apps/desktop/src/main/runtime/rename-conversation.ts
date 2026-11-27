@@ -6,7 +6,7 @@ import {
   type ConversationTitledEvent,
 } from '../../shared/conversation-title'
 import type { SessionStore } from '../db/session-store'
-import { describeConversationForRead, resolveConversationAddress } from './conversation-address'
+import { describeConversationForRead, resolveConversationAddress } from '../db/conversation-address'
 
 interface RenameConversationDependencies {
   readonly store: Pick<

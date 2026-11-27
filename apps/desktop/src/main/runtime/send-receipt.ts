@@ -1,6 +1,6 @@
 import type { ContextReading } from '@brobot2/runtime'
 import type { SendReceipt, SendRecipientState } from '../../shared/tool-outcome'
-import { conversationLine, describeConversation } from './conversation-address'
+import { conversationLine, describeConversation } from '../db/conversation-address'
 import { errorMessage } from './session-disclosures'
 import { howLongAgo } from './what-this-app-adds-to-a-turn'
 

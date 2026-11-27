@@ -1,9 +1,6 @@
 import { afterEach, expect, it } from 'vitest'
 import { WorkSearchEngine } from '../src/main/db/work-search-engine'
-import {
-  canonicalAddressOf,
-  resolveConversationAddress,
-} from '../src/main/runtime/conversation-address'
+import { canonicalAddressOf, resolveConversationAddress } from '../src/main/db/conversation-address'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
