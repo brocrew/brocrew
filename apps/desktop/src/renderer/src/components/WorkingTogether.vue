@@ -199,21 +199,27 @@ const hiddenIdleCount = computed(
     allAgents.value.filter((card) => idleAgents.value.has(card.conversation) && !showsIdle(card))
       .length,
 )
-/** The card's one task line: its newest piece, label first, and how many more it holds. */
+/**
+ * The card's one task line: its newest piece, label first, and how many more it holds. A
+ * conversation that owns a root is named by that root, which has no title until someone gives it
+ * one; its task line is then the newest open piece it was given, beside the root's label.
+ */
 function taskLine(
   card: CastCard,
 ): { key: string; label: string; title: string; more: number } | null {
   const named = listedCard(card)?.named
-  if (named) {
-    return { key: named.label, label: named.label, title: named.title ?? '', more: named.more ?? 0 }
+  if (named?.title) {
+    return { key: named.label, label: named.label, title: named.title, more: named.more ?? 0 }
   }
   const pieces = [...(piecesByConversation.value.get(card.conversation) ?? [])].sort(
     (a, b) => b.givenAt - a.givenAt,
   )
   const newest = pieces[0]
-  return newest
-    ? { key: newest.piece, label: newest.label, title: newest.title, more: pieces.length - 1 }
-    : null
+  if (newest) {
+    const label = named?.label ?? newest.label
+    return { key: newest.label, label, title: newest.title, more: pieces.length - 1 }
+  }
+  return named ? { key: named.label, label: named.label, title: '', more: named.more ?? 0 } : null
 }
 
 /** What the host knows of a card's conversation that decides whether Compact now is offered. */
@@ -460,7 +466,7 @@ function chipWord(card: CastCard): string | undefined {
                               key: 'label',
                               text: taskLine(card)!.label,
                               tone: 'label',
-                              hint: [taskLine(card)!.label, taskLine(card)!.title]
+                              hint: [taskLine(card)!.key, taskLine(card)!.title]
                                 .filter(Boolean)
                                 .join(' · '),
                               cy: `cast-tile-label-${card.conversation}`,
