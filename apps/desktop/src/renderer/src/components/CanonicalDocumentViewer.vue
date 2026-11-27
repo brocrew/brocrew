@@ -284,13 +284,15 @@ async function copyPath(event: MouseEvent): Promise<void> {
 </template>
 
 <style scoped>
-/* `WorkflowOutputViewer`'s frame, to the declaration — two document panels that sat differently
+/* `WorkflowOutputViewer`'s frame, except for its width — two document panels that sat differently
    over the conversation would read as two different kinds of thing opening, which they are not.
    ⚠️ `--drawer-solid` and never `--surface-1`: that token was used twice and declared nowhere, and
-   both document panels painted `transparent` over the transcript until `125` found it. */
+   both document panels painted `transparent` over the transcript until `125` found it.
+   The width keeps clear of the Waiting on you corner, which `OverlayHost` draws at the layer's left
+   edge, `--lane-clear` wide: centred, it gives that band back on both sides. */
 .doc-read {
   display: flex;
-  max-width: min(900px, 92vw);
+  max-width: min(900px, 92vw, calc(100% - 2 * var(--lane-clear)));
   max-height: 88vh;
   flex-direction: column;
   border: var(--border-width) solid var(--line);
@@ -409,5 +411,14 @@ async function copyPath(event: MouseEvent): Promise<void> {
   padding: var(--space-6) var(--space-5);
   color: var(--muted);
   font-size: var(--type-caption);
+}
+
+/* In a narrow window, giving the corner's band back on both sides leaves too little to read in.
+   The corner is only at the left, so the viewer clears it there and takes the rest of the width. */
+@media (max-width: 1000px) {
+  .doc-read {
+    max-width: calc(100% - var(--lane-clear) - var(--space-5));
+    margin-left: var(--lane-clear);
+  }
 }
 </style>
