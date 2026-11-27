@@ -36,13 +36,18 @@ it('legacy listing callers share admission, warm reads and failures at the same 
     approvalMode: 'ask',
   })
   const engine = new WindowReadEngine(join(world.folder, 'brobot2.sqlite'))
-  const read = vi.fn(async (query: WindowReadQuery) => engine.read(query))
+  const read = vi.fn(async (query: WindowReadQuery) => {
+    const result = engine.read(query)
+    return result.kind === 'listing' ? { ...result, startedHereCounts: [] } : result
+  })
   const host = aWorkerHost(world, engine, read)
   const listing = async () => {
     const result = await host.listConversations()
     if ('refused' in result) throw new Error(result.refused)
     expect(result.resumable).toEqual([])
     expect(result.unresumable.map((row) => row.sessionId)).toEqual(['own-root'])
+    expect(result.unresumable[0]).not.toHaveProperty('startedHereCount')
+    expect(result.unresumable[0]).not.toHaveProperty('namingTaskStatus')
     return result
   }
   const move = () =>

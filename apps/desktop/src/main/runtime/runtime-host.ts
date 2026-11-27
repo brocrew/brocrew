@@ -28618,22 +28618,33 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
   private whatTheListSaysOfItsWork(
     conversation: string,
     waiting: (id: string) => WhatAConversationIsWaitingOn,
-  ): Pick<ResumableSessionInfo, 'named' | 'waitingOnPurpose'> {
+  ): Pick<ResumableSessionInfo, 'named' | 'waitingOnPurpose' | 'namingTaskStatus'> {
     if (
       this.theServiceOf(conversation, () => this.windowRoutingReads.rootless(conversation)) !== null
     )
       return { named: null }
-    const { named, waitingOnPurpose } =
+    const { named, namingTaskStatus, waitingOnPurpose } =
       this.windowRoutingReads.naming(conversation) ??
-      this.deps.store.workThatNamesAndItsWait(conversation)
-    if (waitingOnPurpose === null) return { named }
+      this.deps.store.workThatNamesAndItsWait(conversation, undefined, undefined, true)
+    const work = {
+      named,
+      ...(namingTaskStatus === undefined
+        ? {}
+        : {
+            namingTaskStatus: namingTaskStatus.slice(
+              0,
+              headOf(namingTaskStatus, REPLY_SUMMARY_LIMIT),
+            ),
+          }),
+    }
+    if (waitingOnPurpose === null) return work
     // ⚑ Said only where the composition left it as its fold reads it: a more specific wait in its
     // place is what its card says.
     const [piece] = composeWhatEachPieceIsWaitingOn([waitingOnPurpose], waiting)
     const line = waitingOnPurpose.statusLine
-    if (piece?.state !== waitingOnPurpose.state || line === null) return { named }
+    if (piece?.state !== waitingOnPurpose.state || line === null) return work
     return {
-      named,
+      ...work,
       waitingOnPurpose: {
         label: waitingOnPurpose.label,
         status: line.text.slice(0, headOf(line.text, REPLY_SUMMARY_LIMIT)),
@@ -28690,7 +28701,10 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
     readonly stateOf: (sessionId: string) => AgentState
     readonly itsWork: (
       sessionId: string,
-    ) => Pick<ResumableSessionInfo, 'named' | 'waitingOnPurpose'>
+    ) => Pick<
+      ResumableSessionInfo,
+      'named' | 'waitingOnPurpose' | 'namingTaskStatus' | 'startedHereCount'
+    >
   } {
     const reads = this.cardReads()
     const unread = rowsUnreadOnce()
@@ -28700,6 +28714,9 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
     const owed = this.oneOwedReadPerAnswer(ledger)
     const workOut = this.oneStateWorkOutReadPerAnswer(unread)
     const waiting = this.oneWaitReadPerAnswer(unread, ledger, workOut)
+    const counts = new Map(
+      this.windowRoutingReads.startedHereCounts() ?? this.deps.store.startedHereCounts(),
+    )
     return {
       unread,
       asksUnread: reads.asksUnread,
@@ -28709,7 +28726,13 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
         this.stateSaid.delete(sessionId)
         return this.stateOf(sessionId, reads, unread, ledger(sessionId), workOut, owed)
       },
-      itsWork: (sessionId) => this.whatTheListSaysOfItsWork(sessionId, waiting),
+      itsWork: (sessionId) => {
+        const startedHereCount = counts.get(sessionId)
+        return {
+          ...this.whatTheListSaysOfItsWork(sessionId, waiting),
+          ...(startedHereCount === undefined ? {} : { startedHereCount }),
+        }
+      },
     }
   }
 

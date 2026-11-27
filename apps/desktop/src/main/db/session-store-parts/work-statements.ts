@@ -92,6 +92,7 @@ export function createWorkStatementsPart(deps: WorkStatementsPartDeps) {
     readParent: AppStatement
     writeParent: AppStatement
     spawnedBy: AppStatement
+    startedHereCounts: AppStatement
     conversationBinding: AppStatement
   } | null = null
   const spawnSql = (): NonNullable<typeof spawnStatements> =>
@@ -154,6 +155,12 @@ export function createWorkStatementsPart(deps: WorkStatementsPartDeps) {
            LEFT JOIN agent_identity identity ON identity.id = s.agent_identity_id
           WHERE s.parent_session_id = ?
           ORDER BY s.created_at, s.id`,
+      ),
+      // The same direct children as spawnedBy, including children absent from the visible listing.
+      startedHereCounts: db.prepare(
+        `SELECT parent.id AS id,
+                (SELECT count(*) FROM provider_session s WHERE s.parent_session_id = parent.id) AS count
+           FROM provider_session parent`,
       ),
       conversationBinding: db.prepare(
         `SELECT s.provider AS provider, identity.slug AS identity

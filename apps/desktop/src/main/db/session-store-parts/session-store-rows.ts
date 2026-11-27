@@ -170,6 +170,8 @@ export type PieceForAName = Pick<
   'piece' | 'label' | 'title' | 'owner' | 'giver' | 'givenAt' | 'state' | 'outcome' | 'endedAt'
 >
 
+export type PieceNamingStatus = PieceForAName & Pick<PieceRow, 'statusLine'>
+
 export type PieceHeld = PieceForAName
 
 /** Open work already read for this window snapshot, including its unread-row evidence. */

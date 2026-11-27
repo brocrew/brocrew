@@ -9,6 +9,10 @@ let queries = 0
 let rows = 0
 let allQueries = 0
 let allRows = 0
+let startCountQueries = 0
+let startCountRows = 0
+let rootStatusQueries = 0
+let rootStatusRows = 0
 let capability: 'cold' | 'match' | 'miss' = 'cold'
 let sequence = 0
 const prepare = Database.prototype.prepare
@@ -19,6 +23,10 @@ WindowReadEngine.prototype.read = function (...args) {
   rows = 0
   allQueries = 0
   allRows = 0
+  startCountQueries = 0
+  startCountRows = 0
+  rootStatusQueries = 0
+  rootStatusRows = 0
   resetFoldCounts()
   const offered = 'reuse' in args[0] ? args[0].reuse : undefined
   capability =
@@ -34,14 +42,21 @@ Database.prototype.prepare = function (this: Database.Database, sql: string) {
   const statement = prepare.call(this, sql) as Database.Statement<unknown[], unknown>
   if (!/^\s*(SELECT|WITH)\b/i.test(sql)) return statement
   const history = /\bevents\b/i.test(sql) && /\bpayload\b/i.test(sql)
+  const startCount = sql.includes('s.parent_session_id = parent.id')
+  const latestRootLine =
+    history &&
+    sql.includes('AND type = ?') &&
+    sql.includes("json_extract(payload, '$.piece') END END = ?")
   const measured: Database.Statement<unknown[], unknown> = new Proxy(statement, {
     get(native, key) {
       if (key === 'iterate')
         return function* (...args: unknown[]) {
           allQueries++
           if (history) queries++
+          if (startCount) startCountQueries++
           for (const row of native.iterate(...args)) {
             allRows++
+            if (startCount) startCountRows++
             if (history) rows++
             yield row
           }
@@ -50,9 +65,12 @@ Database.prototype.prepare = function (this: Database.Database, sql: string) {
         return (...args: unknown[]) => {
           allQueries++
           if (history) queries++
+          const rootStatus = latestRootLine && args[2] === 'work_status_set'
+          if (rootStatus) rootStatusQueries++
           const value = native.get(...args)
           if (value !== undefined) {
             allRows++
+            if (rootStatus) rootStatusRows++
             if (history) rows++
           }
           return value
@@ -89,6 +107,10 @@ if (parentPort !== null) {
         rows,
         allQueries,
         allRows,
+        startCountQueries,
+        startCountRows,
+        rootStatusQueries,
+        rootStatusRows,
         capability,
         folds: foldCounts(),
         elapsedMs: finished - started,
