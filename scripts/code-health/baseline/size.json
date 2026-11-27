@@ -42,7 +42,6 @@
   "apps/desktop/src/renderer/src/lib/session-record.ts": 1131,
   "apps/desktop/src/renderer/src/lib/session-store.ts": 2531,
   "apps/desktop/src/renderer/src/lib/transcript.ts": 5238,
-  "apps/desktop/src/shared/conversation-events.ts": 1448,
   "apps/desktop/src/shared/question-contracts.ts": 1801,
   "apps/desktop/src/shared/questions.ts": 1008,
   "apps/desktop/src/shared/runtime-ipc.ts": 6265,
