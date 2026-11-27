@@ -12,6 +12,7 @@ import WaitingOnYou from '../../src/renderer/src/components/WaitingOnYou.vue'
 import type { AttentionRequest } from '../../src/renderer/src/lib/attention'
 import { usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
 import { clockTime } from '../../src/shared/clock'
+import type { StoppedPiece } from '../../src/shared/agent-state-contracts'
 
 import type { StalledWork } from '../../src/shared/stalled-work'
 import type { StoppedWorkForAPerson } from '../../src/shared/stopped-work'
@@ -37,17 +38,18 @@ afterEach(async () => {
 })
 
 describe('the giver of a piece whose helper stopped', () => {
-  const giver = async (stoppedWork: readonly unknown[], workWith: readonly string[] = []) => {
+  // 501 · the giver's state is the host's: who holds its work, and which pieces' holders stopped.
+  const giver = async (stopped: readonly StoppedPiece[], on: readonly string[] = ['Quinn']) => {
     await page.viewport(1200, 808)
+    const one = record([{ type: 'status', state: 'idle' } as never])
+    one.agentState = {
+      is: 'waiting-on-a-worker',
+      on: on as [string, ...string[]],
+      ...(stopped.length > 0 ? { stopped: stopped as [StoppedPiece, ...StoppedPiece[]] } : {}),
+    }
     const m = mount(
       ConversationPane,
-      paneProps({
-        record: record([{ type: 'status', state: 'idle' } as never]),
-        drawerOpen: true,
-        waiting: 'waiting-on-a-worker',
-        workWith,
-        stoppedWork,
-      }),
+      paneProps({ record: one, drawerOpen: true, waiting: 'waiting-on-a-worker' }),
       { width: 1200, height: 808 },
     )
     await drawnReady()

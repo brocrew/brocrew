@@ -1,3 +1,4 @@
+import type { AgentState } from '../../src/shared/agent-state-contracts'
 import { defineComponent, h, nextTick, type Component } from 'vue'
 import type { AppInfo } from '@brobot2/shared'
 import type { LookStage } from '../capture'
@@ -56,8 +57,10 @@ const USAGE = {
 }
 
 export interface WindowStageOptions {
-  /** Merged into the conversation pane's props: a wait it is in, who holds its work. */
+  /** Merged into the conversation pane's props: a wait it is in. */
   readonly pane?: Record<string, unknown>
+  /** The host's state of the conversation, as the store holds it once seeded (501). */
+  readonly agentState?: AgentState
   /** The window's title bar above it all, with its usage line. */
   readonly titleBar?: boolean
   readonly titleInfo?: AppInfo | null
@@ -124,6 +127,7 @@ export function windowStage(options: WindowStageOptions = {}): Component {
   const record = createSessionRecord(META.sessionId)
   record.meta = SESSION as never
   record.phase = 'open'
+  if (options.agentState !== undefined) record.agentState = options.agentState
   ;[...panelEvents(), ...(options.more ?? [])].forEach(([event, at], index) =>
     applyEvent(record.transcript, event as never, at, index + 1),
   )

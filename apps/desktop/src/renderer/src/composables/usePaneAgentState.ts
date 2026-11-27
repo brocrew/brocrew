@@ -8,7 +8,6 @@ import {
   needingFor,
   parkedOnAnotherAnswer,
   sessionFacets,
-  stateHere,
   stateForRecord,
   facetsForRecord,
   type SessionFacetInput,
@@ -33,17 +32,7 @@ import type { ConversationPaneProps } from '../lib/conversation-pane-props'
 export function usePaneAgentState(
   props: Pick<
     ConversationPaneProps,
-    | 'answerFrom'
-    | 'heldWork'
-    | 'identities'
-    | 'launching'
-    | 'listedState'
-    | 'providerBlock'
-    | 'record'
-    | 'stoppedWork'
-    | 'waiting'
-    | 'waitsBegan'
-    | 'workWith'
+    'heldWork' | 'identities' | 'launching' | 'listedState' | 'providerBlock' | 'record' | 'waiting'
   >,
   control: ComputedRef<SessionRecord['control']>,
   panel: ComputedRef<SessionPanel>,
@@ -194,25 +183,11 @@ export function usePaneAgentState(
   )
 
   /**
-   * ⚑ **D-017 · R11 — this conversation's ONE state** (`stateHere`, `shared/agent-state.ts`) — what
+   * ⚑ **D-017 · R11 — this conversation's ONE state**, the host's (`shared/agent-state.ts`) — what
    * it left running, when it next wakes, whose answer it waits on, who holds the work it gave out —
-   * derived once, beside the facets, for the word under the plate: the rail row's word, and the one
-   * `list_agents` reports.
+   * for the word under the plate: the rail row's word, and the one `list_agents` reports.
    */
-  const agentState = computed(
-    () =>
-      hostSays.value ??
-      stateForRecord(props.record, () =>
-        stateHere(
-          props.record,
-          agentFacets.value,
-          props.answerFrom ?? null,
-          props.workWith ?? [],
-          props.waitsBegan,
-          props.stoppedWork ?? [],
-        ),
-      ),
-  )
+  const agentState = computed(() => hostSays.value ?? stateForRecord(props.record))
 
   /**
    * The pill's line, from the SAME input object the plate is drawn from (089).

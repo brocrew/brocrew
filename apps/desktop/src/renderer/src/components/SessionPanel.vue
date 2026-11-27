@@ -114,7 +114,7 @@ const props = defineProps<{
    */
   facets?: AgentFacets
   providerLimit?: ProviderLimitDisplay | null
-  /** ⚑ **D-017 · R11 — its ONE state** (`stateHere`), forwarded whole with {@link facets}. */
+  /** ⚑ **D-017 · R11 — its ONE state**, the host's, forwarded whole with {@link facets}. */
   agentState?: OneState
   /** While this conversation holds a piece with a typed wait: that wait, in place of its state. */
   ownWait?: OwnWait | null
