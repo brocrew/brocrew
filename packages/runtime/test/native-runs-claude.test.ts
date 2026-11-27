@@ -134,6 +134,70 @@ it('keeps the full agent prompt, role and model on its existing card', () => {
   expect(runtimeEventSchema.parse(event)).toMatchObject({ run: { kind: 'agent' } })
 })
 
+it.each([
+  ['in the same session', false],
+  ['after a reopen that first sees the resume', true],
+])('drops the notification prompt of a resumed sub-agent %s', (_, reopen) => {
+  let tasks = new SubAgentTasks()
+  let background = new BackgroundTasks()
+  const feed = (value: unknown) => {
+    const events = normalizeMessage(message(value), tasks, undefined, undefined, background)
+    return events.find((e) => e.type === 'sub_agent')
+  }
+  const started = {
+    type: 'system',
+    subtype: 'task_started',
+    task_id: 'agent-a',
+    tool_use_id: 'call-a',
+    task_type: 'local_agent',
+    description: 'Wait for the kettle',
+  }
+  expect(feed({ ...started, prompt: 'Boil the fictional kettle, then report' })).toMatchObject({
+    run: { kind: 'agent', input: 'Boil the fictional kettle, then report' },
+  })
+  feed({ type: 'system', subtype: 'task_notification', task_id: 'agent-a', status: 'completed' })
+  if (reopen) {
+    tasks = new SubAgentTasks()
+    background = new BackgroundTasks()
+  }
+  const resumed = feed({
+    ...started,
+    prompt:
+      '<task-notification>\n<task-id>kettle-1</task-id>\n<tool-use-id>call-b</tool-use-id>\n' +
+      '<status>completed</status>\n<summary>The kettle boiled</summary>\n</task-notification>',
+  })
+  expect(resumed).toMatchObject({ phase: 'started', title: 'Wait for the kettle' })
+  expect((resumed as { run?: unknown }).run).toEqual({ kind: 'agent' })
+})
+
+const example =
+  '<task-notification>\n<task-id>kettle-1</task-id>\n<status>completed</status>\n' +
+  '</task-notification>'
+
+it.each([
+  ['the tag alone', '<task-notification> is the XML tag. Explain its fields.'],
+  ['a whole example block', `${example}\nExplain the example above.`],
+  ['two example blocks', `${example}\nCompare the first example with the second:\n${example}`],
+])('keeps a genuine sub-agent prompt that begins with %s', (_, prompt) => {
+  const events = normalizeMessage(
+    message({
+      type: 'system',
+      subtype: 'task_started',
+      task_id: 'agent-b',
+      task_type: 'local_agent',
+      description: 'Explain the tag',
+      prompt,
+    }),
+    new SubAgentTasks(),
+    undefined,
+    undefined,
+    new BackgroundTasks(),
+  )
+  expect(events.find((e) => e.type === 'sub_agent')).toMatchObject({
+    run: { kind: 'agent', input: prompt },
+  })
+})
+
 it('carries the full command and its ending without changing the returned format', () => {
   const background = new BackgroundTasks()
   const normalize = (m: SDKMessage) =>
