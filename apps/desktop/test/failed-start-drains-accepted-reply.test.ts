@@ -1,4 +1,5 @@
 import { closeStartedHostAfterFailedStart } from '../src/main/failed-start-cleanup'
+import { createMemoryJournalLifetime } from '../src/main/memory-journal-lifetime'
 import { readFileSync } from 'node:fs'
 import { inspect } from 'node:util'
 import { runInNewContext } from 'node:vm'
@@ -91,6 +92,7 @@ it.each(['fulfilled', 'rejected'] as const)(
     const app = { getPath: () => userData, quit: vi.fn(), exit: vi.fn() }
     const context = {
       closeStartedHostAfterFailedStart,
+      memoryJournal: createMemoryJournalLifetime(() => null),
       host,
       db,
       stoppingTheStart: null,
