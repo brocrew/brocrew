@@ -1,4 +1,5 @@
 import { closeStartedHostAfterFailedStart } from '../../src/main/failed-start-cleanup'
+import { createMemoryJournalLifetime } from '../../src/main/memory-journal-lifetime'
 import { readFileSync } from 'node:fs'
 import { inspect } from 'node:util'
 import { runInNewContext } from 'node:vm'
@@ -27,6 +28,7 @@ export function stopFailedStart(host: RuntimeHost, failure: Error) {
     {
       host,
       closeStartedHostAfterFailedStart,
+      memoryJournal: createMemoryJournalLifetime(() => null),
       stoppingTheStart: null,
       stopThemeIpc: undefined,
       stopStorageIpc: undefined,

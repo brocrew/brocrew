@@ -1,3 +1,6 @@
+import { createAppLifetime } from '../src/main/app-lifetime'
+import { deferred } from './helpers/quit-open-list-cases'
+import { createMemoryJournalLifetime } from '../src/main/memory-journal-lifetime'
 import { captureLog } from './lib/log-file'
 import { createPluginStartupTrace } from '../src/main/plugins/startup-failure'
 import { fileURLToPath } from 'node:url'
@@ -103,6 +106,11 @@ async function startup(
   beforeThemes?: () => void,
   trace = createPluginStartupTrace(),
   beforeCheck?: () => void,
+  runtime?: {
+    memoryJournal: ReturnType<typeof createMemoryJournalLifetime>
+    createRuntimeHost: () => Promise<object>
+    registerIpc: () => void
+  },
 ) {
   const lines: string[] = [],
     exits: number[] = [],
@@ -111,12 +119,13 @@ async function startup(
   const begin = index.indexOf(
     "      let finishStartupPhase = pluginStartupTrace.begin('workspace-recovery', 'startup')",
   )
-  const endLine =
-    '      host = await createRuntimeHost(database, drafts)\n      finishStartupPhase()'
+  const endLine = '      registerIpc(host, localZone, drafts)'
   const end = index.indexOf(endLine, begin) + endLine.length
   expect(begin).toBeGreaterThan(0)
   const context = {
     pluginStartupTrace: trace,
+    memoryJournal: runtime?.memoryJournal ?? createMemoryJournalLifetime(() => null),
+    localZone: null,
     app: Object.assign(fake, {
       getVersion: () => '0.0.0',
       commandLine: { ...fake.commandLine, getSwitchValue: () => '' },
@@ -197,7 +206,8 @@ async function startup(
       return {}
     },
     createSqliteDraftStorage,
-    createRuntimeHost: () => ({}),
+    createRuntimeHost: runtime?.createRuntimeHost ?? (() => ({})),
+    registerIpc: runtime?.registerIpc ?? vi.fn(),
   }
   const prefixBegin = index.indexOf('try {\n  pinTheDataFolder(app')
   const prefixEnd = index.indexOf('\nnameTheAppToWindows(app)', prefixBegin)
@@ -386,6 +396,58 @@ it('a first visible launch with no app-data folder yet makes its theme library a
   }
   expect(await startup(fresh)).toEqual({ lines: [], exits: [], databaseStarts: 1, exists: true })
   expect(existsSync(join(appData, '@brobot2', 'themes'))).toBe(true)
+})
+
+it('withholds startup IPC when the pending Host returns during the first quit step', async () => {
+  const atHost = deferred()
+  const releaseHost = deferred()
+  const recording = deferred()
+  const finishRecording = deferred()
+  const registerIpc = vi.fn()
+  const memoryJournal = createMemoryJournalLifetime(() => null)
+  const before = index.indexOf('  announceClosing: () => {')
+  const after = index.indexOf('  closeAllSessions:', before)
+  const announceClosing = runInNewContext(`({${index.slice(before, after)}}).announceClosing`, {
+    memoryJournal,
+    BrowserWindow: { getAllWindows: () => [] },
+  }) as () => void
+  const lifetime = createAppLifetime({
+    announceClosing,
+    recordOpenSessions: () => {
+      recording.resolve()
+      return finishRecording.promise
+    },
+    closeAllSessions: async () => {},
+    stopArchiveWork: vi.fn(),
+    drainArchiveWork: async () => {},
+    closeDatabase: vi.fn(),
+    quit: vi.fn(),
+    exit: vi.fn(),
+    armLastResort: vi.fn(),
+    log: vi.fn(),
+    now: Date.now,
+  })
+  const boot = startup(app(), undefined, undefined, undefined, {
+    memoryJournal,
+    createRuntimeHost: async () => {
+      atHost.resolve()
+      await releaseHost.promise
+      return {}
+    },
+    registerIpc,
+  })
+  try {
+    await atHost.promise
+    lifetime.beforeQuit({ preventDefault: vi.fn() })
+    await recording.promise
+    releaseHost.resolve()
+    expect((await boot).databaseStarts).toBe(1)
+    expect(registerIpc).not.toHaveBeenCalled()
+  } finally {
+    releaseHost.resolve()
+    finishRecording.resolve()
+    await lifetime.shuttingDown
+  }
 })
 
 it('configured startup on existing data reaches the database', async () => {

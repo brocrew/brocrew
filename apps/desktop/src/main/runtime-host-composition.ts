@@ -72,6 +72,7 @@ import { createSavedMethodService } from './saved-method-service'
 import { createMethodChangeStore } from './db/method-changes'
 import {
   createMemoryService,
+  type CloseMemoryJournal,
   stageKnowledgeFile,
   sweepKnowledgeStages,
 } from './runtime/agent-memory'
@@ -115,6 +116,9 @@ export interface RuntimeHostWiring {
   themes: () => ThemeStore | null
   soleAtThisLaunch: () => boolean
   databaseClosed: () => boolean
+  assertStarting?: (database: AppDatabase) => void
+  acquiredHost?: (host: RuntimeHost) => void
+  keepMemoryJournal?: (database: AppDatabase, close: CloseMemoryJournal) => void
   keepRecordedConversation: (recorded: (sessionId: string) => boolean) => void
 }
 
@@ -214,6 +218,7 @@ export async function composeRuntimeHost(
     }
   }
   const apiKeys = await ApiKeys.open(userData, Date.now, store)
+  wiring.assertStarting?.(database)
   const stopProviderServices = new AbortController()
   app.once('will-quit', () => stopProviderServices.abort())
   keepRecordedConversation((sessionId) => databaseClosed() || store.recordedOne(sessionId) !== null)
@@ -231,6 +236,7 @@ export async function composeRuntimeHost(
     sweep: sweepKnowledgeStages,
     changed: (slug) => knowledgeChanged(slug),
   })
+  wiring.assertStarting?.(database)
   const providerHomePaths: Pick<RuntimeHostDeps, 'providerHomePath'> = {
     providerHomePath: (provider, profileId) =>
       deriveProviderHome(userData, { profileId, provider }),
@@ -245,8 +251,10 @@ export async function composeRuntimeHost(
     }),
     now: Date.now,
     reconcile: createMemoryAmendmentObserver(database, Date.now).reconcile,
+    acquired: (close) => wiring.keepMemoryJournal?.(database, close),
     changed: (slug) => knowledgeChanged(slug),
   })
+  wiring.assertStarting?.(database)
   const providerModules = createProviderModules(
     (provider) => homePathsForProvider(userData, provider),
     desktopProviderInputs({
@@ -511,6 +519,7 @@ export async function composeRuntimeHost(
             'the process memory read',
           ),
   })
+  wiring.acquiredHost?.(runtimeHost)
   knowledgeChanged = () => runtimeHost.agentKnowledgeChanged()
   runtimeHost.fillQuestionCopies()
   void runtimeHost.readForWindow(() => undefined, 'listing').catch(() => {})
