@@ -1,19 +1,35 @@
 import { neutralHostDeps } from './lib/host-fixture'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { FakeRuntime } from '@brobot2/runtime/testing'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
-import { createSessionStore } from '../src/main/db/session-store'
+import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
+import { createAppLifetime } from '../src/main/app-lifetime'
+import { closeDatabase } from '../src/main/db/close-database'
+import { deferred } from './helpers/quit-open-list-cases'
+import { stopFailedStart } from './helpers/stop-failed-start'
 import { createMethodChangeStore } from '../src/main/db/method-changes'
 import { createSavedMethodService } from '../src/main/saved-method-service'
 import { stageKnowledgeFile, sweepKnowledgeStages } from '../src/main/runtime/agent-memory'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import { executeRuntimeCommand, runtimeCommandSchema } from '../src/main/runtime/ipc'
-import type { MethodLibrary, MethodDeleteSelection } from '../src/shared/saved-method-library'
+import type {
+  MethodLibrary,
+  MethodDeleteSelection,
+  MethodChangeResult,
+} from '../src/shared/saved-method-library'
 
 const migrations = join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations')
 const person: RuntimeEventSink = {
@@ -30,9 +46,13 @@ const agent: RuntimeEventSink = {
   send() {},
   sendLiveness() {},
 }
+const beforePrepare = vi.fn<() => Promise<void>>()
+const changed = vi.fn<(slug: string) => void>()
 let root: string
 let folder: string
 let db: AppDatabase
+let changes: ReturnType<typeof createMethodChangeStore>
+let store: SessionStore
 let host: RuntimeHost
 let service: Awaited<ReturnType<typeof createSavedMethodService>>
 const read = (kind: string, extra: object = {}, sink = person) => {
@@ -50,11 +70,36 @@ async function selection(): Promise<MethodDeleteSelection> {
     key: item.key,
   }
 }
+function startShutdown(route: string) {
+  const stopped =
+    route === 'failed startup'
+      ? stopFailedStart(host, new Error('fictional earlier stop failed'))
+      : undefined
+  const close = vi.fn(() => closeDatabase(db))
+  const lifetime = createAppLifetime({
+    announceClosing: () => {},
+    recordOpenSessions: () => host.recordOpenForQuit(),
+    stopArchiveWork: () => host.stopSweeping(),
+    closeAllSessions: () => stopped ?? host.closeAll(),
+    drainArchiveWork: () => host.drainArchiveWork(),
+    closeDatabase: close,
+    quit: () => {},
+    exit: () => {},
+    log: () => {},
+    armLastResort: () => {},
+    now: Date.now,
+  })
+  lifetime.beforeQuit({ preventDefault() {} })
+  return { close, lifetime }
+}
+
 beforeEach(async () => {
+  beforePrepare.mockReset()
+  changed.mockReset()
   root = mkdtempSync(join(tmpdir(), 'method-window-'))
   db = openDatabase(join(root, 'app.sqlite'))
   applyMigrations(db, migrations)
-  const store = createSessionStore(db)
+  store = createSessionStore(db)
   store.createAgentIdentity(
     { slug: 'lark', displayName: null, provider: 'codex' },
     { by: 'a-person' },
@@ -67,11 +112,14 @@ beforeEach(async () => {
     join(folder, 'index.md'),
     '- Review | During review | verified 2026-10-21 | review.md\n',
   )
+  changes = createMethodChangeStore(db)
   service = await createSavedMethodService({
     homesRoot: homes,
     folderOf: (slug) => join(homes, slug, 'runbooks'),
     identities: () => store.agentIdentities(),
-    changes: createMethodChangeStore(db),
+    changes,
+    changed,
+    seams: { beforePrepare },
     now: Date.now,
     stage: stageKnowledgeFile,
     sweep: sweepKnowledgeStages,
@@ -101,6 +149,69 @@ afterEach(async () => {
 })
 
 describe('saved methods through bounded window commands', () => {
+  it.each([
+    ['delete', 'normal quit'],
+    ['delete', 'failed startup'],
+    ['undo', 'normal quit'],
+    ['undo', 'failed startup'],
+  ] as const)(
+    'settles an accepted %s before closing its database on %s',
+    async (operation, route) => {
+      const selected = await selection()
+      const deleting = operation === 'delete'
+      const command = deleting ? 'removeAgentMethod' : 'undoAgentMethod'
+      let payload: { selection: MethodDeleteSelection } | { changeId: string } = {
+        selection: selected,
+      }
+      if (!deleting) {
+        const removed = (await read('removeAgentMethod', payload)) as MethodChangeResult
+        if (!removed.ok) throw new Error(removed.reason)
+        payload = { changeId: removed.change.id }
+      }
+      const id = store.agentIdentities().find((one) => one.slug === 'lark')!.id
+      const publications: string[] = []
+      changed.mockImplementation(() => {
+        publications.push(changes.list(id, 0, 1)[0]!.outcome)
+      })
+      const preparing = deferred()
+      const release = deferred()
+      beforePrepare.mockImplementationOnce(() => {
+        preparing.resolve()
+        return release.promise
+      })
+      const result = read(command, payload, agent)
+      await Promise.race([preparing.promise, result])
+      const method = join(folder, 'review.md')
+      const { close, lifetime } = startShutdown(route)
+      try {
+        await new Promise<void>((done) => setImmediate(done))
+        expect(close).not.toHaveBeenCalled()
+        expect(publications).toEqual(['pending'])
+        expect(existsSync(method)).toBe(deleting)
+        await expect(read(command, payload, agent)).rejects.toThrow(/shutting down/)
+      } finally {
+        release.resolve()
+        await lifetime.shuttingDown
+      }
+      const by = { who: 'an-agent', agent: 'wren' }
+      expect(await result).toMatchObject({
+        ok: true,
+        change: { operation, by, outcome: 'done', settlement: { by } },
+      })
+      expect(publications).toEqual(['pending', 'done'])
+      expect(close).toHaveBeenCalledOnce()
+      expect(db.open).toBe(false)
+      expect(existsSync(method)).toBe(!deleting)
+      const index = readFileSync(join(folder, 'index.md'), 'utf8')
+      if (deleting) expect(index).not.toContain('review.md')
+      else {
+        expect(index).toContain('review.md')
+        expect(readFileSync(method, 'utf8')).toBe('# Review\nkept text')
+        // Windows keeps no POSIX permission bits; Node reports 0666 there.
+        if (process.platform !== 'win32') expect(statSync(method).mode & 0o777).toBe(0o600)
+      }
+    },
+  )
   it('reads a page and the selected body without accepting a file path', async () => {
     const listed = (await read('agentMethods', { offset: 0, limit: 1 })) as MethodLibrary
     expect(listed.items).toHaveLength(1)
