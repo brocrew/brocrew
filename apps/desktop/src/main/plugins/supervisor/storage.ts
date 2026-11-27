@@ -136,6 +136,8 @@ export class SupervisorStorage {
         if (missing(error) && !replaced) return null
         refuse()
       }
+      // An lstat racing that rename can report the file it replaced, already without a link.
+      if (before.isFile() && before.nlink === 0n) continue
       privateEntry(before, false)
       const fd = openNotThroughALink(this.record, constants.O_RDONLY)
       try {
