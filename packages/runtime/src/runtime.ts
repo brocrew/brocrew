@@ -367,8 +367,8 @@ export interface SessionHandle {
   /** Join the session wait count only for this active await; the returned idempotent release ends this caller wait once. */
   waitForAPerson(): () => void
 
-  /** End the session and reject pending permission/input requests so no caller remains waiting. */
-  close(): Promise<void>
+  /** End the session, including any provider-specific cleanup needed when the app quits. */
+  close(reason?: 'app-quit'): Promise<void>
 }
 
 /** A failed resume retains its requested ref and cause; it must not silently create a fresh session. */
