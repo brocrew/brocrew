@@ -3,7 +3,6 @@
   "apps/desktop/smoke/lifecycle-stage.smoke.ts": 2072,
   "apps/desktop/src/main/index.ts": 1817,
   "apps/desktop/src/main/plugins/lifecycle/controller.ts": 1775,
-  "apps/desktop/src/main/recovery/checkpoint.ts": 1113,
   "apps/desktop/src/main/resources/resources.ts": 1082,
   "apps/desktop/src/main/runtime/agent-memory.ts": 1165,
   "apps/desktop/src/main/runtime/agent-tools.ts": 10252,
