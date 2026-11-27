@@ -263,8 +263,9 @@ it('cooperatively cancels a real engine between native pages and can build again
     f.session('b', 'aid:b')
     f.root('a')
     f.root('b')
+    // Three native pages of events: the driver holds the read at the first until the flag is set.
     f.db.transaction(() => {
-      for (let i = 0; i < 100000; i++)
+      for (let i = 0; i < 600; i++)
         f.event('a', 'message_sent', '{"to":"b"}', 0, graphCutoff - 86400000, i)
     })()
     const driver = join(f.directory, 'cancel-driver.ts')
@@ -274,7 +275,7 @@ it('cooperatively cancels a real engine between native pages and can build again
       `import {parentPort,workerData} from 'node:worker_threads';
 import {TeamProfileGraphEngine} from ${JSON.stringify(enginePath)};
 const flag=new Int32Array(workerData.flag);let notified=false;
-const engine=new TeamProfileGraphEngine(workerData.file,Date.now,()=>performance.now(),sql=>{if(!notified&&sql.includes('FROM events WHERE type')){notified=true;parentPort.postMessage({type:'native-page'});}});
+const engine=new TeamProfileGraphEngine(workerData.file,Date.now,()=>performance.now(),sql=>{if(!notified&&sql.includes('FROM events WHERE type')){notified=true;parentPort.postMessage({type:'native-page'});Atomics.wait(flag,0,0);}});
 const first=engine.read({operation:'snapshot'},workerData.context,()=>Atomics.load(flag,0)!==0);
 Atomics.store(flag,0,0);const next=engine.read({operation:'snapshot'},workerData.context);
 engine.close();parentPort.postMessage({type:'done',first,next});parentPort.close();`,
@@ -301,6 +302,7 @@ engine.close();parentPort.postMessage({type:'done',first,next});parentPort.close
         if (message.type === 'native-page') {
           sawNativePage = true
           Atomics.store(flag, 0, 1)
+          Atomics.notify(flag, 0)
         } else if (message.type === 'done') resolve(message)
       })
       worker.once('error', reject)
