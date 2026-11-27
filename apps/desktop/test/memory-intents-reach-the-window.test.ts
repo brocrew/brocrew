@@ -7,6 +7,7 @@ import { FakeRuntime } from '@brobot2/runtime/testing'
 import { claudeAutoMemoryDir } from '@brobot2/runtime/claude'
 import type { Provider } from '@brobot2/shared'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { createSqliteMemoryAmendmentJournal } from '../src/main/database/sqlite/agents/knowledge'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import {
@@ -62,6 +63,7 @@ beforeEach(async () => {
   writeFileSync(entry, text)
   service = await createMemoryService({
     store,
+    journal: createSqliteMemoryAmendmentJournal(store),
     now: Date.now,
     inputsOf: (slug) => ({
       profileId: slug,
