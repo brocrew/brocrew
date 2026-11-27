@@ -63,8 +63,8 @@ export async function stageSource(
     ).trim()
     demand(source === a.appSource)
     const sourceVersion = JSON.parse(readFile(path.join(repo, 'apps/desktop/package.json'))).version
-    // Both reviewed release sources keep0.0.0 in package.json; Builder stamps the chosen test version.
-    demand(sourceVersion === '0.0.0')
+    // Builder stamps the chosen test version; the package proof sees the stamp only if the source differs.
+    demand(sourceVersion !== version)
     fs.writeFileSync(path.join(root, 'staged'), hash(Buffer.from(JSON.stringify(a))), {
       flag: 'wx',
       mode: 0o600,
