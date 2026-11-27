@@ -6,8 +6,8 @@
   "modules": [
     {
       "path": "contract.mjs",
-      "bytes": 8571,
-      "sha256": "839ea9e1c55a319346ad3cc8764ee1df590eddc17aca53723c5b63fae72b113a",
+      "bytes": 8168,
+      "sha256": "2aa35015b2be5683d6c56a709c31c454fe2833951b8e18c23637dd646de96077",
       "name": "contract.mjs"
     },
     {
@@ -18,17 +18,17 @@
     },
     {
       "path": "fixture.mjs",
-      "bytes": 24724,
-      "sha256": "bc364d679e2f17453f497e43aa546ca85613dfcb879c9bb6d67d258cd6c15ac6",
+      "bytes": 23893,
+      "sha256": "18ee8f5f3d9a3679f058f64a9a7910c13df65c679889a0085b653faeb145de8f",
       "name": "fixture.mjs"
     },
     {
       "path": "main-app-controller.mjs",
-      "bytes": 11818,
-      "sha256": "02e9cb56ac2f2341ad4a2344145af2e0469674cb0f76653130c982baed0962ec",
+      "bytes": 10322,
+      "sha256": "0eb6d6d5f33e1e2e8db66313da6b0c21dcde9e0d0a7178aec7ce0d1ad3ee1308",
       "name": "main-app-controller.mjs"
     }
   ],
   "actualSDK": null,
-  "modulePinsSha256": "402b3fa2a5983c0dab5353e470cc1ed3eb3811f409c54eba352e6602206eb902"
+  "modulePinsSha256": "80cf25cd2052fd0f333e39b13e333e1dff590708054a1dac7e9ac9c17b012558"
 }
