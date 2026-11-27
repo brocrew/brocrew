@@ -8,7 +8,12 @@ import type {
 } from '../../../shared/runtime-ipc'
 import type { SessionRecord } from '../lib/session-record'
 import { drawsAsACard } from '../lib/draws-as-a-card'
-import { receiptOf, type ToolItem, type TranscriptItem } from '../lib/transcript'
+import {
+  receiptOf,
+  type ToolItem,
+  type TranscriptItem,
+  type WorkflowRunCard,
+} from '../lib/transcript'
 
 /** What `ConversationPane` reads to open its overlays. */
 export interface OverlayProps {
@@ -189,8 +194,13 @@ export function useConversationOverlays(
   // Keep only answers the person opened, so closing the viewer does not discard their content.
   const heldAnswers = shallowReactive(new Map<string, ToolAnswer>())
   const answerKey = (sessionId: string, callId: string): string => `${sessionId}\n${callId}`
+  /** The workflow a call launched. Its whole answer is that run, held in the transcript. */
+  const workflowLaunchedBy = (callId: string): WorkflowRunCard | undefined =>
+    Object.values(transcript.value.workflows).find((run) => run.toolUseId === callId)
   const canReadToolAnswer = (callId: string): boolean =>
-    canAsk() || heldAnswers.has(answerKey(props.record.sessionId, callId))
+    workflowLaunchedBy(callId) !== undefined ||
+    canAsk() ||
+    heldAnswers.has(answerKey(props.record.sessionId, callId))
 
   const answerFor = computed(() =>
     readingAnswer.value?.sessionId === props.record.sessionId ? readingAnswer.value : null,
@@ -298,6 +308,18 @@ export function useConversationOverlays(
   }
 
   /**
+   * A call that launched a workflow opens that workflow, the view Running now and Past runs open.
+   * Synchronous, so a caller's checks, this lookup and its own viewer write run together.
+   */
+  function openLaunchedWorkflow(toolCallId: string, name: string): boolean {
+    const workflow = workflowLaunchedBy(toolCallId)
+    if (!workflow) return false
+    closeToolAnswer()
+    void openPanelRun({ kind: 'workflow', id: workflow.taskId, label: workflow.name || name })
+    return true
+  }
+
+  /**
    * ⛔ **Read the whole answer, once, and put it on screen** (462).
    *
    * ⚠️ **The session id is captured BEFORE the await**, exactly as `openWorkflowOutput` and
@@ -310,6 +332,7 @@ export function useConversationOverlays(
    * would be `106`'s control that cannot act wearing the costume of one that can.
    */
   async function openToolAnswer(toolCallId: string, name: string): Promise<void> {
+    if (openLaunchedWorkflow(toolCallId, name)) return
     const read = props.onReadToolAnswer
     const sessionId = props.record.sessionId
     const request = ++answerRequest
@@ -326,9 +349,10 @@ export function useConversationOverlays(
       ) ?? null
     const answer = held ?? (await read?.(toolCallId)) ?? null
     if (answer !== null) heldAnswers.set(key, answer)
-    if (request === answerRequest && props.record.sessionId === sessionId) {
-      readingAnswer.value = { sessionId, name, answer, shortForm, call }
-    }
+    if (request !== answerRequest || props.record.sessionId !== sessionId) return
+    // The run can link to its call while the answer is being read.
+    if (openLaunchedWorkflow(toolCallId, name)) return
+    readingAnswer.value = { sessionId, name, answer, shortForm, call }
   }
 
   function openImage(item: { path?: string; prompt?: string }): void {
