@@ -6,6 +6,7 @@ import type { PluginSettingsReply } from '../src/shared/plugin-settings'
 import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, writeFile, readdir } from 'node:fs/promises'
 import { join } from 'node:path'
+import { pluginSocketPath } from '../src/main/plugins/socket-path'
 import { PluginWorkspaceLease } from '../src/main/plugins/supervisor/client'
 import { createPluginSupervisorLauncher } from '../src/main/plugins/supervisor/launcher'
 import { preparePluginNodeRuntime, runtimeFiles } from '../src/main/plugins/node-runtime'
@@ -130,7 +131,7 @@ export async function proof(config: { root: string; resources: string; archive: 
     const servicePid = JSON.parse(await readFile(join(launchDirectory, 'service.json'), 'utf8')).pid
     assert.notEqual(servicePid, process.pid)
     client = await connectPluginSettings({
-      path: join(root, 'person-control/person.sock'),
+      path: pluginSocketPath(root, 'person-control', 'person.sock'),
       personKey,
       root,
       target: { os: process.platform as 'darwin' | 'linux', cpu: process.arch as 'arm64' | 'x64' },

@@ -11,6 +11,7 @@ import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { z } from 'zod'
 import { isWithinOrSame, realPath } from './private-files'
 import { isSocketFile } from './local-endpoint'
+import { pluginSocketsPlaceable } from './socket-path'
 import { refuse } from './supervisor/protocol'
 
 const Slot = z.string().regex(/^[a-z][a-z0-9]{0,5}$/)
@@ -123,13 +124,7 @@ function plannedPluginRoot(
     selections.some((entry) => isWithinOrSame(entry.workspace, root))
   )
     refuse()
-  if (
-    isSocketFile() &&
-    [join(root, 'supervisor', 'owner.sock'), join(root, 'person-control', 'person.sock')].some(
-      (path) => Buffer.byteLength(path) > 100,
-    )
-  )
-    refuse()
+  if (isSocketFile() && !pluginSocketsPlaceable(root)) refuse()
   try {
     const stat = lstatSync(root)
     if (stat.isSymbolicLink() || !stat.isDirectory()) refuse()
