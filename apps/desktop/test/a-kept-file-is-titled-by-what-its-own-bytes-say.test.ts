@@ -30,20 +30,25 @@ import {
  * Every file this app keeps is titled ONCE, as it is kept, from the bytes `keptFor` already holds:
  * a Markdown file's front matter `title:`, else its first `# ` heading outside a fenced code block
  * (F046), a page's first `<title>` a
- * browser would use, else the file's name. Agents do nothing for it. This file pins the rule and
- * the three doors that write it:
+ * browser would use, else the file's name. Agents do nothing for it. This file is the one place
+ * the rule and the three doors that write it are pinned:
  *
  *  - **§1 · the rule, `resourceTitle`** — read straight, with no host: what is a heading and what
  *    only looks like one, what a fence is, how the bytes are read (any line ending, a leading byte
- *    order mark, a front matter `title:` first), what a browser would call the page's `<title>` (a comment, a
- *    script, a style, a drawing and an unclosed arm passed over), how its entities are decoded
- *    (ONCE), the cap of 200 characters and the `…` that says a title was cut, and the forms with no
- *    text to look in.
+ *    order mark), what a browser would call the page's `<title>` (a comment, a script, a style, a
+ *    drawing and an unclosed arm passed over), how its entities are decoded (ONCE), the cap of 200
+ *    characters and the `…` that says a title was cut, and the forms with no text to look in.
  *  - **§2 · the doors** — over a real `RuntimeHost`, a real ledger and the real toolsets, on the
  *    Fake provider only: a give's inputs, an `update_work`'s files (a giver's input, an owner's made
  *    file) and a reply's files each keep the title the bytes give, and read back through the window's
- *    door (`filesKept`); a row kept before titles were taken reads as its name there, and
- *    `list_tasks {made}` says a title only where it differs from the name.
+ *    door (`filesKept`) with their role; `list_tasks {made}` says a title only where it differs from
+ *    the name, and a row kept before titles were taken says its name once.
+ *
+ * Pinned elsewhere: front matter in `a-front-matter-title-is-read-as-yaml-keys.test.ts` and its
+ * key guard; the window's listing door and the push in
+ * `a-kept-file-is-titled-by-its-bytes-and-listed-by-one-door.test.ts`; the launch pass in
+ * `the-files-kept-before-titles-were-taken-are-titled-once.test.ts` and
+ * `a-title-the-old-heading-reader-gave-is-replaced-and-nothing-else.test.ts`.
  *
  * ⚑ Two rules of the file: **the bounds are literals** (200, 199, 198, 197), so a changed constant
  * is read as a change and not followed; and **a negative is paired with a positive from the same
@@ -112,12 +117,14 @@ describe('D-026 · the rule: a kept file is titled by what its own bytes say', (
       ['three spaces in is a heading', '   # three spaces in\n', 'three spaces in'],
       ['a bare `#` is an empty heading', '#\n', NAME],
       ['a `#` then a tab then words is a heading', '#\tTabbed\n', 'Tabbed'],
+      ['several spaces after the `#` are trimmed', '#   **Bold** `code`  \n', '**Bold** `code`'],
       ['a heading that is only a closing run is empty', '# #\n', NAME],
       ['a heading with words before its closing run is not', '# Title ##\n', 'Title'],
       ['no heading at all', 'just words\n', NAME],
       ['the same words as a heading', '# just words\n', 'just words'],
       // ⚑ The EMPTY first heading is the title, and a second is never looked for.
       ['an empty first heading, then a second', '#\n# Second\n', NAME],
+      ['a `#` and a space, then a second', '# \n# Second\n', NAME],
       ['a first heading, then a second', '# First\n# Second\n', 'First'],
       // ⚑ A `##` is passed over and the first `#` wins, whatever follows it.
       [
@@ -128,6 +135,7 @@ describe('D-026 · the rule: a kept file is titled by what its own bytes say', (
       // ⚑ The closing run: dropped when a space or tab stands before it, kept otherwise.
       ['trailing spaces are trimmed', '# Title   \n', 'Title'],
       ['a `#` that ends the words after a space is a closing run', '# C# #\n', 'C#'],
+      ['a closing run of two after a word that ends in `#`', '# C# ##\n', 'C#'],
       ['a `#` not preceded by a space or tab is kept', '# Learn C#\n', 'Learn C#'],
       // ⚑ Inline Markdown is kept as written.
       ['inline Markdown is not rendered', '# The *bold* `code` title\n', 'The *bold* `code` title'],
@@ -147,6 +155,7 @@ describe('D-026 · the rule: a kept file is titled by what its own bytes say', (
       ['an unclosed fence runs to the end', '```\n# inside\n', NAME],
       // ⚑ A closer of the other character does not close; a shorter run does not; a longer one does.
       ['a backtick run does not close a tilde fence', '~~~\n```\n# inside\n~~~\n# Real\n', 'Real'],
+      ['a tilde run does not close a backtick fence', '```\n~~~\n# inside\n```\n# Real\n', 'Real'],
       [
         'a shorter run does not close a longer fence',
         '````\n```\n# inside\n````\n# Real\n',
@@ -163,7 +172,7 @@ describe('D-026 · the rule: a kept file is titled by what its own bytes say', (
     ])
   })
 
-  it('a Markdown file’s bytes are read as the viewer reads them: any line ending, a leading byte order mark, a front matter title first', () => {
+  it('a Markdown file’s bytes are read as the viewer reads them: any line ending and a leading byte order mark', () => {
     const BOM = Buffer.from([0xef, 0xbb, 0xbf])
     // ⚑ Line endings: CRLF, and a lone CR is a line break — each beside the same text with LF.
     expect(titled('doc.md', '# Windows\r\n\r\nbody\r\n'), 'CRLF').toBe('Windows')
@@ -184,42 +193,6 @@ describe('D-026 · the rule: a kept file is titled by what its own bytes say', (
       titled('doc.md', Buffer.concat([BOM, Buffer.from('no heading\n')])),
       'no heading behind a byte order mark',
     ).toBe('doc.md')
-
-    // ⚑ **F046 — a front matter `title:` comes first.** ⚠️ With none, no front-matter skip (D-026's
-    // ruling, to match the viewer): a `# ` line inside YAML front matter is the first heading the
-    // viewer draws, so it is the title.
-    expect(
-      titled('doc.md', '---\ntitle: x\n# a yaml comment\n---\n# Real\n'),
-      'a front matter title, before a heading inside the front matter',
-    ).toBe('x')
-    expect(
-      titled('doc.md', '---\ntitle: x\n---\n# Real\n'),
-      'a front matter title, before the first heading',
-    ).toBe('x')
-    expect(
-      titled('doc.md', '---\nauthor: y\n# a yaml comment\n---\n# Real\n'),
-      'no title in the front matter: a heading inside it',
-    ).toBe('a yaml comment')
-    expect(
-      titled('doc.md', '---\nauthor: y\n---\n# Real\n'),
-      'no title in the front matter and no heading in it',
-    ).toBe('Real')
-
-    // ⚑ **A quoted title keeps everything inside its quotes, `#` included**; a ` #` comment is cut
-    // only outside them, and an unquoted title keeps the rule that cuts it.
-    const fm = (value: string): string => titled('doc.md', `---\ntitle: ${value}\n---\n# Real\n`)
-    expect(fm('"a #b"'), 'a double-quoted title with " #" inside').toBe('a #b')
-    expect(fm("'a #b'"), 'a single-quoted title with " #" inside').toBe('a #b')
-    expect(fm('"a #b" # a comment'), 'a comment after the closing quote').toBe('a #b')
-    expect(fm('a #b'), 'an unquoted title: " #" starts a comment').toBe('a')
-    // ⚑ Escapes: `\"` and `\\` inside double quotes, `''` inside single ones; a quote they make
-    // does not close the value.
-    expect(fm('"say \\"hi #1\\" \\\\ ok"'), 'escaped quotes and a backslash').toBe(
-      'say "hi #1" \\ ok',
-    )
-    expect(fm("'it''s #1'"), 'a doubled single quote').toBe("it's #1")
-    // ⚠️ A quote that never closes, or text after it, is read as an unquoted value.
-    expect(fm('"a #b'), 'a quote that never closes').toBe('"a')
   })
 
   it('a page is titled by the first <title> a browser would use', () => {
@@ -329,6 +302,13 @@ describe('D-026 · the rule: a kept file is titled by what its own bytes say', (
       ['a decoded title', '<title>Fish &amp; Chips</title>', 'Fish & Chips'],
       ['one pass: an escaped `&lt;` is not decoded twice', '<title>&amp;lt;</title>', '&lt;'],
       ['an unknown name stays as written', '<title>&unknown;</title>', '&unknown;'],
+      [
+        'the other common named entities',
+        '<title>&quot;q&quot; &apos;a&apos; &hellip; &copy;</title>',
+        '"q" \'a\' … ©',
+      ],
+      ['an entity with no semicolon stays as written', '<title>&amp</title>', '&amp'],
+      ['a bare ampersand in a word stays as written', '<title>AT&T</title>', 'AT&T'],
       ['a title that decodes to a no-break space is no title', '<title>&nbsp;</title>', NAME],
       ['a title that is empty is no title', '<title></title>', NAME],
     ])
@@ -399,6 +379,18 @@ describe('D-026 · the rule: a kept file is titled by what its own bytes say', (
       titled('report.html', '%PDF-1.4 <title>x</title> # y\n'),
       'the PDF’s bytes as a page',
     ).toBe('x')
+    // ⚑ Bytes that each reader WOULD title, so a form routed to the wrong reader is seen: a bare
+    // <title> a page reader takes, and a real line-start heading a Markdown reader takes.
+    expect(titled('chart.svg', '<title>Chart</title>'), 'an svg, with a bare <title>').toBe(
+      'chart.svg',
+    )
+    expect(titled('chart.html', '<title>Chart</title>'), 'the same bytes as a page').toBe('Chart')
+    expect(titled('paper.pdf', '%PDF-1.4\n# Not a title\n'), 'a PDF, with a heading line').toBe(
+      'paper.pdf',
+    )
+    expect(titled('paper.md', '%PDF-1.4\n# Not a title\n'), 'the same bytes as Markdown').toBe(
+      'Not a title',
+    )
   })
 })
 
@@ -596,11 +588,14 @@ describe('D-026 · the doors: every way a file is kept writes the title its byte
       piece: label,
       outcome: 'done',
       summary: 'the index, with the findings',
-      resource_paths: [wrote('findings.md', '# Open findings\n\nrows\n')],
+      resource_paths: [
+        wrote('findings.md', '# Open findings\n\nrows\n'),
+        wrote('plain-out.md', 'no heading\n'),
+      ],
     })
     expect(replied.outcome, JSON.stringify(replied)).toBe('ok')
     const repliedIds = replied.resources as string[]
-    expect(repliedIds, JSON.stringify(replied)).toHaveLength(1)
+    expect(repliedIds, JSON.stringify(replied)).toHaveLength(2)
 
     // ⚠️ The premise, off the ledger: each file is the kind the fixture says it is.
     const doors = [
@@ -608,7 +603,8 @@ describe('D-026 · the doors: every way a file is kept writes the title its byte
       ['a give’s input with none', inputs['plain-in.md'], 'plain-in.md', 'plain-in.md', 'input'],
       ['a giver’s update_work file', givenId, 'given.md', 'Handed over', 'input'],
       ['an owner’s update_work page', madeId, 'made.html', 'Status & plan', 'made'],
-      ['a reply’s file', repliedIds[0], 'findings.md', 'Open findings', 'made'],
+      ['a reply’s file with a heading', repliedIds[0], 'findings.md', 'Open findings', 'made'],
+      ['a reply’s file with none', repliedIds[1], 'plain-out.md', 'plain-out.md', 'made'],
     ] as const
 
     // ⛔ Each door is its own assertion, so a door that writes the name goes red alone.
@@ -622,7 +618,7 @@ describe('D-026 · the doors: every way a file is kept writes the title its byte
     }
 
     // ⚑ …and the window's door answers the same titles for the same files, each row's name still the
-    // file's name — the piece holds all five and nothing else.
+    // file's name — the piece holds all six and nothing else.
     const rows = doorOnPiece(label)
     expect(rows.map((one) => one.name).sort()).toEqual(doors.map(([, , name]) => name).sort())
     expect(Object.fromEntries(rows.map((one) => [one.name, one.title]))).toEqual({
@@ -631,10 +627,12 @@ describe('D-026 · the doors: every way a file is kept writes the title its byte
       'given.md': 'Handed over',
       'made.html': 'Status & plan',
       'findings.md': 'Open findings',
+      'plain-out.md': 'plain-out.md',
     })
-    for (const [door, id, name, title] of doors) {
+    for (const [door, id, name, title, role] of doors) {
       const row = rows.find((one) => one.name === name)
       expect(row?.resourceId, `${door}: the door's row is the kept file`).toBe(id)
+      expect(row?.role, `${door}: the door's role`).toBe(role)
       expect(row?.title, `${door}: the door's title`).toBe(title)
       expect(row?.title, `${door}: the door's title is the stored one`).toBe(
         store.resource(id as string)?.title,
@@ -646,7 +644,7 @@ describe('D-026 · the doors: every way a file is kept writes the title its byte
   // §2.2 · a row kept before titles were taken
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
-  it('a file kept before titles were taken reads as its name at the door, and list_tasks says a title only where it differs from the name', async () => {
+  it('list_tasks says a title only where it differs from the name, and a file kept before titles were taken says its name once', async () => {
     const ali1 = await personOpens('ali')
     const aliRoot = store.rootOf(ali1)
     if (aliRoot === null) throw new Error('ali1 owns no root')
@@ -665,18 +663,6 @@ describe('D-026 · the doors: every way a file is kept writes the title its byte
     expect(store.resource(reportId)?.title, 'the report').toBe('Quarterly report')
     expect(store.resource(notesId)?.title, 'the notes').toBe('notes.md')
 
-    // The door: a title is never null and never empty, and a legacy row reads as its name.
-    const rows = doorOnPiece(aliRoot.label)
-    const door = Object.fromEntries(rows.map((one) => [one.name, one]))
-    expect(Object.keys(door).sort()).toEqual(['notes.md', 'old.md', 'report.md'])
-    expect(door['report.md']?.title, 'the door: a new file with a heading').toBe('Quarterly report')
-    expect(door['report.md']?.name, 'the door: the heading is not its name').toBe('report.md')
-    expect(door['notes.md']?.title, 'the door: a new file with none').toBe('notes.md')
-    expect(door['old.md']?.title, 'the door: a legacy row reads as its name').toBe('old.md')
-    expect(door['old.md']?.resourceId, 'the door: the legacy row is the one inserted').toBe(
-      'res_legacy',
-    )
-
     // list_tasks {made}: the structure carries the stored value (null for the legacy row)…
     const listed = await callFull(ali1, 'list_tasks', { made: true })
     expect(listed.structured, listed.text).toMatchObject({ outcome: 'ok', more: 0 })
@@ -691,6 +677,15 @@ describe('D-026 · the doors: every way a file is kept writes the title its byte
       'notes.md': 'notes.md',
       'old.md': null,
     })
+    const byId = listed.structured.made as { resource: string; title: string | null }[]
+    expect(byId.find((one) => one.resource === reportId)?.title, 'the report, by id').toBe(
+      'Quarterly report',
+    )
+    expect(byId.find((one) => one.resource === notesId)?.title, 'the notes, by id').toBe('notes.md')
+    expect(
+      byId.find((one) => one.resource === 'res_legacy')?.title,
+      'the legacy row, by id',
+    ).toBeNull()
 
     // …and the words say a title only where it differs from the name.
     const lineOf = (name: string): string => {
@@ -699,10 +694,10 @@ describe('D-026 · the doors: every way a file is kept writes the title its byte
       return line
     }
     expect(lineOf('report.md'), 'a titled file says its title').toContain(
-      `${reportId} (report.md) · Quarterly report — on `,
+      `${reportId} (report.md) · Quarterly report — on ${aliRoot.label}`,
     )
     expect(lineOf('notes.md'), 'a file titled by its name says it once').toContain(
-      `${notesId} (notes.md) — on `,
+      `${notesId} (notes.md) — on ${aliRoot.label}`,
     )
     expect(lineOf('notes.md'), 'a file titled by its name has no title arm').not.toContain(
       '(notes.md) · ',
@@ -713,145 +708,5 @@ describe('D-026 · the doors: every way a file is kept writes the title its byte
     for (const said of ['· null', 'undefined']) {
       expect(lineOf('old.md'), `a legacy row never says ${said}`).not.toContain(said)
     }
-  })
-
-  it('the titling after a launch titles a file kept before titles, and again a file titled by its name whose bytes say a title — never a title the bytes do not account for', async () => {
-    const ali1 = await personOpens('ali')
-    const aliRoot = store.rootOf(ali1)
-    if (aliRoot === null) throw new Error('ali1 owns no root')
-    // ⚑ Kept by this build, then set back to the name: what a build that did not read a front
-    // matter title wrote for a file with front matter and no heading.
-    const frontMatter = await keeps(
-      ali1,
-      aliRoot.label,
-      'slip.md',
-      '---\ntitle: "Slipping a #piece in"\n---\nbody\n',
-    )
-    const heading = await keeps(ali1, aliRoot.label, 'heading.md', '# A heading\n\nbody\n')
-    const none = await keeps(ali1, aliRoot.label, 'notes.md', 'just notes\n')
-    const chosen = await keeps(
-      ali1,
-      aliRoot.label,
-      'chosen.md',
-      '---\ntitle: From the bytes\n---\n',
-    )
-    const setTitle = db.prepare('UPDATE work_resource SET title = ? WHERE id = ?')
-    setTitle.run('slip.md', frontMatter)
-    setTitle.run('heading.md', heading)
-    // ⚠️ A title neither the name nor the heading-only reader gives is never replaced.
-    setTitle.run('A title of its own', chosen)
-    // …and a row as a build before titles wrote it: no title, and no bytes kept.
-    db.prepare(
-      'INSERT INTO work_resource (id, work_id, role, name, sha256, bytes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
-    ).run('res_legacy', aliRoot.piece, 'made', 'old.md', 'a'.repeat(64), 1, tick())
-
-    expect(await host.titleTheOlderFiles()).toEqual({ titled: 1, retitled: 2 })
-    expect(store.resource(frontMatter)?.title, 'a front matter title, quoted').toBe(
-      'Slipping a #piece in',
-    )
-    expect(store.resource(heading)?.title, 'a heading').toBe('A heading')
-    expect(store.resource(none)?.title, 'no title in its bytes: its name').toBe('notes.md')
-    expect(store.resource(chosen)?.title, 'a title that is not its name').toBe('A title of its own')
-    expect(store.resource('res_legacy')?.title, 'no bytes: its name').toBe('old.md')
-
-    // ⚑ Once by the data: a second launch titles nothing, and the file titled by its name stays so.
-    expect(await host.titleTheOlderFiles()).toEqual({ titled: 0, retitled: 0 })
-    expect(store.resource(none)?.title).toBe('notes.md')
-    // ⛔ The write itself refuses a title equal to the one it replaces, and a row whose title is no
-    // longer the one read.
-    expect(store.retitleResource(none, 'notes.md', 'notes.md')).toBe(false)
-    expect(store.retitleResource(chosen, 'chosen.md', 'Another')).toBe(false)
-  })
-
-  /**
-   * 🔴 **F046's rest — a file the old reader titled by its first heading takes its front matter's
-   * title.** Two files kept on 2026-09-30 read *"Method"* and *"Re-check: F001, …"*: a heading taken
-   * before front matter was read. ⛔ Only a title the reader gave is replaced — one equal to what the
-   * reader before front matter gives from the same bytes — so a title anyone chose stays, and so does
-   * one cut at 200 characters, which a fresh read gives again.
-   */
-  it('F046 · a file titled by its first heading before front matter was read takes its front matter’s title — never a title someone chose', async () => {
-    const ali1 = await personOpens('ali')
-    const aliRoot = store.rootOf(ali1)
-    if (aliRoot === null) throw new Error('ali1 owns no root')
-    const recheck =
-      '---\ntitle: Re-check of 9 runtime findings against garden-develop @ d074f4c2\nauthor: Ana\n---\n\n# Method\n\nRead each finding again.\n'
-    const old = await keeps(ali1, aliRoot.label, 'recheck-runtime.md', recheck)
-    const chosen = await keeps(ali1, aliRoot.label, 'recheck-ui.md', recheck)
-    const long = `---\ntitle: ${'A'.repeat(260)}\n---\n\n# Short heading\n`
-    const capped = await keeps(ali1, aliRoot.label, 'long.md', long)
-    const setTitle = db.prepare('UPDATE work_resource SET title = ? WHERE id = ?')
-    // ⚑ What a build that read no front matter wrote: the first heading.
-    setTitle.run('Method', old)
-    // ⚑ A title neither reader gives from these bytes: somebody's, and never replaced.
-    setTitle.run('The UI re-check, as Anh named it', chosen)
-    const keptCapped = store.resource(capped)?.title
-    expect(keptCapped, 'a title over the cap is kept cut').toMatch(/^A{199}…$/)
-    // ⚑ No front matter, a heading over the cap: the old reader and a fresh read cut it the same.
-    const longHeading = await keeps(
-      ali1,
-      aliRoot.label,
-      'long-heading.md',
-      `# ${'H'.repeat(260)}\n`,
-    )
-    const keptHeading = store.resource(longHeading)?.title
-    expect(keptHeading).toMatch(/^H{199}…$/)
-    // ⚑ A file the old reader titled whose bytes are gone: nothing to read, so it is left as it is.
-    const gone = await keeps(ali1, aliRoot.label, 'gone.md', recheck.replace('Ana', 'Anh'))
-    setTitle.run('Method', gone)
-    const goneRow = store.resource(gone)
-    if (goneRow === null) throw new Error('gone.md was not kept')
-    rmSync(join(resourcesRoot(userData), goneRow.sha256, goneRow.name))
-
-    // ⚑ A file kept once every build read front matter: its title was never the old reader's to give,
-    // so it is not read again, whatever it holds.
-    const later = await keeps(ali1, aliRoot.label, 'later.md', recheck.replace('Ana', 'Ama'))
-    setTitle.run('Method', later)
-    db.prepare('UPDATE work_resource SET created_at = ? WHERE id = ?').run(
-      Date.UTC(2026, 9, 11),
-      later,
-    )
-
-    expect(await host.titleTheOlderFiles()).toEqual({ titled: 0, retitled: 1 })
-    expect(store.resource(later)?.title, 'kept after the reader shipped everywhere').toBe('Method')
-    expect(store.resource(old)?.title).toBe(
-      'Re-check of 9 runtime findings against garden-develop @ d074f4c2',
-    )
-    expect(store.resource(chosen)?.title).toBe('The UI re-check, as Anh named it')
-    expect(store.resource(capped)?.title, 'a cut title is what a fresh read gives').toBe(keptCapped)
-    expect(store.resource(longHeading)?.title, 'a cut heading is what a fresh read gives').toBe(
-      keptHeading,
-    )
-    expect(store.resource(gone)?.title, 'bytes gone: left as it is').toBe('Method')
-
-    // ⚑ Once by the data: the next launch finds the reader's titles already replaced.
-    expect(await host.titleTheOlderFiles()).toEqual({ titled: 0, retitled: 0 })
-    // ⛔ And the write compares with what it read: a title changed since is left alone.
-    expect(store.retitleResource(old, 'Method', 'Something else')).toBe(false)
-  })
-
-  /**
-   * 🔴 **F085 — the file a spaced key hid from the reader is titled again.** Anh's re-check has
-   * `range checked: …` in its front matter, so the reader took its heading even after front matter
-   * was read; its stored title is exactly that heading, which is what the older reader gives too, so
-   * the pass replaces it now that the key is read.
-   */
-  it('F085 · a file whose front matter has a key with a space takes its front matter’s title', async () => {
-    const ali1 = await personOpens('ali')
-    const aliRoot = store.rootOf(ali1)
-    if (aliRoot === null) throw new Error('ali1 owns no root')
-    const anh =
-      '---\nauthor: Anh\nrange checked: 551c81d5..d074f4c2\ntitle: Re-check of 8 UI-side findings against d074f4c2\n---\n\n# Re-check: F001, F006, F007, F008, F033, F035, F037, F038 against d074f4c2\n'
-    const kept = await keeps(ali1, aliRoot.label, 'recheck-ui.md', anh)
-    expect(store.resource(kept)?.title, 'kept now, the key is read').toBe(
-      'Re-check of 8 UI-side findings against d074f4c2',
-    )
-    // ⚑ As a reader that refused the spaced key stored it: the first heading.
-    db.prepare('UPDATE work_resource SET title = ? WHERE id = ?').run(
-      'Re-check: F001, F006, F007, F008, F033, F035, F037, F038 against d074f4c2',
-      kept,
-    )
-    expect(await host.titleTheOlderFiles()).toEqual({ titled: 0, retitled: 1 })
-    expect(store.resource(kept)?.title).toBe('Re-check of 8 UI-side findings against d074f4c2')
   })
 })
