@@ -1,184 +1,106 @@
-# CI on every push to `main`: Linux runners, the checks in parallel, the tests sharded.
-#
-# Not here, on purpose: the Electron window checks (`window:check`, `quit:check`), `build`, the
-# `gate-only` tests and every live smoke. They stay local, run by the test lane. The whole gate is still `pnpm run ci` on a Mac.
-#
-# CI uses Linux runners. A test depending on Mac-specific facts
-# (`/tmp` is `/private/tmp`, the disk ignores case, the fonts a DOM test measures, …) starts with
-# `ctx.skip(process.platform !== 'darwin')` — in a DOM test, which runs in a browser and has no
-# `process`, `ctx.skip(!/mac/i.test(navigator.platform))` — so it is skipped here and still runs
-# in the Mac's gate.
+# DISPOSABLE DIAGNOSTIC ONLY. Replaces .github/workflows/ci.yml on a disposable ref, never main.
+# One manual run: the existing `CI` workflow_dispatch entry point, on a diagnostic ref.
 name: CI
 
 on:
-  push:
-    branches: [main]
-  # By hand, on any branch that carries this file: `gh workflow run CI --ref <branch>`.
   workflow_dispatch:
 
 permissions:
   contents: read
 
-# One run per branch at a time. A push made while a run is going waits, and replaces any run
-# already waiting, so no run is cut short and the newest commit is always the next one checked.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: false
 
+env:
+  # The exact receiving source Sara names. Change all three together if it changes.
+  TESTED_SHA: adb0a5a380a932fd3f9e16770cf793af6b1bddb5
+  W7125_TESTED_SHA: adb0a5a380a932fd3f9e16770cf793af6b1bddb5
+  W7125_TESTED_TREE: f587ad572ee0fbc8913460d361c08ab368f6d20b
+  W7125_TESTED_PARENT: 11b9468d9740e227913e6cada4aa4bbfcc4e37df
+
 jobs:
-  plugins:
-    name: plugins
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    env:
-      PLUGIN_CI_NODE_VERSION: '24.22.0'
-      PLUGIN_CI_PNPM_VERSION: '10.11.0'
-      PLUGIN_CI_GO_VERSION: '1.27.2'
-      GOTOOLCHAIN: local
-      GOFLAGS: -mod=readonly
-      CGO_ENABLED: '0'
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
-      - name: Install pinned pnpm
-        uses: pnpm/action-setup@v6
-        with:
-          version: ${{ env.PLUGIN_CI_PNPM_VERSION }}
-
-      - name: Setup pinned Node
-        uses: actions/setup-node@v7
-        with:
-          node-version: ${{ env.PLUGIN_CI_NODE_VERSION }}
-          cache: pnpm
-
-      - name: Setup pinned Go when a plugin has a module
-        if: hashFiles('plugins/**/go.mod') != ''
-        uses: actions/setup-go@v6
-        with:
-          go-version: ${{ env.PLUGIN_CI_GO_VERSION }}
-          cache: false
-
-      - name: Check every configured plugin
-        run: node scripts/check-plugins.mjs
-
-  check:
-    name: ${{ matrix.check }}
+  w7125-proof:
+    name: w7125 800px proof
     runs-on: ubuntu-latest
-    env:
-      ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
-    timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        # `notices:check`: the npm packages THIRD-PARTY-NOTICES.md lists are the ones this lockfile
-        # installs. It reads `node_modules` and needs no build; Linux installs the same list, since
-        # every package that differs by platform is in the notices' hand-written sections.
-        check: [engine:check, notices:check, typecheck, lint, format:check, db:check]
+    timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v7
+      # The diagnostic head: carries only the workflow, the driver and the proof (under .github/w7125/).
+      - name: Check out the diagnostic head
+        uses: actions/checkout@v7
         with:
+          path: diag
+          fetch-depth: 2
           persist-credentials: false
+
+      # The tested product source: the exact cleared commit, fetched by SHA from the diagnostic ref's history.
+      - name: Check out the exact tested source
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ env.TESTED_SHA }}
+          path: src
+          fetch-depth: 2
+          persist-credentials: false
+
+      - name: Identities, workflow head versus tested source
+        run: |
+          set -eo pipefail
+          mkdir -p out
+          {
+            echo "workflow_head(GITHUB_SHA)=$GITHUB_SHA ref=$GITHUB_REF run=$GITHUB_RUN_ID attempt=$GITHUB_RUN_ATTEMPT"
+            echo "tested_source=$(git -C src rev-parse HEAD) tree=$(git -C src rev-parse 'HEAD^{tree}')"
+            git -C src cat-file commit HEAD | sed -n '1,/^$/p'
+            echo "diag_parent=$(git -C diag rev-parse HEAD^)"
+            echo "diag_changed_paths_vs_parent:"; git -C diag diff --name-only HEAD^ HEAD
+            sha256sum diag/.github/w7125/driver.py diag/.github/w7125/w7125-proof.dom.test.ts
+          } | tee out/identity.txt
+          test "$(git -C src rev-parse HEAD)" = "$TESTED_SHA"
+          test "$(git -C diag rev-parse HEAD^)" = "$TESTED_SHA"
+          test "$(git -C src rev-parse 'HEAD^{tree}')" = "$W7125_TESTED_TREE"
 
       - name: Install pnpm
         uses: pnpm/action-setup@v6
+        with:
+          package_json_file: src/package.json
 
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
-          node-version-file: '.nvmrc'
+          node-version-file: src/.nvmrc
           cache: pnpm
+          cache-dependency-path: src/pnpm-lock.yaml
 
       - name: Install dependencies
+        working-directory: src
         run: pnpm install --frozen-lockfile
 
-      - name: pnpm run ${{ matrix.check }}
-        run: pnpm run ${{ matrix.check }}
-
-  test:
-    name: test ${{ matrix.shard }}/${{ strategy.job-total }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    strategy:
-      fail-fast: false
-      matrix:
-        # vitest splits the files, by a hash of their paths, across every project but `dom`.
-        shard: [1, 2, 3, 4]
-    steps:
-      - &test-checkout
-        uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-
-      - &test-pnpm
-        name: Install pnpm
-        uses: pnpm/action-setup@v6
-
-      - &test-node
-        name: Setup Node
-        uses: actions/setup-node@v7
-        with:
-          node-version-file: '.nvmrc'
-          cache: pnpm
-
-      - &test-install
-        name: Install dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Give the runner the two CLI homes
-        run: mkdir -p ~/.claude ~/.codex
-
-      # Every project but `dom`: the DOM project runs in the `dom` job below, in groups. Run in
-      # one browser per shard, its ~54 files filled the runner's disk.
-      - name: vitest, every project but dom (shard ${{ matrix.shard }} of ${{ strategy.job-total }})
-        run: pnpm exec vitest run --project '!dom' --shard=${{ matrix.shard }}/${{ strategy.job-total }}
-
-  # The DOM project, in groups, each with a browser of its own. One headless Chromium
-  # never gives back the shared memory a test file drew — about 640 MB a file on this runner, kept in
-  # `/tmp` as deleted files — and a shard's ~54 DOM files filled the 12 GB the runner has free, so the
-  # next file failed to load. `scripts/test-dom-in-groups.mjs` runs the project as sixteen `--shard`
-  # invocations in turn; each browser exits with its group. Measured: about 4 GB at most.
-  dom:
-    name: dom (in groups) ${{ matrix.part }}/4
-    runs-on: ubuntu-latest
-    timeout-minutes: 25
-    strategy:
-      fail-fast: false
-      matrix:
-        part: [1, 2, 3, 4]
-    steps:
-      - *test-checkout
-      - *test-pnpm
-      - *test-node
-      - *test-install
-
-      # The `dom` vitest project (083) runs real components in real Chromium, and it runs on the
-      # DEFAULT test path deliberately — a harness gated out of the gate is debt, not coverage.
-      # `playwright@1.62.1` has NO postinstall script (verified in the pnpm store), so
-      # `pnpm install` never fetches a browser under any `onlyBuiltDependencies` setting. Without
-      # this step the DOM job would die before its first test. `--with-deps`
-      # because the binary alone is not enough on ubuntu-latest: chromium needs libnss3, libgbm1
-      # and friends.
       - name: Install the Chromium the DOM tests run in
+        working-directory: src
         run: pnpm --filter @brobot2/desktop exec playwright install --with-deps chromium
 
-      - name: Four of the sixteen DOM groups, each in its own browser
+      # The corrected driver: pin check, exclusive create and cleanup of its own file, proof first,
+      # existing app-frame file only if the proof passes, PNGs exported even on failure.
+      - name: Run the proof, then the existing app-frame file
+        id: proof
+        working-directory: src
         run: |
-          mkdir -p dom-results
-          failed=0
-          first=$(( (${{ matrix.part }} - 1) * 4 + 1 ))
-          for group in $(seq "$first" $(( first + 3 ))); do
-            echo "DOM group $group of 16"
-            pnpm exec vitest run --project dom --shard="$group/16" \
-              --reporter=default --reporter=json \
-              --outputFile.json="dom-results/dom-$group.json" || failed=1
-          done
-          exit "$failed"
+          set -o pipefail
+          python3 -I ../diag/.github/w7125/driver.py "$(base64 -w0 ../diag/.github/w7125/w7125-proof.dom.test.ts)" 2>&1 | tee ../out/driver.log
 
-      - name: Keep native DOM results
+      - name: Raw fonts, browser and geometry lines
+        if: always()
+        run: |
+          grep -E 'IDENT |GEOMETRY |DRAWER |QUEUEBAR |VIEWER |CORNER |W7125_(RUN|EXIT|IDENT|CODES|TESTSHA|PNG|EXPORT_ERROR|TARGET|IDENTITY)' out/driver.log > out/geometry-and-exits.txt || true
+          { fc-match sans-serif; fc-match system-ui; fc-list | wc -l; ls ~/.cache/ms-playwright; } > out/fonts-browser.txt 2>&1 || true
+          mkdir -p out/png
+          find src/apps/desktop -name 'w7125-*.png' -not -path '*/node_modules/*' -exec cp {} out/png/ \; || true
+          sha256sum out/png/* > out/png-sha256.txt 2>/dev/null || true
+
+      - name: Keep raw log, geometry and PNGs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ci-dom-${{ matrix.part }}
-          path: dom-results/*.json
+          name: w7125-proof
+          path: out/
+          if-no-files-found: warn
+          retention-days: 14
