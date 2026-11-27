@@ -659,6 +659,7 @@ it('close cancels and joins an in-flight managed reopen before releasing the sou
   await refusal
   expect(settled).toBe(true)
   expect(f.source.close).toHaveBeenCalledOnce()
+  expect(f.opened[0]!.close).toHaveBeenCalledExactlyOnceWith()
   expect(f.opened[0]!.send).not.toHaveBeenCalled()
 })
 
@@ -745,7 +746,7 @@ it('an unsuccessful replacement emits one fixed unavailable notice and leaves ev
   expect(events.filter((one) => JSON.stringify(one).includes('plugin/attachment'))).toHaveLength(1)
 })
 
-it('Stop joins and closes a replacement that returns after cancellation without sending a turn', async () => {
+it('app Quit closes a replacement that returns after cancellation without sending a turn', async () => {
   const f = fixture(),
     a = await f.runtime.start(initial)
   const opening = vi.mocked(f.raw.resume).getMockImplementation()!
@@ -765,19 +766,18 @@ it('Stop joins and closes a replacement that returns after cancellation without 
   const sending = a.send('fictional continuation')
   const refusal = expect(sending).rejects.toThrow('stopped')
   await ready
-  let closed = false
-  const closing = a.close().then(() => {
-    closed = true
-  })
+  const closing = a.close('app-quit')
+  expect(a.close()).toBe(closing)
+  const settled = vi.fn()
+  void closing.then(settled)
   await Promise.resolve()
-  expect(closed).toBe(false)
+  expect(settled).not.toHaveBeenCalled()
   release()
   await closing
   await refusal
   expect(f.opened).toHaveLength(2)
-  expect(f.opened[0]!.send).not.toHaveBeenCalled()
-  expect(f.opened[1]!.send).not.toHaveBeenCalled()
-  expect(f.opened[1]!.close).toHaveBeenCalledOnce()
+  expect(f.opened.every(({ send }) => send.mock.calls.length === 0)).toBe(true)
+  expect(f.opened.map(({ close }) => close.mock.calls)).toEqual([[['app-quit']], [['app-quit']]])
   expect(f.source.close).toHaveBeenCalledOnce()
 })
 
