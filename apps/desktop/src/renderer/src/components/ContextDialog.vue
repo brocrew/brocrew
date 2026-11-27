@@ -2,6 +2,7 @@
 import type { CapabilityStatus } from '../../../shared/runtime-ipc'
 import type { CompactionFacts } from '../lib/compaction-offer'
 import type { TranscriptState } from '../lib/transcript'
+import ListDialogShell from './ListDialogShell.vue'
 import SessionContext from './SessionContext.vue'
 
 const props = defineProps<{
@@ -21,19 +22,8 @@ const emit = defineEmits<{
 </script>
 
 <template>
-  <section class="list-dialog" aria-labelledby="context-title" data-cy="context-dialog">
-    <header class="list-head">
-      <h2 id="context-title" class="bb-title">Context</h2>
-      <button
-        class="bb-button bb-button--icon"
-        type="button"
-        aria-label="Close"
-        data-cy="close-overlay"
-        @click="emit('close')"
-      >
-        <svg class="icon"><use href="#i-x" /></svg>
-      </button>
-    </header>
+  <ListDialogShell title-id="context-title" data-cy="context-dialog" @close="emit('close')">
+    <template #title>Context</template>
     <div class="list-body">
       <SessionContext
         :state="props.state"
@@ -45,10 +35,8 @@ const emit = defineEmits<{
         @compact-now="(intent) => emit('compactNow', intent)"
       />
     </div>
-  </section>
+  </ListDialogShell>
 </template>
-
-<style scoped src="./dialog-presentation.css"></style>
 
 <style scoped>
 .list-body {

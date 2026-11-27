@@ -7,6 +7,7 @@ import {
   scheduledRecordedTimeWords,
   type TimedScheduledJob,
 } from '../lib/scheduled-job-details'
+import ListDialogShell from './ListDialogShell.vue'
 
 const props = defineProps<{ job: TimedScheduledJob; now: number }>()
 const emit = defineEmits<{ close: [] }>()
@@ -25,19 +26,14 @@ const longerCopy = computed(
 </script>
 
 <template>
-  <section class="job-dialog" :aria-labelledby="titleId" data-cy="scheduled-job-dialog">
-    <header class="job-head">
-      <h2 :id="titleId" class="bb-title">Scheduled job</h2>
-      <button
-        type="button"
-        class="bb-button bb-button--icon"
-        aria-label="Close scheduled job"
-        data-cy="close-scheduled-job"
-        @click="emit('close')"
-      >
-        <svg class="icon"><use href="#i-x" /></svg>
-      </button>
-    </header>
+  <ListDialogShell
+    :title-id="titleId"
+    close-label="Close scheduled job"
+    close-cy="close-scheduled-job"
+    data-cy="scheduled-job-dialog"
+    @close="emit('close')"
+  >
+    <template #title>Scheduled job</template>
     <div class="job-body">
       <p v-if="notStarted" class="bb-caption bb-muted" data-cy="scheduled-job-not-started">
         {{ notStarted.detail }}
@@ -76,13 +72,11 @@ const longerCopy = computed(
         The provider has not supplied this job’s prompt yet.
       </p>
     </div>
-  </section>
+  </ListDialogShell>
 </template>
 
-<style scoped src="./dialog-presentation.css"></style>
-
 <style scoped>
-.job-dialog {
+.list-dialog {
   width: min(var(--dialog-w), calc(100% - 2 * var(--lane-clear)));
 }
 

@@ -14,6 +14,7 @@ import {
 } from '../lib/archive-and-delete'
 import { useClientApi } from '../client-provider/injection'
 import { sizeWords } from '../lib/files-kept'
+import ListDialogShell from './ListDialogShell.vue'
 
 /**
  * The confirmation a person meets before a conversation is deleted.
@@ -129,23 +130,14 @@ onMounted(() => void read())
 </script>
 
 <template>
-  <section
-    class="delete-dialog"
-    aria-labelledby="delete-conversation-title"
+  <ListDialogShell
+    title-id="delete-conversation-title"
     data-cy="delete-conversation"
+    @close="emit('close')"
   >
-    <header class="head">
-      <h2 id="delete-conversation-title" class="bb-title" data-cy="delete-title">{{ title }}</h2>
-      <button
-        class="bb-button bb-button--icon"
-        type="button"
-        aria-label="Close"
-        data-cy="close-overlay"
-        @click="emit('close')"
-      >
-        <svg class="icon"><use href="#i-x" /></svg>
-      </button>
-    </header>
+    <template #title
+      ><span data-cy="delete-title">{{ title }}</span></template
+    >
 
     <div class="body">
       <p v-if="verdict === null" class="quiet" role="status" data-cy="delete-reading">
@@ -308,13 +300,12 @@ onMounted(() => void read())
         </div>
       </template>
     </div>
-  </section>
+  </ListDialogShell>
 </template>
 
-<style scoped src="./dialog-presentation.css"></style>
-
 <style scoped>
-.head h2 {
+/* A conversation's name can be one long word: it wraps rather than push the close button out. */
+:deep(.list-head h2) {
   min-width: 0;
   overflow-wrap: anywhere;
 }
