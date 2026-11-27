@@ -40,7 +40,7 @@
  * classified by `527`'s roster. ⚑ One surface, one register.
  */
 
-import type { OffScaleText, SurfaceText } from './text-roles'
+import type { OffScaleText, SurfaceText } from '../../src/renderer/src/lib/text-roles'
 
 /**
  * ⛔ **Every piece of text on the context meter — the Context popup's body — and nothing else.**

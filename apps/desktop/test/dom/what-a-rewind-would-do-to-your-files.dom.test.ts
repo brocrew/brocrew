@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { page } from 'vitest/browser'
 import { nextTick } from 'vue'
 import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
-import { CHANGES_OFF_THE_SCALE, CHANGES_TEXT } from '../../src/renderer/src/lib/drawer-tab-roles'
+import { CHANGES_OFF_THE_SCALE, CHANGES_TEXT } from '../lib/drawer-tab-roles'
 import { DRAWER_W_MAX, DRAWER_W_MIN } from '../../src/renderer/src/lib/drawer'
 import { ROLE_ORDER, ROLE_SIZE, type TextRole } from '../../src/renderer/src/lib/text-roles'
 import {

@@ -1,5 +1,5 @@
-import { CONVERSATION_WAITS } from '../../../shared/tasks'
-import { BEINGS, DOINGS, NEEDINGS, type AgentFacets } from './agent-state'
+import { CONVERSATION_WAITS } from '../../src/shared/tasks'
+import { BEINGS, DOINGS, NEEDINGS, type AgentFacets } from '../../src/renderer/src/lib/agent-state'
 
 export function everyFacetState(): AgentFacets[] {
   const doings = [undefined, ...DOINGS] as const

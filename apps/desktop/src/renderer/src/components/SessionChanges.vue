@@ -36,7 +36,7 @@ import DiffBody from './DiffBody.vue'
  * ## 🔴 What a person can READ here (541)
  *
  * ⛔ **Every size in this stylesheet names a ROLE** (`lib/text-roles.ts`, `526`'s vocabulary), and
- * `CHANGES_TEXT` in `lib/drawer-tab-roles.ts` says which role each text has. ⚑ The bridge is
+ * `CHANGES_TEXT` in `test/lib/drawer-tab-roles.ts` says which role each text has. ⚑ The bridge is
  * {@link ROLE_PROPERTIES} on this section's root, so changing a line in that module moves this tab
  * and nothing here has to be edited to agree. ⚠️ The one exception is the file count — a heading on
  * `--text-lg`, listed in `CHANGES_OFF_THE_SCALE` with the reason.
@@ -426,7 +426,7 @@ const bars = computed(() => {
 
 /*
  * ⛔ **The ONE size on this tab that is not a role** (541), and it is listed as such:
- * `CHANGES_OFF_THE_SCALE` in `lib/drawer-tab-roles.ts` names it, the roster test requires it to be
+ * `CHANGES_OFF_THE_SCALE` in `test/lib/drawer-tab-roles.ts` names it, the roster test requires it to be
  * strictly larger than `prose`, and the completeness walk counts it — an escape hatch that is
  * enumerated is not an escape hatch. ⚠️ **`--text-lg` is the scale's own *panel / section H2***;
  * the five roles stop at `prose` and none of them is a heading, so the alternatives were to shrink

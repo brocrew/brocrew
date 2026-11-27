@@ -10,19 +10,17 @@
  * module is the fix**, and `356` is the evidence it was needed: the two copies had already drifted
  * once and had to be corrected in two places.
  *
- * ## ⛔ Why a new module rather than a home in one of the five that exist
+ * ## ⛔ Why a new module rather than a home in one that exists
  *
  * Every copy module in `lib/` is scoped by SUBJECT, and each one's first sentence says which:
  * `approval-mode.ts` is approvals, `plan-mode.ts` is plan mode, `credential-words.ts` is what this
- * app says about a credential, `profile-credential.ts` is what a profile does with a sign-in — and
- * that last one's constitutional rule is that **it holds no copy at all**, because the words are the
- * adapter's (`039`). ⚠️ None of them is *what a profile is*. Filing this under any of them would
+ * app says about a credential. ⚠️ None of them is *what a profile is*. Filing this under any of them would
  * have made that module's own first sentence false, which is the hazard rather than the tidy-up.
  *
  * ## ⚠️ What is NOT here
  *
  * ⛔ **The per-provider credential sentence is not here and must never be** — it is
- * `ProviderCapabilities.homeCredential`'s, chosen by `profileCredential()`, and `329` split it out
+ * `ProviderCapabilities.homeCredential`'s, in the adapter's own words, and `329` split it out
  * of {@link PROFILE_OWNS} precisely because one line said the same thing to two providers that do
  * opposite things.
  */
@@ -43,9 +41,6 @@
  * simply wrong**: 015's hard rule is that nothing of the user's login is ever written into the
  * folder, and this same app's Info panel says so in as many words — *"the token is injected per
  * launch, never written here"*. One line said the same thing to both, which is `039` in copy.
- *
- * ⚑ **So the clause moved rather than being deleted**: `profileCredential` draws the per provider
- * truth directly beneath this line, from `homeCredential`, in the adapter's own words.
  *
  * 🔴 **`CLAUDE.md` was one provider's filename stated for both** (356, from 357). The other provider
  * reads no such file from a home — it reads its own name — and this app authors NEITHER leaf, so
