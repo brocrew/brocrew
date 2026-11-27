@@ -5,7 +5,7 @@ import { SharedDataOwner } from '../shared-data'
 const path = z.string().min(1).max(4096).refine(isAbsolute)
 const hex = z.string().regex(/^[a-f0-9]{64}$/)
 /** Supplied by the trusted app/controller. */
-export const LifecyclePlan = z
+const LifecyclePlan = z
   .strictObject({
     source: z.literal('repo-list'),
     appVersion: z.string().min(1).max(80).optional(),
