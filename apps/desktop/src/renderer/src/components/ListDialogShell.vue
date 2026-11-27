@@ -1,5 +1,9 @@
 <script setup lang="ts">
-defineProps<{ titleId: string }>()
+/** A dialog's frame: its title, its close button, and either a searchable list or its own body. */
+withDefaults(defineProps<{ titleId: string; closeLabel?: string; closeCy?: string }>(), {
+  closeLabel: 'Close',
+  closeCy: 'close-overlay',
+})
 defineEmits<{ close: [] }>()
 </script>
 
@@ -10,14 +14,14 @@ defineEmits<{ close: [] }>()
       <button
         class="bb-button bb-button--icon"
         type="button"
-        aria-label="Close"
-        data-cy="close-overlay"
+        :aria-label="closeLabel"
+        :data-cy="closeCy"
         @click="$emit('close')"
       >
         <svg class="icon"><use href="#i-x" /></svg>
       </button>
     </header>
-    <div class="list-body">
+    <div v-if="$slots.search" class="list-body">
       <label class="list-search">
         <svg class="icon" aria-hidden="true"><use href="#i-search" /></svg>
         <slot name="search" />
@@ -25,6 +29,7 @@ defineEmits<{ close: [] }>()
       <slot name="controls" />
       <slot name="results" />
     </div>
+    <slot />
   </section>
 </template>
 
