@@ -380,5 +380,3 @@ export function legacyAuthOperations(
     })(),
   )
 }
-
-export { isRecordedAccountTag } from './codex/registration'

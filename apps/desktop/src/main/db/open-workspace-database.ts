@@ -1,11 +1,5 @@
-import { importArchivedFile } from '../archived-file'
-import { importDraftsFile } from '../database/sqlite/workspace/drafts'
-import { importProfileExecutionFile } from '../profile-execution-file'
-import { importProviderUsageFile } from '../provider-usage-file'
+import { refuseSideFilesBefore0218 } from '../database/sqlite/workspace/side-file-import'
 import type { BuildMigration } from '../recovery/database-facts'
-import { importScheduleAttemptsFile } from '../schedule-attempts-file'
-import { importSignInChangesFile } from '../sign-in-changes'
-import { importTurnsTheAppCutFile } from '../turns-the-app-cut-file'
 import { WorkspaceUnavailable } from '../workspace-startup'
 import { openDatabase, type AppDatabase } from './connection'
 import { applyMigrations } from './migrate'
@@ -30,8 +24,8 @@ export interface WorkspaceDatabaseOpening {
 
 /**
  * The workspace database as a start opens it, in order: open (with the WAL cut), refuse a database
- * a newer build migrated, apply this build's migrations, then import the old side files once. A
- * failed migration closes the database and says so.
+ * a newer build migrated, stop on a workspace that skipped 0.2.18, then apply this build's
+ * migrations. A failed migration closes the database and says so.
  */
 export function openWorkspaceDatabase(opening: WorkspaceDatabaseOpening): AppDatabase {
   const database = (() => {
@@ -44,6 +38,7 @@ export function openWorkspaceDatabase(opening: WorkspaceDatabaseOpening): AppDat
     }
   })()
   openOrRefuse(database, opening.build, { folder: opening.folder })
+  refuseSideFilesBefore0218(database, opening.folder)
   const apply = () => applyMigrations(database, opening.migrationsFolder)
   try {
     if (opening.migrate === undefined) apply()
@@ -59,13 +54,6 @@ export function openWorkspaceDatabase(opening: WorkspaceDatabaseOpening): AppDat
       { cause: error },
     )
   }
-  importArchivedFile(database, opening.folder)
-  importSignInChangesFile(database, opening.folder)
-  importProviderUsageFile(database, opening.folder)
-  importScheduleAttemptsFile(database, opening.folder)
-  importTurnsTheAppCutFile(database, opening.folder)
-  importDraftsFile(database, opening.folder)
-  importProfileExecutionFile(database, opening.folder)
   return database
 }
 

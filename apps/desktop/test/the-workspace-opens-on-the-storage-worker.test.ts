@@ -5,9 +5,9 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { Worker } from 'node:worker_threads'
 import { afterAll, afterEach, beforeAll, expect, it } from 'vitest'
-import { ARCHIVED_FILE, archivedConversationsIn } from '../src/main/archived-file'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { counted, NewerDatabaseError, UnreadableDatabaseError } from '../src/main/db/newer-database'
+import { OPEN_IN_0_2_18_FIRST } from '../src/main/database/sqlite/workspace/side-file-import'
 import {
   describeOpenFailure,
   MigrationFailed,
@@ -78,12 +78,8 @@ const recorded = (db: AppDatabase): number | null => {
   return record.kind === 'recorded' ? record.migrations.length : null
 }
 
-it('a new workspace is migrated and its side files imported on the worker; main opens it ready', async () => {
+it('a new workspace is migrated on the worker; main opens it ready', async () => {
   const folder = aFolder()
-  writeFileSync(
-    join(folder, ARCHIVED_FILE),
-    JSON.stringify({ version: 1, archived: { fictional: { at: 5 } } }),
-  )
   const { said, migration } = steps()
   await opening().open(request(folder), migration)
   expect(await exits.at(-1)).toBe(0)
@@ -93,8 +89,15 @@ it('a new workspace is migrated and its side files imported on the worker; main 
   const db = openDatabase(join(folder, 'brobot2.sqlite'), { fileMustExist: true })
   open.push(db)
   expect(recorded(db)).toBe(build.length)
-  expect(existsSync(join(folder, ARCHIVED_FILE))).toBe(false)
-  expect(archivedConversationsIn(db).archivedAt('fictional')).toBe(5)
+})
+
+it('a workspace that skipped 0.2.18 is stopped on the worker with the same sentence, unmigrated', async () => {
+  const folder = aFolder()
+  writeFileSync(join(folder, 'archived.json'), '{"version":1}')
+  const { said, migration } = steps()
+  await expect(opening().open(request(folder), migration)).rejects.toThrow(OPEN_IN_0_2_18_FIRST)
+  expect(said).toEqual([])
+  expect(existsSync(join(folder, 'archived.json'))).toBe(true)
 })
 
 it('a database a newer build migrated is refused on the worker as on main, untouched', async () => {

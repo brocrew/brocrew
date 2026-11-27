@@ -1,5 +1,5 @@
 import { neutralHostDeps } from './lib/host-fixture'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -12,10 +12,7 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
 import {
   kindOf,
   NO_PROFILE_EXECUTION,
-  importProfileExecutionFile,
-  PROFILE_EXECUTION_FILE,
   readProfileExecution,
-  readProfileExecutionIn,
   readAgainstTheDatabase,
   reconcileProfileExecution,
   writeProfileExecution,
@@ -58,16 +55,7 @@ const keptIn = (): AppDatabase => {
   }
   return keptDb
 }
-/** An old file holding `body`, offered to the import. */
-const importing = (body: unknown): void => {
-  writeFileSync(
-    join(folder, PROFILE_EXECUTION_FILE),
-    typeof body === 'string' ? body : JSON.stringify(body),
-  )
-  importProfileExecutionFile(keptIn(), folder)
-}
-
-describe('reading, writing and importing', () => {
+describe('reading and writing', () => {
   it('nothing written yet holds nothing, and says so', () => {
     expect(readProfileExecution(keptIn())).toEqual({
       readable: true,
@@ -98,35 +86,6 @@ describe('reading, writing and importing', () => {
     })
     writeProfileExecution(keptIn(), NO_PROFILE_EXECUTION)
     expect(readProfileExecution(keptIn())).toEqual({ readable: true, kept: NO_PROFILE_EXECUTION })
-  })
-
-  it.each([
-    ['not JSON', '{"version": 1, "profiles": {'],
-    ['not an object', '[]'],
-    ['another version', { version: 3, profiles: {} }],
-  ])('an old file holding %s imports nothing and is kept', (_what, body) => {
-    const warned = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    importing(body)
-    expect(warned).toHaveBeenCalled()
-    warned.mockRestore()
-    expect(readProfileExecution(keptIn())).toEqual({
-      readable: true,
-      kept: NO_PROFILE_EXECUTION,
-      absent: true,
-    })
-    expect(existsSync(join(folder, PROFILE_EXECUTION_FILE))).toBe(true)
-  })
-
-  it('an old v1 or v2 file is imported whole, with its services switch, and deleted', () => {
-    const profiles = {
-      'aid:a': { kind: 'service', identityCreatedAt: NOW, serviceConversation: 's' },
-    }
-    importing({ version: 1, servicesOff: true, profiles })
-    expect(readProfileExecution(keptIn())).toEqual({
-      readable: true,
-      kept: { servicesOff: true, profiles },
-    })
-    expect(existsSync(join(folder, PROFILE_EXECUTION_FILE))).toBe(false)
   })
 })
 
@@ -558,7 +517,7 @@ describe('the host takes the file as it starts', () => {
         ? {}
         : {
             profileExecution: {
-              read: () => readProfileExecutionIn(keptIn(), folder),
+              read: () => readProfileExecution(keptIn()),
               write: (kept: KeptProfileExecution) => {
                 const fails =
                   typeof opts.writesFail === 'function' ? opts.writesFail(kept) : opts.writesFail
@@ -930,19 +889,6 @@ describe('the host takes the file as it starts', () => {
       kept: { profiles: { [svc.id]: entry } },
     })
     expect(conversationsRecorded()).toBe(before)
-  })
-
-  it('an old file that cannot be imported leaves every kind unknown, and is kept', () => {
-    anIdentity('writer')
-    const torn = '{"version": 1, "profiles": {"aid:browser-dri'
-    writeFileSync(join(folder, PROFILE_EXECUTION_FILE), torn)
-    const warned = vi.spyOn(console, 'warn').mockImplementation(() => {})
-    importProfileExecutionFile(keptIn(), folder)
-    const host = aHost()
-    expect(host.profileKindOf('writer')).toBe('unknown')
-    expect(host.profileKindOf('nobody-by-this-name')).toBe('unknown')
-    expect(readFileSync(join(folder, PROFILE_EXECUTION_FILE), 'utf8')).toBe(torn)
-    warned.mockRestore()
   })
 
   it('a settled file that cannot be written still settles this run, and says so', () => {

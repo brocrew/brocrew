@@ -1,10 +1,5 @@
-import { join } from 'node:path'
-import { SUPPORTED_PROVIDERS, type Provider } from '@brobot2/shared'
+import type { Provider } from '@brobot2/shared'
 import type { AppDatabase } from '../../../db/connection'
-import { importSideFile, objectIn } from './side-file-import'
-
-/** The file older builds kept these moments in, imported once into `sign_in_change`. */
-export const SIGN_IN_CHANGES_FILE = 'sign-in-changes.json'
 
 /** When this app last saw each provider's sign-in change, epoch ms (`RuntimeHost.aSignInChanged`). */
 export interface SignInChanges {
@@ -28,16 +23,4 @@ export function signInChangesIn(database: AppDatabase): SignInChanges {
       for (const [provider, at] of changed) insert.run(provider, at)
     }),
   }
-}
-
-/** Imports `sign-in-changes.json` (`{version, changed: {provider: at}}`) from `userData`, once. */
-export function importSignInChangesFile(database: AppDatabase, userData: string): void {
-  importSideFile(database, join(userData, SIGN_IN_CHANGES_FILE), (said) => {
-    const insert = database.prepare(INSERT)
-    const changed = objectIn(objectIn(said)['changed'])
-    for (const provider of SUPPORTED_PROVIDERS) {
-      const at = changed[provider]
-      if (typeof at === 'number' && Number.isFinite(at) && at > 0) insert.run(provider, at)
-    }
-  })
 }

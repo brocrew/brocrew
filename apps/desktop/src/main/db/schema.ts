@@ -750,7 +750,7 @@ export const identityOwnNotesSeen = sqliteTable(
   (t) => [check('identity_own_notes_seen_ck', sql`${t.seenThrough} >= 0`)],
 )
 
-/** A side file a start imported into these tables; a named file is only ever deleted after. */
+/** A side file 0.2.18 or later imported; a start reads these marks (`side-file-import.ts`). */
 export const importedSideFile = sqliteTable('imported_side_file', {
   name: text('name').primaryKey(),
 })

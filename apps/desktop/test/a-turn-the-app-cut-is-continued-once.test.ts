@@ -7,7 +7,6 @@ import {
 } from './lib/host-fixture'
 import {
   registerPersistedCutIdentityCases,
-  registerLegacyCutIdentityCase,
   registerFrozenCutAccountCases,
   type Held,
   type Gate,
@@ -472,8 +471,6 @@ describe('a turn the app cut is continued once, on the account it ran on', () =>
         expect(running(now, a)).toBe(false)
       },
     )
-
-    registerLegacyCutIdentityCase(accountCases)
 
     it('⛔ with an account that does not answer in time, it is not continued and not tried again', async () => {
       const a = await aTurnRunsIn()

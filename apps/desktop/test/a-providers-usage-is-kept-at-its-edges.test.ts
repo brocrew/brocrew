@@ -1,5 +1,5 @@
 import { RecordingSink, neutralHostDeps } from './lib/host-fixture'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -13,12 +13,7 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
-import {
-  importProviderUsageFile,
-  PROVIDER_USAGE_FILE,
-  usageKeptIn,
-  type KeptUsage,
-} from '../src/main/provider-usage-file'
+import { usageKeptIn, type KeptUsage } from '../src/main/provider-usage-file'
 import { ProviderDouble, anOpenGate } from './lib/provider-double'
 
 /**
@@ -157,7 +152,7 @@ describe('F096 · a provider’s usage, kept at its edges', () => {
     })
   })
 
-  describe('recorded account tags imported into SQLite', () => {
+  describe('recorded account tags kept in SQLite', () => {
     let dir: string
     let database: AppDatabase
     beforeEach(() => {
@@ -185,21 +180,13 @@ describe('F096 · a provider’s usage, kept at its edges', () => {
       `credential:${'b'.repeat(64)}`,
       `account:${'c'.repeat(64)}`,
       'api-revision:17',
-    ])('preserves the exact recorded account tag through import and reopen: %s', (tag) => {
+    ])('preserves the exact recorded account tag through a write and reopen: %s', (tag) => {
       const usage = usageAt(tag)
-      writeFileSync(join(dir, PROVIDER_USAGE_FILE), JSON.stringify(usage))
-      importProviderUsageFile(database, dir)
+      usageKeptIn(database).write(usage)
       expect(usageKeptIn(database).read()).toEqual(usage)
       database.close()
       database = openDatabase(join(dir, 'brobot2.sqlite'))
       expect(usageKeptIn(database).read()).toEqual(usage)
-    })
-
-    it('does not import an empty native account identifier', () => {
-      writeFileSync(join(dir, PROVIDER_USAGE_FILE), JSON.stringify(usageAt('native-account:')))
-      importProviderUsageFile(database, dir)
-      expect(usageKeptIn(database).read().readOn).toBeUndefined()
-      expect(usageKeptIn(database).read().readings.codex[0]?.account).toBeUndefined()
     })
   })
 })

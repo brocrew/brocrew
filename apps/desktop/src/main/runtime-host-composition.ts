@@ -80,7 +80,7 @@ import { ApiKeys, askTheProvider } from './runtime/api-keys'
 import { listProcesses, memoryOf } from './runtime/process-listing'
 import { usageKeptIn } from './provider-usage-file'
 import { scheduleAttemptsIn } from './schedule-attempts-file'
-import { readProfileExecutionIn, writeProfileExecution } from './profile-execution-file'
+import { readProfileExecution, writeProfileExecution } from './profile-execution-file'
 import { turnsTheAppCutIn } from './turns-the-app-cut-file'
 import { providerAccountsFile, readKeptAccounts, writeKeptAccounts } from './provider-accounts-file'
 import { readKeptRules, removeKeptRule, type WhereRulesAreKept } from './kept-rules'
@@ -404,7 +404,7 @@ export async function composeRuntimeHost(
     listProcesses,
     usageKept: usageKeptIn(database),
     profileExecution: {
-      read: () => readProfileExecutionIn(database, userData),
+      read: () => readProfileExecution(database),
       write: (kept) => writeProfileExecution(database, kept),
       owned: soleAtThisLaunch(),
     },

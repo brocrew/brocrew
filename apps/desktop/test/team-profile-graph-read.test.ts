@@ -1,13 +1,7 @@
 import { localClockReading, readLocalTimeFrom } from '../src/shared/local-time'
 import { afterEach, expect, it, vi } from 'vitest'
 import Database from 'better-sqlite3'
-import { writeFileSync } from 'node:fs'
-import { join } from 'node:path'
-import {
-  importProfileExecutionFile,
-  PROFILE_EXECUTION_FILE,
-  readProfileExecution,
-} from '../src/main/profile-execution-file'
+import { readProfileExecution, writeProfileExecution } from '../src/main/profile-execution-file'
 import { TeamProfileGraphEngine } from '../src/main/db/team-profile-graph-engine'
 import { graphContext, graphFixture } from './helpers/team-profile-graph-fixture'
 import { graphCutoff, graphOracle } from './fixtures/team-profile-graph-oracle'
@@ -398,25 +392,20 @@ it('returns one coherent pinned reading stale after an intervening external writ
   expect(next.nodeCount).toBe(6)
 })
 
-it('sees the kinds an older build’s file held once they are imported on the first start', () => {
+it('sees the kinds written into an emptied record', () => {
   const f = setup()
   f.identity('aid:service')
   f.session('service', 'aid:service')
   f.forgetKinds()
-  writeFileSync(
-    join(f.directory, PROFILE_EXECUTION_FILE),
-    JSON.stringify({
-      version: 2,
-      profiles: {
-        'aid:service': {
-          kind: 'service',
-          identityCreatedAt: graphCutoff - 20 * 86_400_000,
-          serviceConversation: 'service',
-        },
+  writeProfileExecution(f.db, {
+    profiles: {
+      'aid:service': {
+        kind: 'service',
+        identityCreatedAt: graphCutoff - 20 * 86_400_000,
+        serviceConversation: 'service',
       },
-    }),
-  )
-  importProfileExecutionFile(f.db, f.directory)
+    },
+  })
   expect(complete(f).nodes[0]).toMatchObject({ kind: 'service', kindQuality: 'stable-record' })
 })
 
