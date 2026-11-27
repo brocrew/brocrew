@@ -11,7 +11,6 @@ import { registerAdminRoutes } from './http/adminRoutes.js'
 import { createLogger } from './logger.js'
 import type { Logger } from './logger.js'
 import { createSendPolicy } from './policy.js'
-import { createRefusals } from './refusals.js'
 import { createSettingsStore } from './settings.js'
 import type { SettingsStore } from './settings.js'
 import { createWhatsAppTools } from './tools/index.js'
@@ -45,7 +44,6 @@ export async function startWhatsApp(
     bridge: deps.bridge,
     settings,
     policy: createSendPolicy(deps.now),
-    refusals: createRefusals(config.home, config.files),
   })
   const server = await startHttpMcpServer({
     port: config.port,

@@ -1,5 +1,3 @@
-import fs from 'node:fs'
-import path from 'node:path'
 import { PublicToolError } from './shared/toolServer.js'
 
 export const REFUSALS = Object.freeze({
@@ -22,34 +20,7 @@ export type RefusalCode = keyof typeof REFUSALS | 'file'
 export const fileRefusal = (folder: string): string =>
   `Only files in ${folder} can be sent, up to 100 MB.`
 
-const LOG_BYTES = 1024 * 1024
-
-/**
- * Every refused call is written to refusals.jsonl in the plugin's private root: when, which tool and
- * which rule, never what was asked. The log keeps about the last megabyte.
- */
-export function createRefusals(home: string, files: string, now: () => Date = () => new Date()) {
-  const file = path.join(home, 'refusals.jsonl')
-  const record = (tool: string, code: RefusalCode): void => {
-    try {
-      const size = fs.statSync(file, { throwIfNoEntry: false })?.size ?? 0
-      if (size > LOG_BYTES) fs.renameSync(file, path.join(home, 'refusals.1.jsonl'))
-      fs.appendFileSync(
-        file,
-        JSON.stringify({ at: now().toISOString(), tool, refused: code }) + '\n',
-        { mode: 0o600 },
-      )
-    } catch {
-      // A log that cannot be written never turns a refusal into a different answer.
-    }
-  }
-  return {
-    record,
-    /** Logs the refusal and returns the error whose words the agent reads. */
-    refuse(tool: string, code: RefusalCode): PublicToolError {
-      record(tool, code)
-      return new PublicToolError(code === 'file' ? fileRefusal(files) : REFUSALS[code])
-    },
-  }
+export function createRefusal(files: string) {
+  return (code: RefusalCode): PublicToolError =>
+    new PublicToolError(code === 'file' ? fileRefusal(files) : REFUSALS[code])
 }
-export type Refusals = ReturnType<typeof createRefusals>
