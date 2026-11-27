@@ -82,6 +82,7 @@ import type {
 import { type ProviderSessionOf, type TiedOutside, type TreeDeleted } from '../conversation-tree'
 import { type ForestStore } from '../forest-store'
 import { type QuestionCopySlice } from '../question-copies'
+import type { CheckpointRow } from '../window-fold-checkpoint'
 import { type LedgerWriteStamp } from '../ledger-write-stamp'
 import { type OpenTurn, type LeftRunning, type TurnAsItEnded } from '../turn-evidence-read'
 import { type WorkThatNamesIt } from '../../../shared/piece-called'
@@ -517,6 +518,11 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
    * conversation started it, and it is no service.
    */
   startedByAPerson(): ReadonlySet<string>
+  /**
+   * Keeps the window reader's folds, so the next start folds only what moved: only if no other
+   * connection committed since `seenAt`, this connection's data version when the caller looked.
+   */
+  keepWindowFoldCheckpoint(madeBy: string, rows: readonly CheckpointRow[], seenAt: bigint): boolean
   serviceBorn(conversation: string): boolean
   servicesBorn(): readonly ServiceBorn[]
   /** Bounded indexed birth evidence; malformed or oversized evidence throws. */

@@ -7,6 +7,8 @@ import type { SessionStore, ThreadLeadRow } from './session-store'
 import type { SkipNote } from './rows-unread'
 import type { WindowWorkReading } from './window-work-reading'
 
+import type { CheckpointRow } from './window-fold-checkpoint'
+
 export const WINDOW_READ_BOUNDS = {
   pending: 16,
   callers: 16,
@@ -53,6 +55,7 @@ export const windowReadQuery = z.discriminatedUnion('kind', [
     })
     .strict(),
   z.object({ kind: z.literal('incidents'), reuse: foldReuse.optional() }).strict(),
+  z.object({ kind: z.literal('checkpoint'), reuse: foldReuse.optional() }).strict(),
   z
     .object({
       kind: z.literal('work-given'),
@@ -181,7 +184,12 @@ interface WindowForestNodes {
   readonly nodes: ReturnType<SessionStore['forestNodesOf']>['nodes']
   readonly gone: readonly string[]
 }
+interface WindowCheckpoint {
+  readonly kind: 'checkpoint'
+  readonly rows: readonly CheckpointRow[]
+}
 export type WindowReadResult =
+  | WindowCheckpoint
   | WindowListingStates
   | WindowRoutes
   | WindowLeads
@@ -339,6 +347,23 @@ export const windowReadResult = z.discriminatedUnion('kind', [
     .strict(),
   z.object({ kind: z.literal('leads'), rows: z.array(z.unknown()) }).strict(),
   z.object({ kind: z.literal('work-given'), work: walk }).strict(),
+  z
+    .object({
+      kind: z.literal('checkpoint'),
+      rows: z.array(
+        z
+          .object({
+            fold: z.string().min(1),
+            sessionId: z.string().min(1),
+            generation: z.number().int().nonnegative().safe(),
+            newest: z.number().int().nonnegative().safe().nullable(),
+            rows: z.number().int().nonnegative().safe(),
+            answer: z.string(),
+          })
+          .strict(),
+      ),
+    })
+    .strict(),
 ])
 
 export interface WindowStoreReader {

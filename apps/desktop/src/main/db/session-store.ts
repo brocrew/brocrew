@@ -15,6 +15,11 @@ import { committedChangesOf } from './committed-changes'
 import { type SessionReadPhases } from './provider-limit-reader'
 export type { SessionReadPhases } from './provider-limit-reader'
 import { ensureQuestionCopies } from './question-copies'
+import {
+  ensureWindowFoldCheckpoint,
+  writeCheckpointRows,
+  type CheckpointRow,
+} from './window-fold-checkpoint'
 import { ledgerWritesFor } from './ledger-write-stamp'
 import { type SnapshotFoldAnswers } from './ledger-fold-state'
 
@@ -81,6 +86,8 @@ export function createSessionStore(
   // Installed before any transaction on this connection is made, so every one is framed.
   const committed = committedChangesOf(connection)
   ensureQuestionCopies(connection)
+  ensureWindowFoldCheckpoint(connection)
+  let checkpointMadeBy: string | undefined
   const ownNotesStore = createOwnNotesStore(connection)
   const methodChangeStore = createMethodChangeStore(connection, now)
   const memoryRecoveryStore = createMemoryRecoveryStore(connection, now)
@@ -203,5 +210,20 @@ export function createSessionStore(
     ...questions.methods,
     ...workGiven.methods,
     ...sessionModels,
+    keepWindowFoldCheckpoint(madeBy: string, rows: readonly CheckpointRow[], seenAt: bigint) {
+      const dropOthers = checkpointMadeBy !== madeBy
+      // Under the write lock no other connection can commit, so a commit since `seenAt` means a
+      // ledger may have been rewritten after the caller looked, and nothing is written.
+      const kept = connection
+        .transaction(() => {
+          if (BigInt(connection.pragma('data_version', { simple: true }) as number) !== seenAt)
+            return false
+          writeCheckpointRows(connection, madeBy, rows, dropOthers)
+          return true
+        })
+        .immediate()
+      if (kept) checkpointMadeBy = madeBy
+      return kept
+    },
   }
 }

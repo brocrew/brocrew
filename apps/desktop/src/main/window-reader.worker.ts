@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { WindowReadEngine } from './db/window-read-engine'
 import { windowReadQuery, WindowReadUnavailable } from './db/window-read-protocol'
 
-const options = z.object({ file: z.string().min(1) }).strict()
+const options = z.object({ file: z.string().min(1), madeBy: z.string().min(1).optional() }).strict()
 const request = z.discriminatedUnion('type', [
   z.object({ type: z.literal('close') }).strict(),
   z
@@ -24,7 +24,8 @@ if (parentPort !== null) {
   const port = parentPort
   let engine: WindowReadEngine | undefined
   try {
-    engine = new WindowReadEngine(options.parse(workerData).file)
+    const { file, madeBy } = options.parse(workerData)
+    engine = new WindowReadEngine(file, madeBy)
     port.postMessage({ type: 'ready' })
   } catch (error) {
     port.postMessage({
