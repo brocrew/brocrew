@@ -12,12 +12,12 @@ import { rowsUnreadOnce } from '../src/main/db/rows-unread'
 import { WindowReadEngine } from '../src/main/db/window-read-engine'
 import { WindowRoutingReads } from '../src/main/db/window-routing-reads'
 import { windowIncidentCases } from './helpers/window-incident-cases'
+import { windowLooksOnly } from './helpers/window-looks-only'
 import {
   WindowReaderLifetime,
   WindowWorkerReader,
   type WindowReadWorker,
 } from '../src/main/db/window-worker-reader'
-
 import {
   WINDOW_READ_BOUNDS,
   WindowReadUnavailable,
@@ -310,7 +310,7 @@ describe('canonical window worker folds and independent live-store reads', () =>
       : store
     const host = aLibraryHost(directory, {
       store: writer,
-      windowReader: reader,
+      windowReader: reader && windowLooksOnly(reader, engine),
       limitsWriterStamp: limitsWriterSampler(db, () => true),
       windowWriterStamp: windowWriterSampler(db, () => true),
       ...extra,

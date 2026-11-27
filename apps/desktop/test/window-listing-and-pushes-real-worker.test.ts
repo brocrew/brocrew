@@ -166,7 +166,9 @@ it('measures window reads with 1960 conversations and nine live agents', async (
   const host = world.aHost({
     windowReader: {
       read: async (query, signal) => {
-        await ready
+        // Window looks wait for the measurement; the work reconciler's own reads do not, since the
+        // setup waits for its sweep to finish.
+        if (!query.kind.startsWith('reconciliation-')) await ready
         return reader.read(query, signal)
       },
       close: () => reader.close(),
