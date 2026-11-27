@@ -47,7 +47,6 @@
   "apps/desktop/src/shared/questions.ts": 1008,
   "apps/desktop/src/shared/runtime-ipc.ts": 6265,
   "apps/desktop/src/shared/schedule-receipts.ts": 1463,
-  "apps/desktop/src/shared/task-contracts.ts": 1353,
   "apps/desktop/src/shared/tasks.ts": 2790,
   "apps/desktop/test/a-conversation-reopens-on-a-renewed-sign-in.test.ts": 1349,
   "apps/desktop/test/a-copy-codex-refused-is-replaced-once.test.ts": 1869,
