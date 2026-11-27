@@ -1,10 +1,6 @@
-import { execFile } from 'node:child_process'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import type { ProviderVersion } from '../../../shared/runtime-ipc'
 import type { CodexProgram } from './program'
-import { VERSION_TIMEOUT_MS } from '../program-policy'
+import { runVersionInItsOwnHome } from '../program-version-run'
 
 const FROM = { carried: 'the copy BroCrew carries' } as const
 
@@ -79,32 +75,10 @@ async function codexVersion(
     },
     final,
   })
-  let home: string | null = null
   try {
-    const own = mkdtempSync(join(tmpdir(), 'brobot-codex-version-'))
-    home = own
-    const printed = await new Promise<string>((resolve, reject) => {
-      execFile(
-        program.path,
-        ['--version'],
-        {
-          env: {
-            HOME: own,
-            CODEX_HOME: own,
-            PATH: process.platform === 'win32' ? (process.env.PATH ?? '') : '/usr/bin:/bin',
-            ...(process.platform === 'win32'
-              ? { USERPROFILE: own, SystemRoot: process.env.SystemRoot ?? 'C:\\Windows' }
-              : {}),
-          },
-          // ⚑ F072 — no console window flashes on Windows.
-          windowsHide: true,
-          timeout: VERSION_TIMEOUT_MS,
-          killSignal: 'SIGKILL',
-          encoding: 'utf8',
-        },
-        (error, stdout) => (error ? reject(error) : resolve(stdout)),
-      )
-    })
+    const printed = await runVersionInItsOwnHome(program.path, 'brobot-codex-version-', (own) => ({
+      CODEX_HOME: own,
+    }))
     const version = /(\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?)/.exec(printed)?.[1]
     if (version === undefined) {
       return unreadable(
@@ -127,7 +101,5 @@ async function codexVersion(
       `Codex, ${where}, could not be asked its version just now; it is asked again next time.`,
       false,
     )
-  } finally {
-    if (home !== null) rmSync(home, { recursive: true, force: true })
   }
 }

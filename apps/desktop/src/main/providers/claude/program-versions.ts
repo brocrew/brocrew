@@ -1,7 +1,4 @@
-import { execFile } from 'node:child_process'
-import { mkdtempSync, realpathSync, rmSync, statSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { realpathSync, statSync } from 'node:fs'
 import type {
   ProviderProgram,
   ProviderProgramCopy,
@@ -10,7 +7,7 @@ import type {
   ProviderVersion,
 } from '../../../shared/runtime-ipc'
 import { CLAUDE_CODE_SETUP_URL, type ClaudeCopy, type ClaudeProgram } from './program'
-import { VERSION_TIMEOUT_MS } from '../program-policy'
+import { runVersionInItsOwnHome } from '../program-version-run'
 import TESTED from './claude-code-tested.json'
 
 /**
@@ -167,40 +164,17 @@ export function standingOf(
 
 /** What one Claude Code program prints for `--version`, or `null` when it does not say. */
 async function askClaudeCodeItsVersion(path: string): Promise<string | null> {
-  let home: string | null = null
   let printed: string | null = null
   try {
-    const own = mkdtempSync(join(tmpdir(), 'brobot-claude-version-'))
-    home = own
-    printed = await new Promise<string>((resolve, reject) => {
-      execFile(
-        path,
-        ['--version'],
-        {
-          env: {
-            HOME: own,
-            CLAUDE_CONFIG_DIR: own,
-            // A person's own program: asking its version must not update it.
-            DISABLE_AUTOUPDATER: '1',
-            PATH: process.platform === 'win32' ? (process.env.PATH ?? '') : '/usr/bin:/bin',
-            ...(process.platform === 'win32'
-              ? { USERPROFILE: own, SystemRoot: process.env.SystemRoot ?? 'C:\\Windows' }
-              : {}),
-          },
-          windowsHide: true,
-          timeout: VERSION_TIMEOUT_MS,
-          killSignal: 'SIGKILL',
-          encoding: 'utf8',
-        },
-        (error, stdout) => (error ? reject(error) : resolve(stdout)),
-      )
-    })
+    printed = await runVersionInItsOwnHome(path, 'brobot-claude-version-', (own) => ({
+      CLAUDE_CONFIG_DIR: own,
+      // A person's own program: asking its version must not update it.
+      DISABLE_AUTOUPDATER: '1',
+    }))
   } catch (error) {
     console.warn(
       `could not ask Claude Code its version: ${error instanceof Error ? error.message : String(error)}`,
     )
-  } finally {
-    if (home !== null) rmSync(home, { recursive: true, force: true })
   }
   return printed === null ? null : (/(\d+\.\d+\.\d+)/.exec(printed)?.[1] ?? null)
 }
