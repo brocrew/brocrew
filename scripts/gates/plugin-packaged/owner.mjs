@@ -250,7 +250,7 @@ function childRun(program, args, env, cwd, abort, maximum, phase) {
     },
   }
 }
-export async function run(control, node22, pnpm) {
+export async function run(control, node22, pnpm, go) {
   requireHosted()
   const meta = readOwner(control),
     root = ownedRoot(meta.root),
@@ -329,7 +329,7 @@ export async function run(control, node22, pnpm) {
     await start(
       'prepare',
       meta.node,
-      ['scripts/gates/plugin-packaged/prepare.mjs', 'build', root, node22, pnpm],
+      ['scripts/gates/plugin-packaged/prepare.mjs', 'build', root, node22, pnpm, go],
       1800000,
     )
     const workloadNode = path.join(
@@ -461,10 +461,10 @@ export async function clean(control) {
 }
 async function main() {
   requireHosted()
-  const [action, control, node22, pnpm] = process.argv.slice(2)
+  const [action, control, node22, pnpm, go] = process.argv.slice(2)
   if (action === 'init') await initialize()
   else if (action === 'run') {
-    if (!(await run(control, node22, pnpm))) process.exitCode = 1
+    if (!(await run(control, node22, pnpm, go))) process.exitCode = 1
   } else if (action === 'clean') await clean(control)
   else throw new Error('Unknown hosted owner action')
 }

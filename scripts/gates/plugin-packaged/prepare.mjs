@@ -8,9 +8,9 @@ import { directoryPackageArguments, hostedBuilder } from './packaging.mjs'
 import { requireDrained } from './processes.mjs'
 import { buildSources, projectBuild, loopbackSandbox, report } from './contract.mjs'
 import { requireCI, ownedRoot } from './fixture-guards.mjs'
-export async function prepare(root, { node22, pnpm }) {
+export async function prepare(root, { node22, pnpm, go }) {
   requireCI()
-  return prepareBuild(root, { node22, pnpm })
+  return prepareBuild(root, { node22, pnpm, go })
 }
 // Reuse the release's exact locked install. The workspace intentionally does not install Chrome.
 export function stageProtocolDependencies(root) {
@@ -38,14 +38,16 @@ export function stageProtocolDependencies(root) {
   return target
 }
 // Build-only rehearsal seam: no account, GUI, journey or provider entry is reachable here.
-export async function prepareBuild(root, { node22, pnpm }) {
+export async function prepareBuild(root, { node22, pnpm, go }) {
   ownedRoot(root)
   if (repository !== path.join(root, 'repo')) throw new Error('Isolated scratch checkout required')
   const { configPath, entryPath, compositionPath, original } = buildSources(repository)
   const appData = privateFolder(path.join(root, 'a'))
   const buildEnv = buildEnvironment(root, pnpm)
   const { buildFixtureRelease } = await import('./release.mjs')
-  const commit = await phaseStep(root, 'release-export', () => buildFixtureRelease(root, node22))
+  const commit = await phaseStep(root, 'release-export', () =>
+    buildFixtureRelease(root, node22, go),
+  )
   await phaseStep(root, 'cdp-fixture-dependencies', () => stageProtocolDependencies(root))
   const browser = path.join(root, 'fake-browser')
   const bin = privateFolder(path.join(root, 'bin'))
@@ -122,7 +124,7 @@ export function removeFixture(root, receipt, current) {
 }
 async function main() {
   requireCI()
-  const [action, root, node22, pnpm] = process.argv.slice(2)
+  const [action, root, node22, pnpm, go] = process.argv.slice(2)
   if (action === 'init') {
     const scratch = fs.realpathSync(fs.mkdtempSync('/private/tmp/fpg-'))
     fs.chmodSync(scratch, 0o700)
@@ -131,7 +133,7 @@ async function main() {
     for (const name of ['npm-user', 'npm-global', 'gitconfig'])
       fs.writeFileSync(path.join(scratch, name), '', { mode: 0o600 })
     fs.appendFileSync(process.env.GITHUB_ENV, `PLUGIN_GATE_ROOT=${scratch}\n`)
-  } else if (action === 'build') await prepare(ownedRoot(root), { node22, pnpm })
+  } else if (action === 'build') await prepare(ownedRoot(root), { node22, pnpm, go })
   else if (action === 'clean')
     throw new Error('Use the independent owner to drain before removing roots')
   else throw new Error('Unknown gate preparation')

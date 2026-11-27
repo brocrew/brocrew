@@ -21,7 +21,7 @@ export function releaseBundler(exported) {
   // esbuild belongs to the Chrome package's locked install, not the desktop app.
   return createRequire(path.join(exported, 'plugins/chrome/package.json'))('esbuild')
 }
-export async function buildFixtureRelease(root, node22) {
+export async function buildFixtureRelease(root, node22, go) {
   const commit = (await command('/usr/bin/git', ['rev-parse', 'HEAD'], root)).trim()
   if (!/^[a-f0-9]{40}$/.test(commit)) throw new Error('Invalid reviewed commit')
   if (!(await command(node22, ['--version'], root)).trim().startsWith('v22.'))
@@ -49,7 +49,7 @@ export async function buildFixtureRelease(root, node22) {
   if (text.match(before)?.length !== 1) throw new Error('Export release anchor changed')
   fs.writeFileSync(script, text.replace(before, JSON.stringify(commit)))
   const npm = path.resolve(path.dirname(node22), '../lib/node_modules/npm/bin/npm-cli.js')
-  const env = { PATH: `${path.dirname(node22)}:/usr/bin:/bin` }
+  const env = { PATH: `${path.dirname(node22)}:/usr/bin:/bin`, BROCREW_GO: go }
   await phaseStep(root, 'release-root-install', () =>
     command(
       node22,
