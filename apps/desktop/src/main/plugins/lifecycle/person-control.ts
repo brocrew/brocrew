@@ -2,10 +2,10 @@ import { PLUGIN_FRAMEWORK_FEATURES } from '../hooks/definitions'
 import { createServer, createConnection, type Socket } from 'node:net'
 import { lstat, unlink } from 'node:fs/promises'
 import { randomBytes, randomUUID } from 'node:crypto'
-import { join } from 'node:path'
 import { isSocketFile, localEndpoint } from '../local-endpoint'
 import { z } from 'zod'
 import { privateChild } from '../node-host-files'
+import { ensureSocketFolder, pluginSocketPath, SOCKET_PATH_BYTES } from '../socket-path'
 import { PluginSupervisorError, Hex } from '../supervisor/protocol'
 import { PersonChannel } from './transport'
 import type { PluginLifecycleController, PreparedPluginMutation } from './controller'
@@ -105,10 +105,12 @@ export async function servePersonPluginControl(options: {
   ): Promise<unknown>
 }) {
   if (!Hex.safeParse(options.key).success) throw new PluginSupervisorError('unavailable')
-  const folder = await privateChild(options.root, 'person-control')
-  const path = localEndpoint(join(folder, 'person.sock'), 'person', options.key)
-  if (isSocketFile() && Buffer.byteLength(path) > 100)
-    throw new PluginSupervisorError('unavailable')
+  await privateChild(options.root, 'person-control')
+  const socket = pluginSocketPath(options.root, 'person-control', 'person.sock')
+  ensureSocketFolder(options.root, socket)
+  const path = localEndpoint(socket, 'person', options.key)
+  if (isSocketFile() && Buffer.byteLength(path) > SOCKET_PATH_BYTES)
+    throw new PluginSupervisorError('path-too-long')
   const channels = new Set<PersonChannel>(),
     sessions = new Set<{
       channel: PersonChannel

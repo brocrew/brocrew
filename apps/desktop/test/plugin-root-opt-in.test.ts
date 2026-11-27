@@ -278,14 +278,13 @@ describe('workspace opt-in keeps every other plugin setup unchanged', () => {
     await optIn(f, workspace, 'p1')
     expect(() => root(f, workspace)).toThrow()
   })
-  it('refuses a selected root whose person socket would exceed the path limit', async () => {
+  it('selects a root too deep for its sockets only where they can be placed elsewhere', async () => {
     const f = await fixture()
     const long = { ...f, appData: join(f.appData, 'a'.repeat(65)) }
     await mkdir(join(long.appData, '@brobot2'), { recursive: true, mode: 0o700 })
     await optIn(long, long.workspace, 'p1')
-    if (process.platform === 'win32')
-      expect(root(long)).toBe(join(long.appData, '@brobot2', 'plugins-p1'))
-    else expect(() => root(long)).toThrow()
+    if (process.platform === 'linux') expect(() => root(long)).toThrow()
+    else expect(root(long)).toBe(join(long.appData, '@brobot2', 'plugins-p1'))
   })
   it('leaves hidden scratch rules first, without reading an invalid visible-workspace selection', async () => {
     const f = await fixture()
