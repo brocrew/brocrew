@@ -1292,6 +1292,11 @@ interface RecordedAskAttempt {
   ordinal: number
 }
 
+/** Card 613 — one caught send's hold on the queue of the start it waits for, once that start came. */
+interface CaughtSendHold {
+  session: HostedSession | null
+}
+
 interface AcceptedAskReceipt {
   attempt: RecordedAskAttempt
   endings?: readonly UnqueuedMessageEvent[]
@@ -2019,6 +2024,12 @@ export class RuntimeHost implements LiveHost {
    * its next start ({@link handOnWhatItHeld}); that start puts them back first ({@link reopenSession}).
    */
   private readonly heldAtAStop = new Map<string, QueuedMessage[]>()
+  /**
+   * Card 613 — a send a stop caught before it reached the provider, waiting for the start it
+   * causes: that start holds what waited for it ({@link putBackWhatWaitedForThisStart}) until the
+   * caught send is handed over or refused, so the person's order is kept.
+   */
+  private readonly caughtSendsAwaitingAStart = new Map<string, Set<CaughtSendHold>>()
   // The provider accepted these mailbox entries, but their ledger write exhausted retries.
   private readonly acceptedWithoutReceipt = new Map<string, Set<string>>()
 
@@ -18523,8 +18534,10 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
   /**
    * ⚑ **D-017 · R1 — {@link sendAs}' words, when the conversation stopped under them before they
    * were handed over**: a queue-door delivery is told so ({@link ItStoppedUnderTheDelivery}) and
-   * starts it again itself; `send`'s own is delivered again through the conversation's start,
-   * behind whatever arrived while it stopped ({@link deliverWhenItRuns}) — once.
+   * starts it again itself; `send`'s own is delivered again through the conversation's start
+   * ({@link deliverWhenItRuns}) — once. Card 613: they never reached the provider, so they go
+   * ahead of anything held while they were on their way — the start holds what waited for it
+   * until these words are handed over or refused, then lets it go.
    */
   private aDeliveryAStopCaught(
     sessionId: string,
@@ -18537,6 +18550,10 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
   ): Promise<void> {
     if (how.ifItLosesTheRace === 'pass-it-on')
       return Promise.reject(new ItStoppedUnderTheDelivery())
+    const hold: CaughtSendHold = { session: null }
+    const waiting = this.caughtSendsAwaitingAStart.get(sessionId) ?? new Set<CaughtSendHold>()
+    waiting.add(hold)
+    this.caughtSendsAwaitingAStart.set(sessionId, waiting)
     return this.deliverWhenItRuns(
       sessionId,
       text,
@@ -18548,7 +18565,21 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
           facts: how.facts,
           ifItLosesTheRace: 'hold-it',
         }),
-    )
+    ).finally(() => this.letGoOfACaughtSendsHold(sessionId, hold))
+  }
+
+  /** Card 613 — the caught send was handed over or refused: what waited for its start may go. */
+  private letGoOfACaughtSendsHold(sessionId: string, hold: CaughtSendHold): void {
+    const waiting = this.caughtSendsAwaitingAStart.get(sessionId)
+    waiting?.delete(hold)
+    if (waiting?.size === 0) this.caughtSendsAwaitingAStart.delete(sessionId)
+    const session = hold.session
+    if (session === null) return
+    hold.session = null
+    session.holdingQueue -= 1
+    this.stateMayHaveMoved(session.id)
+    this.compactBeforeTheNextInput(session)
+    this.flushQueued(session)
   }
 
   /**
@@ -24173,6 +24204,12 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
     const handedOn = this.heldAtAStop.get(session.id) ?? []
     this.heldAtAStop.delete(session.id)
     try {
+      // Card 613 — a send caught on its way to the provider goes first: its start holds the rest.
+      for (const hold of this.caughtSendsAwaitingAStart.get(session.id) ?? []) {
+        if (hold.session !== null) continue
+        hold.session = session
+        session.holdingQueue += 1
+      }
       const waiting = this.whatWaitedForThisStart(session, handedOn)
       if (waiting.length === 0) return
       session.mailbox.unshift(...waiting)
