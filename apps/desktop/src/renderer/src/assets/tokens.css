@@ -118,7 +118,7 @@
   --rail-w-collapsed: 64px;
   /* The width of the strip a theme may draw down the left menu's right edge. */
   --rail-edge-w: 8px;
-  --app-min-w: 1180px;
+  --app-min-w: 800px;
   --lane-w: 200px;
   --lane-clear: calc(var(--space-5) + var(--lane-w) + var(--space-5));
   --surface-tuck: 20px;

@@ -3,7 +3,8 @@ import { page } from 'vitest/browser'
 import '../../src/renderer/src/assets/base.css'
 
 /**
- * **338 · Below its own minimum the app is reachable, and the degrade is a scrollbar.**
+ * Below 800 px the frame remains reachable; at 800 px it fits without sideways scrolling.
+ * The 1180 px measurements below describe the original frame before its floor was reduced.
  *
  * `335` proved the dispatch sheet is whole from `1440×1000` down to a `460px` viewport and then
  * reported what it had found one layer behind it: *"The sheet stays whole on top of an app whose
@@ -99,7 +100,7 @@ function inside(node: Element): boolean {
 
 describe('the app frame below its own minimum', () => {
   it('carries the reach on #app, and leaves the document fixed', async () => {
-    await page.viewport(1000, 800)
+    await page.viewport(600, 800)
     const { host } = shell()
 
     // The rule really is the stylesheet's, on the element the app really mounts into.
@@ -110,9 +111,9 @@ describe('the app frame below its own minimum', () => {
 
     // ⛔ The hazard, asserted before anything is claimed about it: the frame really is wider than
     // the window. Without this the reachability below would be a statement about a frame that fits.
-    expect(appMinWidth()).toBe(1180)
-    expect(host.clientWidth).toBe(1000)
-    expect(host.scrollWidth).toBe(1180)
+    expect(appMinWidth()).toBe(800)
+    expect(host.clientWidth).toBe(600)
+    expect(host.scrollWidth).toBe(800)
     expect(host.scrollWidth).toBeGreaterThan(host.clientWidth)
 
     // ⚑ And the DOCUMENT is still where it was: the reach is `#app`'s and only `#app`'s.
@@ -122,16 +123,16 @@ describe('the app frame below its own minimum', () => {
   })
 
   it('brings a control at the frame’s right edge into the window, and says so only because it can see one that stays out', async () => {
-    await page.viewport(1000, 800)
+    await page.viewport(600, 800)
     const { host, frame } = shell()
     const control = atTheRightEdge(frame)
 
     // Before the gesture it is off-screen — the state this whole dispatch is about.
-    expect(frame.getBoundingClientRect().right).toBeCloseTo(1180, 0)
+    expect(frame.getBoundingClientRect().right).toBeCloseTo(800, 0)
     expect(inside(control)).toBe(false)
 
     host.scrollLeft = host.scrollWidth
-    expect(host.scrollLeft).toBe(180)
+    expect(host.scrollLeft).toBe(200)
     expect(inside(control)).toBe(true)
 
     // ⛔ The instrument's own control. `inside()` returning true above is worth exactly what
@@ -151,11 +152,11 @@ describe('the app frame below its own minimum', () => {
   })
 
   it('changes nothing at or above the frame’s own minimum', async () => {
-    await page.viewport(1280, 800)
+    await page.viewport(800, 800)
     const { host, frame } = shell()
     const control = atTheRightEdge(frame)
 
-    expect(host.clientWidth).toBe(1280)
+    expect(host.clientWidth).toBe(800)
     expect(host.scrollWidth).toBe(host.clientWidth)
     // No overflow means no bar: the frame keeps every pixel of its own height.
     expect(host.offsetHeight - host.clientHeight).toBe(0)
@@ -166,7 +167,7 @@ describe('the app frame below its own minimum', () => {
   })
 
   it('sizes the frame for the scrollbar rather than for the window', async () => {
-    await page.viewport(1000, 800)
+    await page.viewport(600, 800)
 
     // ⚠️ **The bar is STOOD IN FOR here, and that is the fixture rather than a cheat.** This
     // runner's Chromium draws overlay scrollbars, which take no layout space, and neither
@@ -199,7 +200,7 @@ describe('the app frame below its own minimum', () => {
   })
 
   it('declares no scrollbar colour, because that one inherits', async () => {
-    await page.viewport(1000, 800)
+    await page.viewport(600, 800)
     const { host, frame } = shell()
 
     // What the rule must NOT say. `scrollbar-width` is safe at the root of the tree and
@@ -216,7 +217,7 @@ describe('the app frame below its own minimum', () => {
   })
 
   it('leaves a fixed overlay anchored to the window while the frame is scrolled', async () => {
-    await page.viewport(1000, 800)
+    await page.viewport(600, 800)
     const { host } = shell()
 
     // 335's guarantee, re-measured against the new scroll container: `OverlayHost` is
@@ -230,7 +231,7 @@ describe('the app frame below its own minimum', () => {
     live.push(overlay)
 
     host.scrollLeft = host.scrollWidth
-    expect(host.scrollLeft).toBe(180)
+    expect(host.scrollLeft).toBe(200)
     const r = overlay.getBoundingClientRect()
     expect(r.left).toBe(0)
     expect(r.width).toBeCloseTo(window.innerWidth, 0)
