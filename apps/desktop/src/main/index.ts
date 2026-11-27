@@ -1,4 +1,6 @@
 import { closeStartedHostAfterFailedStart } from './failed-start-cleanup'
+import { createMemoryJournalLifetime } from './memory-journal-lifetime'
+import { resolveMigrationsFolder } from './migrations-folder'
 import { withWorkerMemory } from './worker-memory'
 import { closeDatabase } from './db/close-database'
 import electronLog from 'electron-log/main'
@@ -52,7 +54,7 @@ import { LOGGING_CHANNELS } from '../shared/logging'
 import { broadcastRuntime } from './runtime/window-broadcast'
 import { changeNotices } from './runtime/change-notices'
 import { execFile, spawn } from 'node:child_process'
-import { existsSync, writeSync } from 'node:fs'
+import { writeSync } from 'node:fs'
 import { inspect } from 'node:util'
 import { join } from 'node:path'
 import { totalmem } from 'node:os'
@@ -257,6 +259,7 @@ const spawnedReader = createSpawnedReader({
 })
 
 let db: AppDatabase | null = null
+const memoryJournal = createMemoryJournalLifetime(() => db)
 let startFailed = false
 
 let recoveryService: RecoveryService | null = null
@@ -382,18 +385,6 @@ async function theLastDraftSaves(): Promise<void> {
   if (outcome === 'failed') throw new Error('the last unsent drafts could not be written to disk')
 }
 
-function resolveMigrationsFolder(): string {
-  const candidates = [
-    join(__dirname, 'migrations'),
-    join(app.getAppPath(), 'out/main/migrations'),
-    join(app.getAppPath(), 'src/main/db/migrations'),
-  ]
-  for (const candidate of candidates) {
-    if (existsSync(join(candidate, 'meta', '_journal.json'))) return candidate
-  }
-  throw new Error(`Could not locate Drizzle migrations. Looked in:\n  ${candidates.join('\n  ')}`)
-}
-
 class MigrationFailed extends Error {}
 
 function initDatabase(): AppDatabase {
@@ -504,6 +495,11 @@ function createRuntimeHost(database: AppDatabase, drafts: DraftStorage): Promise
     themes: () => themes,
     soleAtThisLaunch: () => soleAtThisLaunch,
     databaseClosed: () => db === null,
+    keepMemoryJournal: memoryJournal.acquire,
+    assertStarting: memoryJournal.assertStarting,
+    acquiredHost: (started) => {
+      host = started
+    },
     keepRecordedConversation: (recorded) => {
       recordedConversation = recorded
     },
@@ -1091,7 +1087,7 @@ async function whatAFailedStartEndsOn(
 }
 
 function stopWhatTheStartStarted(): Promise<void> {
-  stoppingTheStart ??= (async () => {
+  stoppingTheStart ??= memoryJournal.stop(async () => {
     try {
       await stopProviderSetup?.()
     } catch (error) {
@@ -1114,7 +1110,7 @@ function stopWhatTheStartStarted(): Promise<void> {
     await closeStartedHostAfterFailedStart(started, sayAtOnce)
     await pluginController.close()
     await pluginSupervisor.quit()
-  })()
+  })
   return stoppingTheStart
 }
 
@@ -1463,6 +1459,7 @@ function start(ownership: HostGateVerdict): void {
         },
       })
       await themes.start()
+      if (memoryJournal.closing) return
       workspaceStartup(app)?.assertDatabase()
       stopThemeIpc = registerThemeIpc(ipcMain, themes, (change) => {
         for (const window of BrowserWindow.getAllWindows()) {
@@ -1481,6 +1478,7 @@ function start(ownership: HostGateVerdict): void {
       const drafts = createSqliteDraftStorage(database)
       host = await createRuntimeHost(database, drafts)
       finishStartupPhase()
+      if (memoryJournal.closing) return
       registerIpc(host, localZone, drafts)
       startTheDockLabel()
       updates = startUpdates({
@@ -1690,7 +1688,7 @@ function start(ownership: HostGateVerdict): void {
     })
     .catch((error: unknown) => {
       pluginStartupTrace.failure('app-startup', error, 'all')
-      void endAFailedStart(error, ownership)
+      if (!memoryJournal.closing) void endAFailedStart(error, ownership)
     })
 }
 
@@ -1698,6 +1696,7 @@ const lifetime = createAppLifetime({
   holdQuit: () => updates?.workspaceUpdates.holdQuit() ?? false,
   recordOpenSessions: () => host?.recordOpenForQuit(),
   announceClosing: () => {
+    memoryJournal.stopAdmission()
     for (const window of BrowserWindow.getAllWindows()) {
       try {
         if (!window.isDestroyed() && !window.webContents.isDestroyed()) {
@@ -1710,7 +1709,7 @@ const lifetime = createAppLifetime({
   },
   closeAllSessions: async () => {
     try {
-      await (stoppingTheStart ?? host?.closeAll() ?? Promise.resolve())
+      await memoryJournal.stop(() => stoppingTheStart ?? host?.closeAll() ?? Promise.resolve())
     } finally {
       await pluginController.close()
       await pluginSupervisor.quit()
