@@ -30743,12 +30743,9 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
     by: Caller,
   ): Promise<MethodChangeResult> {
     const actor = whoDidIt(by)
-    return (
-      this.deps.savedMethods?.remove(foldProfileName(profile), selection, actor) ?? {
-        ok: false,
-        reason: 'source-unavailable',
-      }
-    )
+    const methods = this.deps.savedMethods
+    if (!methods) return { ok: false, reason: 'source-unavailable' }
+    return this.trackAgentKnowledge(methods.remove(foldProfileName(profile), selection, actor))
   }
 
   async undoAgentMethod(
@@ -30757,12 +30754,9 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
     by: Caller,
   ): Promise<MethodChangeResult> {
     const actor = whoDidIt(by)
-    return (
-      this.deps.savedMethods?.undo(foldProfileName(profile), changeId, actor) ?? {
-        ok: false,
-        reason: 'source-unavailable',
-      }
-    )
+    const methods = this.deps.savedMethods
+    if (!methods) return { ok: false, reason: 'source-unavailable' }
+    return this.trackAgentKnowledge(methods.undo(foldProfileName(profile), changeId, actor))
   }
 
   async checkInterruptedAgentMethods(
