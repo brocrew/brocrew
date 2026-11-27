@@ -3,7 +3,7 @@ import { nextTick } from 'vue'
 import { page, userEvent } from 'vitest/browser'
 import { usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
 import { aWaitingPageWithEveryCard } from './a-waiting-page-with-every-card'
-import { unmountAll, type Mounted } from './harness'
+import { unmountAll, windowCleanup, type Mounted } from './harness'
 
 /**
  * On *Waiting on you*, every kind of card is of the same family as the request cards — stopped
@@ -16,6 +16,7 @@ afterEach(() => {
   unmountAll()
   usePersonsQueue().forget()
 })
+afterEach(windowCleanup())
 
 const cardsOf = (m: Mounted, selector: string): HTMLElement[] => [
   ...m.host.querySelectorAll<HTMLElement>(selector),
@@ -141,6 +142,7 @@ describe('every kind of card is a card like the request cards', () => {
       expect(box(m.q(`persons-queue-wall-${provider}`)).bottom).toBeLessThanOrEqual(box(list).top)
     unmountAll()
     for (const width of [720, 1180, 1677]) {
+      await page.viewport(width, 900)
       const positions: number[] = []
       for (const notices of [0, 1, 2, 3]) {
         const view = await aWaitingPageWithEveryCard(width, 900, true, false, notices)
@@ -165,11 +167,14 @@ describe('every kind of card is a card like the request cards', () => {
           expect(box(last).left).toBeGreaterThanOrEqual(box(band).left - 1)
           expect(box(last).right).toBeLessThanOrEqual(box(band).right + 1)
         }
-        if (import.meta.env.VITE_WAITING_HEADER_CAPTURE)
+        if (import.meta.env.VITE_WAITING_HEADER_CAPTURE) {
+          band.scrollLeft = 0
+          await nextTick()
           await page.screenshot({
             element: view.host,
             path: `${import.meta.env.VITE_WAITING_HEADER_CAPTURE}/waiting-${width}-${notices}.png`,
           })
+        }
         unmountAll()
       }
       expect(Math.max(...positions) - Math.min(...positions)).toBeLessThan(1)
