@@ -123,7 +123,7 @@ export function planOperation(
   }
   return { request, allocated, next }
 }
-export function resolvedSnapshot(state: LifecycleState, success: boolean): ActivationSnapshot {
+function resolvedSnapshot(state: LifecycleState, success: boolean): ActivationSnapshot {
   const operation = state.pending
   if (operation === null) refuseState('conflict')
   const restore = operation.request.consent.action === 'global-restore'

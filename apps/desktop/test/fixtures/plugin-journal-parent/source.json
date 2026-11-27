@@ -27,5 +27,5 @@
       "file": "observe-committed.ts"
     }
   ],
-  "imports": "Imports outside the state folder point at the live source under apps/desktop/src."
+  "imports": "Imports outside the state folder point at the live source under apps/desktop/src. format.ts no longer exports ReleaseState and Consent, which nothing here imports."
 }

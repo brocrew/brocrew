@@ -11,7 +11,7 @@ export const STATE_LIMITS = {
 } as const
 const integer = z.number().int().nonnegative().safe()
 const uuid = z.uuid()
-export const ReleaseState = z.strictObject({
+const ReleaseState = z.strictObject({
   version: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9.+_-]{0,79}$/),
   archiveSha256: SkillDigest,
   manifestSha256: SkillDigest,
@@ -58,12 +58,11 @@ export const Operation = z.strictObject({
   next: Installation.nullable(),
 })
 export type Operation = z.infer<typeof Operation>
-export const ActivationRef = z.strictObject({
+const ActivationRef = z.strictObject({
   name: z.string().regex(/^\d{8}-[a-f0-9]{64}\.json$/),
   sha256: SkillDigest,
 })
-export type ActivationRef = z.infer<typeof ActivationRef>
-export const ResolutionReservation = z.strictObject({
+const ResolutionReservation = z.strictObject({
   id: uuid,
   complete: ActivationRef,
   abort: ActivationRef,
@@ -72,7 +71,6 @@ export const ResolutionReservation = z.strictObject({
   guardNames: z.literal(2),
   activationNames: z.literal(0),
 })
-export type ResolutionReservation = z.infer<typeof ResolutionReservation>
 export const ProjectionReceipt = z.strictObject({
   format: z.literal(1),
   rootId: uuid,
@@ -89,30 +87,7 @@ export const ProjectionReceipt = z.strictObject({
 })
 export type ProjectionReceipt = z.infer<typeof ProjectionReceipt>
 
-/** Receipt data only: pending preview never grants authority. */
-export function installationProjection(
-  rootId: string,
-  epoch: string,
-  workspaceId: string,
-  current: Installation,
-): ProjectionReceipt {
-  return {
-    format: 1,
-    rootId,
-    workspaceId,
-    epoch,
-    pluginId: current.pluginId,
-    installId: current.installId,
-    incarnation: current.incarnation,
-    lifecycleSequence: current.lifecycleSequence,
-    releaseRevision: current.releaseRevision,
-    configRevision: current.configRevision,
-    skills: [],
-    bindings: [],
-  }
-}
-
-export const Event = z.discriminatedUnion('kind', [
+const Event = z.discriminatedUnion('kind', [
   z.strictObject({
     kind: z.literal('projected'),
     workspaceId: uuid,
@@ -129,7 +104,6 @@ export const Event = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('completed'), operationId: uuid, activation: ActivationRef }),
   z.strictObject({ kind: z.literal('aborted'), operationId: uuid, activation: ActivationRef }),
 ])
-export type Event = z.infer<typeof Event>
 /** One record of the journal the state file replaced; read only to migrate it. */
 export const JournalRecord = z.strictObject({
   sequence: integer,

@@ -12,7 +12,7 @@ export const STATE_LIMITS = {
 } as const
 const integer = z.number().int().nonnegative().safe()
 const uuid = z.uuid()
-export const ReleaseState = z.strictObject({
+const ReleaseState = z.strictObject({
   version: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9.+_-]{0,79}$/),
   archiveSha256: SkillDigest,
   manifestSha256: SkillDigest,
@@ -36,7 +36,7 @@ export const ActivationSnapshot = z.strictObject({
   entries: z.array(Installation).max(STATE_LIMITS.plugins),
 })
 export type ActivationSnapshot = z.infer<typeof ActivationSnapshot>
-export const Consent = z.strictObject({
+const Consent = z.strictObject({
   action: z.enum(['install', 'update', 'uninstall', 'global-restore']),
   pluginId: SkillName.nullable(),
   at: integer,
@@ -44,7 +44,6 @@ export const Consent = z.strictObject({
   expectedInstallId: uuid.nullable(),
   release: ReleaseState.nullable(),
 })
-export type Consent = z.infer<typeof Consent>
 export const OperationRequest = z.strictObject({
   operationId: uuid,
   consent: Consent,
