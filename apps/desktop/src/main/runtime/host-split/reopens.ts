@@ -7,7 +7,7 @@ import { PROVIDER_NAME } from '../../../shared/runtime-ipc'
 import type { TranscriptEvent } from '../../../shared/conversation-events'
 import { unavailableOf } from '../session-unavailable'
 import type { RecordedSession } from '../../db/session-store'
-import { THE_ROWS_A_REFUSED_TURN_IS_READ_IN } from '../refused-turn-window'
+import { THE_ROWS_A_REFUSED_TURN_IS_READ_IN } from '../../../shared/refused-turn-window'
 
 /**
  * ⚑ **What a reopen on the current sign-in waits for** ({@link RuntimeHost.whatAReopenWaitsFor}) —
