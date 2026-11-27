@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
+import { page } from 'vitest/browser'
 import { nextTick } from 'vue'
 import { fullTime } from '../../src/renderer/src/lib/clock'
 import type {
@@ -26,8 +27,12 @@ import {
 const { default: RuntimeScreen } =
   await import('../../src/renderer/src/components/RuntimeScreen.vue')
 
+const original = { width: innerWidth, height: innerHeight }
 beforeEach(installRuntimeScreenFixture)
-afterEach(disposeRuntimeScreenFixture)
+afterEach(async () => {
+  disposeRuntimeScreenFixture()
+  await page.viewport(original.width, original.height)
+})
 
 const sessionId = 'fictional-conversation'
 const serviceId = 'fictional-service'
@@ -103,6 +108,8 @@ it('renames the open conversation through the conversation command without retit
   const retitle = vi.fn<RuntimeBridge['retitleWork']>()
   window.api.runtime.renameConversation = rename
   window.api.runtime.retitleWork = retitle
+  // A window wide enough for the title row, whatever the app's narrowest width.
+  await page.viewport(1200, 800)
   const m = await mountWith([row(sessionId, task)])
   await expect
     .poll(() => m.all('conversation-title-rename')[0]?.textContent?.trim())

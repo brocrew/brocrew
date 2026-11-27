@@ -406,4 +406,28 @@ const answerable = computed(() => props.canAnswer && props.card.listed && !props
   font-weight: var(--fw-semibold);
   gap: var(--space-2);
 }
+
+/* Too narrow for the words beside the answer and the door: the words take their own lines, two at
+   most, like the folded words above. */
+@container todo (max-width: 560px) {
+  .todo-answered {
+    flex-wrap: wrap;
+    row-gap: var(--space-3);
+  }
+
+  .todo-answered > .todo-what {
+    display: -webkit-box;
+    flex-basis: 100%;
+    overflow: clip;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+
+  .todo-answered > .todo-door {
+    min-width: 0;
+    flex-shrink: 1;
+  }
+}
 </style>
