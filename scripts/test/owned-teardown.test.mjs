@@ -772,6 +772,9 @@ describe.each([
   ['quit:check', 'app-closes-check.mjs'],
 ])('…and %s removes its directory only through that rule', (_gate, file) => {
   const check = readFileSync(join(HERE, '..', file), 'utf8')
+  // The words for what a teardown could not establish are shared by the gates.
+  const words = readFileSync(join(HERE, '..', 'lib', 'teardown-words.mjs'), 'utf8')
+  const usesTheWords = "import { pidsLeft, refusals } from './lib/teardown-words.mjs'"
   const launchedAt = check.indexOf('const child = spawn(')
 
   it('takes ownership of the launch and tears down through this module, once each', () => {
@@ -798,8 +801,9 @@ describe.each([
    */
   it('says what the teardown refused to decide about, not only which pids it counted', () => {
     expect(check.split('refusals(outcome)').length - 1).toBe(1)
-    expect(check).toContain('outcome.refused.length === 0')
-    expect(check).toContain('outcome.refused.map((why)')
+    expect(check).toContain(usesTheWords)
+    expect(words).toContain('outcome.refused.length === 0')
+    expect(words).toContain('outcome.refused.map((why)')
   })
 
   it('has no removal of the user-data directory anywhere BELOW the launch', () => {
@@ -815,8 +819,10 @@ describe.each([
   it('names a pid still on its way out as its own fact on the red line', () => {
     // `remaining` is an app still running and `exiting` is one that outlasted the reap's bound leaving
     // the table. Folding the second into the first would send a reader looking for a leak.
-    expect(check).toContain('outcome.exiting.length > 0')
-    expect(check).toContain('are still in the process table on their way out')
+    expect(check.split('pidsLeft(outcome)').length - 1).toBe(1)
+    expect(check).toContain(usesTheWords)
+    expect(words).toContain('outcome.exiting.length > 0')
+    expect(words).toContain('are still in the process table on their way out')
   })
 
   it('does not let the teardown REPLACE the failure it was reporting', () => {

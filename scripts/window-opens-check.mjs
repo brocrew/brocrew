@@ -9,6 +9,7 @@ import { fileURLToPath } from 'node:url'
 import { createOwnedProcessLifecycle } from './lib/owned-process.mjs'
 import { HIDDEN_LAUNCH_ARG } from './lib/hidden-launch.mjs'
 import { descendantsOf, tearDownAndRemove } from './lib/owned-teardown.mjs'
+import { pidsLeft, refusals } from './lib/teardown-words.mjs'
 
 const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 const DESKTOP = join(REPO_ROOT, 'apps/desktop')
@@ -117,22 +118,9 @@ async function main() {
     return outcome
   }
 
-  const refusals = (outcome) =>
-    outcome.refused.length === 0
-      ? ''
-      : `\n   ⛔ refused · ${String(outcome.refused.length)} thing(s) this teardown will not ` +
-        `decide about:\n` +
-        outcome.refused.map((why) => `      · ${why}`).join('\n')
-
   const unreaped = (outcome) =>
     `this check could not reap what it launched: ` +
-    `${outcome.remaining.length === 0 ? 'no pid is still alive' : `pid(s) ${outcome.remaining.join(', ')} are still alive`}` +
-    (outcome.exiting.length > 0
-      ? `, pid(s) ${outcome.exiting.join(', ')} are still in the process table on their way out`
-      : '') +
-    (outcome.unverifiable.length > 0
-      ? `, and pid(s) ${outcome.unverifiable.join(', ')} could not be verified either way`
-      : '') +
+    pidsLeft(outcome) +
     `. ⚠️ An app left running is the failure 241 is about — it perturbs everything measured after ` +
     `it (066) and must not hide behind a green line.\n` +
     `   ⚠️ ${userDataDir} was LEFT IN PLACE: removing the user-data directory of an app that may ` +
