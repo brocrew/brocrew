@@ -1,92 +1,83 @@
 import { randomUUID } from 'node:crypto'
-import { dirname, join } from 'node:path'
-import type { HistoryOnlyGate, InstalledFile, ProgressListener } from '../../shared/recovery'
+import type { HistoryOnlyGate, ProgressListener } from '../../shared/recovery'
 import {
-  GATE_FORMAT,
   JOURNAL_FORMAT,
   STEPS,
-  parseGate,
-  parseJournal,
-  parseManifest,
-  parseWorkspaceId,
-  roleOf,
-  sameState,
-  serializeGate,
-  serializeJournal,
   type CheckpointManifest,
-  type FileState,
   type Migration,
-  type Parsed,
-  type Participant,
-  type RestoreJournal,
   type RestoreKind,
-  type Step,
 } from './contract'
-import { inRollbackMode, migrationsOf } from './database-facts'
 import {
   OwnedPathIsALink,
   assertOwnedPathsAreReal,
-  copyDurably,
-  errorCode,
   nodeFs,
-  remove,
-  removeIfEmpty,
   sweepLeftovers,
   pathExists,
-  privateDir,
-  readTextOrNull,
-  retrying,
-  syncFolder,
-  writeAtomically,
-  type Content,
-  type Moved,
   type RecoveryFs,
   type StepHooks,
 } from './files'
 import {
   DATABASE_FILE,
   FAMILY,
-  checkpointDatabase,
-  checkpointDir,
   databaseFile,
-  fromRecorded,
   gateFile,
   isUuid,
   journalFile,
-  manifestFile,
-  participantPlaces,
-  preservedAsRecorded,
-  preservedDir,
-  preservedRoot,
   recoveryDir,
-  restoredAsideDir,
-  stagedDir,
-  stagedRoot,
-  stateFile,
-  workspaceIdFile,
 } from './layout'
-export { sweepLeftovers } from './files'
-import { APP_STATE_FILES } from './state-files'
-import { copySkillTree, stateContentAt as contentAt } from './trees'
-import { gunzipCheckpoint } from './checkpoint-compression'
+import { stateContentAt as contentAt } from './trees'
 import { checkFreeSpace } from './checkpoint-space'
 import { freeBytesOn } from '../archive/native-file'
-import { SKILL_TREES, SKILLS_CONVERSION_FILE } from '../skills/shared-paths'
-
-/** A restore or return that stopped. The message is a sentence a person can read. */
-export class RestoreStopped extends Error {
-  constructor(
-    message: string,
-    readonly during: RestoreKind,
-    readonly journalLeft: boolean,
-    /** False when the copy or the data itself is the reason, so that trying again cannot help. */
-    readonly canRetry: boolean,
-    options?: ErrorOptions,
-  ) {
-    super(message, options)
-    this.name = 'RestoreStopped'
-  }
-}
+export { sweepLeftovers } from './files'
+export {
+  CannotPutBack,
+  ChangedOutside,
+  RestoreStopped,
+  readGateOnDisk,
+  readJournalOnDisk,
+  type RecordOnDisk,
+} from './restore-plan'
+import {
+  ALREADY_RESTORED,
+  assertTheRunsPlacesAreReal,
+  CHANGED_OUTSIDE,
+  ChangedOutside,
+  holds,
+  hooksOf,
+  journalIsThere,
+  livePath,
+  MOVED_MORE,
+  namesTheParticipantsThisBuildMoves,
+  NOT_RESTORED,
+  ownedFolder,
+  PARTICIPANT_NAMES,
+  planARestore,
+  planAReturn,
+  readGateOnDisk,
+  readJournalOnDisk,
+  readTheCheckpoint,
+  Refusal,
+  refuse,
+  RestoreStopped,
+  stopped,
+  ticker,
+  UNFINISHED,
+  UNREADABLE_GATE,
+  WITH_THE_DATABASE,
+} from './restore-plan'
+import {
+  abandon,
+  back,
+  decide,
+  forward,
+  gateFor,
+  publish,
+  type Run,
+  stage,
+  startedRun,
+  stepOf,
+  writeTheGate,
+} from './restore-run'
 
 export interface RestoreEngineOptions extends StepHooks {
   readonly userData: string
@@ -108,24 +99,6 @@ export interface RestoreOptions extends RestoreEngineOptions {
 
 export interface ReturnOptions extends RestoreEngineOptions {
   readonly now?: () => Date
-}
-
-export class ChangedOutside extends Error {
-  constructor(
-    message: string,
-    /** When the restored copy was made, as the gate records it. */
-    readonly checkpointCreatedAt: string,
-  ) {
-    super(message)
-    this.name = 'ChangedOutside'
-  }
-}
-
-export class CannotPutBack extends Error {
-  constructor(message: string, options?: ErrorOptions) {
-    super(message, options)
-    this.name = 'CannotPutBack'
-  }
 }
 
 export interface Restored {
@@ -150,13 +123,6 @@ export type Recovered =
   | { readonly kind: 'replaced-outside'; readonly where: 'journal'; readonly detail: string }
   /** The journal cannot be read as one. Nothing was touched. */
   | { readonly kind: 'unreadable'; readonly detail: string }
-
-/** A record found on disk: none, one this build reads, or one it cannot. */
-export type RecordOnDisk<T> =
-  | { readonly kind: 'absent' }
-  | { readonly kind: 'present'; readonly value: T }
-  /** `canRetry` when reading failed; a record that does not parse is never retried. */
-  | { readonly kind: 'unreadable'; readonly detail: string; readonly canRetry: boolean }
 
 export async function restore(options: RestoreOptions): Promise<Restored> {
   const fs = options.fs ?? nodeFs
@@ -375,788 +341,4 @@ export async function whatChangedSinceTheGate(
     }
   }
   return null
-}
-
-/** The restore journal on disk. A read that keeps failing can be tried again; a bad record cannot. */
-export function readJournalOnDisk(
-  userData: string,
-  fs: RecoveryFs = nodeFs,
-): Promise<RecordOnDisk<RestoreJournal>> {
-  return recordOnDisk(journalFile(userData), parseJournal, 'restore record', fs)
-}
-
-/** The history-only gate on disk, read as {@link readJournalOnDisk} reads the journal. */
-export function readGateOnDisk(
-  userData: string,
-  fs: RecoveryFs = nodeFs,
-): Promise<RecordOnDisk<HistoryOnlyGate>> {
-  return recordOnDisk(gateFile(userData), parseGate, 'history-only record', fs)
-}
-
-// ---------------------------------------------------------------------------------------------
-
-/** The state files a restore installs and sets aside together with the database. */
-const WITH_THE_DATABASE: readonly string[] = APP_STATE_FILES.filter(
-  (file) => file.restore === 'with-the-database',
-).map((file) => file.name)
-
-/** Every live name a restore or return moves, in the journal's order. */
-const PARTICIPANT_NAMES: readonly string[] = [...FAMILY, ...WITH_THE_DATABASE]
-
-const NO_SUCH_COPY = 'BroCrew did not find this recovery copy, so it restored nothing.'
-const UNREADABLE_COPY =
-  "BroCrew could not read this recovery copy's record, so it restored nothing."
-const ANOTHER_WORKSPACE =
-  'This recovery copy was made for another workspace, so BroCrew restored nothing.'
-const NEEDS_A_NEWER_BUILD = 'This copy needs a newer BroCrew. Open it there.'
-const FAILED_CHECK = 'This recovery copy did not pass its check, so BroCrew restored nothing.'
-const UNFINISHED = 'A restore is unfinished. Restart BroCrew.'
-const ALREADY_RESTORED =
-  'This data is already a restored copy, so BroCrew restored nothing over it.'
-const NOTHING_TO_SET_ASIDE =
-  'This workspace has no database to set aside, so BroCrew restored nothing.'
-const NOT_RESTORED = 'This data is not a restored copy, so there is nothing to return from.'
-const UNREADABLE_GATE = 'BroCrew could not read the record of this restore, so it changed nothing.'
-const CHANGED_OUTSIDE =
-  "This workspace's data was changed outside BroCrew since its copy was restored, so BroCrew changed nothing."
-const NEWER_MISSING =
-  'The newer data the restore set aside is not where it was left, so BroCrew changed nothing.'
-const SET_ASIDE_CHANGED =
-  'The newer data the restore set aside was changed outside BroCrew since, so BroCrew changed nothing.'
-const RESTORED_FOLDER_TAKEN =
-  'The folder for setting the restored copy aside already holds files, so BroCrew changed nothing.'
-const MOVED_MORE = 'Use the newer BroCrew to return to newer data.'
-
-/** A restore or return this build will not make, with the sentence that says why. */
-class Refusal extends Error {}
-
-function refuse(sentence: string): never {
-  throw new Refusal(sentence)
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
-
-function stopped(during: RestoreKind, error: unknown, journalLeft: boolean): RestoreStopped {
-  if (error instanceof RestoreStopped) return error
-  if (
-    error instanceof Refusal ||
-    error instanceof OwnedPathIsALink ||
-    error instanceof ChangedOutside ||
-    error instanceof CannotPutBack
-  ) {
-    return new RestoreStopped(error.message, during, journalLeft, false, { cause: error })
-  }
-  const message = journalLeft
-    ? `The ${during} stopped part way through, and BroCrew finishes or undoes it before this data is opened: ${messageOf(error)}`
-    : `The ${during} stopped before it changed this workspace's data: ${messageOf(error)}`
-  return new RestoreStopped(message, during, journalLeft, true, { cause: error })
-}
-
-async function journalIsThere(userData: string, fs: RecoveryFs): Promise<boolean> {
-  return pathExists(journalFile(userData), fs).catch(() => true)
-}
-
-/** Reports `done` of `total`. A listener that throws, such as a closed window, stops nothing. */
-function ticker(listener: ProgressListener | undefined, total: number): () => void {
-  let done = 0
-  const report = (): void => {
-    try {
-      listener?.(done, total)
-    } catch {
-      // Progress is only shown; the work goes on without it.
-    }
-  }
-  report()
-  return () => {
-    done = Math.min(done + 1, total)
-    report()
-  }
-}
-
-type Hooks = Required<StepHooks>
-
-function hooksOf(options: StepHooks): Hooks {
-  return {
-    beforeStep: options.beforeStep ?? (() => undefined),
-    afterStep: options.afterStep ?? (() => undefined),
-    afterMove: options.afterMove ?? (() => undefined),
-  }
-}
-
-async function recordOnDisk<T>(
-  path: string,
-  parse: (text: string) => Parsed<T>,
-  what: string,
-  fs: RecoveryFs,
-): Promise<RecordOnDisk<T>> {
-  let text: string | null
-  try {
-    text = await readTextOrNull(path, fs)
-  } catch (error) {
-    return {
-      kind: 'unreadable',
-      canRetry: true,
-      detail: `BroCrew could not read its ${what}: ${messageOf(error)}`,
-    }
-  }
-  if (text === null) return { kind: 'absent' }
-  const parsed = parse(text)
-  return parsed.ok
-    ? { kind: 'present', value: parsed.value }
-    : {
-        kind: 'unreadable',
-        canRetry: false,
-        detail: `BroCrew could not read its ${what} (${path}): ${parsed.reason}.`,
-      }
-}
-
-/** A live name's path in the data folder. */
-function livePath(userData: string, live: string): string {
-  return FAMILY.includes(live)
-    ? `${databaseFile(userData)}${live.slice(DATABASE_FILE.length)}`
-    : stateFile(userData, { name: live })
-}
-
-type Place = 'live' | 'aside' | 'incoming'
-
-function pathOf(userData: string, participant: Participant, place: Place): string {
-  return place === 'live'
-    ? livePath(userData, participant.live)
-    : fromRecorded(userData, participant[place])
-}
-
-/** Files leave a folder sidecars first, then state files, then the database. */
-function leavingOrder(participants: readonly Participant[]): Participant[] {
-  return (['sidecar', 'state', 'database'] as const).flatMap((role) =>
-    participants.filter((participant) => participant.role === role),
-  )
-}
-
-/** And arrive the database first. */
-function arrivingOrder(participants: readonly Participant[]): Participant[] {
-  return leavingOrder(participants).reverse()
-}
-
-/** Whether `content` is the file `state` describes: absent, or a file with those bytes. */
-function holds(content: Content, state: FileState): boolean {
-  return state.present
-    ? content.kind === 'file' && content.sha256 === state.sha256
-    : content.kind === 'absent'
-}
-
-function stateOf(content: Content): FileState | null {
-  if (content.kind === 'absent') return { present: false }
-  return content.kind === 'file' ? { present: true, sha256: content.sha256 } : null
-}
-
-async function assertTheRunsPlacesAreReal(
-  userData: string,
-  kind: RestoreKind,
-  id: string,
-  fs: RecoveryFs,
-): Promise<void> {
-  const places = PARTICIPANT_NAMES.flatMap((live) => {
-    const { aside, incoming } = participantPlaces(kind, id, live)
-    return [fromRecorded(userData, aside), fromRecorded(userData, incoming)]
-  })
-  await assertOwnedPathsAreReal(
-    userData,
-    [journalFile(userData), gateFile(userData), ...places],
-    fs,
-  )
-}
-
-async function ownedFolder(userData: string, folder: string, fs: RecoveryFs): Promise<void> {
-  await assertOwnedPathsAreReal(userData, [folder], fs)
-  await privateDir(folder, fs)
-  await syncFolder(dirname(folder), fs)
-}
-
-async function readTheCheckpoint(
-  userData: string,
-  checkpointId: string,
-  canOpen: (migrations: readonly Migration[]) => boolean,
-  fs: RecoveryFs,
-): Promise<CheckpointManifest> {
-  if (!isUuid(checkpointId)) refuse(NO_SUCH_COPY)
-  const folder = checkpointDir(userData, checkpointId)
-  await assertOwnedPathsAreReal(
-    userData,
-    [
-      manifestFile(userData, checkpointId),
-      checkpointDatabase(userData, checkpointId),
-      ...WITH_THE_DATABASE.map((name) => join(folder, name)),
-    ],
-    fs,
-  )
-  const text = await readTextOrNull(manifestFile(userData, checkpointId), fs)
-  if (text === null) refuse(NO_SUCH_COPY)
-  const parsed = parseManifest(text)
-  if (!parsed.ok || parsed.value.id !== checkpointId) refuse(UNREADABLE_COPY)
-  const manifest = parsed.value
-  const workspace = await readTextOrNull(workspaceIdFile(userData), fs)
-  if (workspace === null || parseWorkspaceId(workspace) !== manifest.workspaceId) {
-    refuse(ANOTHER_WORKSPACE)
-  }
-  if (!canOpen(manifest.database.migrations)) refuse(NEEDS_A_NEWER_BUILD)
-  return manifest
-}
-
-async function planARestore(
-  userData: string,
-  id: string,
-  manifest: CheckpointManifest,
-  fs: RecoveryFs,
-): Promise<Participant[]> {
-  const participants: Participant[] = []
-  for (const live of PARTICIPANT_NAMES) {
-    const role = roleOf(live)
-    const was = stateOf(await contentAt(livePath(userData, live), fs))
-    if (was === null) refuse(`${live} is not a file, so BroCrew restored nothing.`)
-    if (role === 'database' && !was.present) refuse(NOTHING_TO_SET_ASIDE)
-    let becomes: FileState = { present: false }
-    if (role === 'database') {
-      becomes = {
-        present: true,
-        sha256:
-          manifest.database.compression === 'gzip'
-            ? manifest.database.uncompressedSha256!
-            : manifest.database.sha256,
-      }
-    } else if (role === 'state') {
-      const entry = manifest.files.find((file) => file.name === live)
-      if (entry?.present === true) becomes = { present: true, sha256: entry.sha256 }
-    }
-    participants.push({ live, role, ...participantPlaces('restore', id, live), was, becomes })
-  }
-  return participants
-}
-
-async function planAReturn(
-  userData: string,
-  gate: HistoryOnlyGate,
-  fs: RecoveryFs,
-): Promise<Participant[]> {
-  const participants: Participant[] = []
-  for (const live of PARTICIPANT_NAMES) {
-    const role = roleOf(live)
-    const places = participantPlaces('return', gate.restoreId, live)
-    const installed = gate.installed.find((entry) => entry.live === live)
-    const was: FileState | null =
-      installed === undefined
-        ? stateOf(await contentAt(livePath(userData, live), fs))
-        : asState(installed)
-    if (was === null) throw new ChangedOutside(CHANGED_OUTSIDE, gate.checkpointCreatedAt)
-    const setAside = gate.preservedFiles.find((entry) => entry.live === live)
-    const becomes: FileState = setAside === undefined ? { present: false } : asState(setAside)
-    const waiting = await contentAt(fromRecorded(userData, places.incoming), fs)
-    if (!holds(waiting, becomes)) {
-      throw new ChangedOutside(
-        becomes.present && waiting.kind === 'absent'
-          ? `${NEWER_MISSING} ${places.incoming} is gone.`
-          : `${SET_ASIDE_CHANGED} ${places.incoming} is ${becomes.present ? 'not the file it set aside' : 'there, and it set none aside there'}.`,
-        gate.checkpointCreatedAt,
-      )
-    }
-    if (await retrying(() => pathExists(fromRecorded(userData, places.aside), fs)))
-      refuse(RESTORED_FOLDER_TAKEN)
-    participants.push({ live, role, ...places, was, becomes })
-  }
-  return participants
-}
-
-function asState(entry: InstalledFile): FileState {
-  return entry.present ? { present: true, sha256: entry.sha256 } : { present: false }
-}
-
-function namesTheParticipantsThisBuildMoves(journal: RestoreJournal): boolean {
-  const names = journal.participants.map((participant) => participant.live)
-  const legacy = PARTICIPANT_NAMES.filter(
-    (name) => !SKILL_TREES.includes(name) && name !== SKILLS_CONVERSION_FILE,
-  )
-  return (
-    (names.length === PARTICIPANT_NAMES.length &&
-      PARTICIPANT_NAMES.every((name) => names.includes(name))) ||
-    (names.length === legacy.length && legacy.every((name) => names.includes(name)))
-  )
-}
-
-/** Where one participant stands. */
-type Where =
-  /** Absent before and after: nothing moves. */
-  | 'nothing'
-  /** Its `was` is live and nothing is aside. */
-  | 'before'
-  /** Its `was` is aside and its replacement is not live yet. */
-  | 'aside'
-  /** Its `becomes` is live, and its `was` aside. */
-  | 'after'
-
-interface Run {
-  readonly userData: string
-  readonly fs: RecoveryFs
-  readonly hooks: Hooks
-  readonly tick: () => void
-  journal: RestoreJournal
-  readonly where: Map<string, Where>
-}
-
-function startedRun(
-  userData: string,
-  fs: RecoveryFs,
-  hooks: Hooks,
-  tick: () => void,
-  journal: RestoreJournal,
-): Run {
-  const where = new Map<string, Where>(
-    journal.participants.map((participant) => [
-      participant.live,
-      participant.was.present || participant.becomes.present ? 'before' : 'nothing',
-    ]),
-  )
-  return { userData, fs, hooks, tick, journal, where }
-}
-
-async function publish(run: Run, step: Step): Promise<void> {
-  run.journal = { ...run.journal, step }
-  const path = journalFile(run.userData)
-  await assertOwnedPathsAreReal(run.userData, [path], run.fs)
-  await writeAtomically(path, serializeJournal(run.journal), run.fs)
-}
-
-/** One step: its work between the hooks, then the journal names it. */
-async function stepOf(run: Run, step: Step, work: () => Promise<void>): Promise<void> {
-  run.hooks.beforeStep(step)
-  await work()
-  run.hooks.afterStep(step)
-  await publish(run, step)
-  run.tick()
-}
-
-function participantNamed(run: Run, live: string): Participant {
-  const found = run.journal.participants.find((participant) => participant.live === live)
-  if (found === undefined) throw new Error(`the journal has no ${live}`)
-  return found
-}
-
-async function stage(run: Run, manifest: CheckpointManifest): Promise<void> {
-  const { userData, fs } = run
-  await ownedFolder(userData, stagedRoot(userData), fs)
-  await ownedFolder(userData, stagedDir(userData, run.journal.id), fs)
-  for (const participant of run.journal.participants) {
-    if (!participant.becomes.present) continue
-    const source =
-      participant.role === 'database'
-        ? checkpointDatabase(userData, manifest.id)
-        : join(checkpointDir(userData, manifest.id), participant.live)
-    const copy = pathOf(userData, participant, 'incoming')
-    await assertOwnedPathsAreReal(userData, [source, copy], fs)
-    if (!(await pathExists(source, fs))) refuse(FAILED_CHECK)
-    if (participant.role === 'database' && manifest.database.compression === 'gzip') {
-      const compressed = await contentAt(source, fs)
-      if (compressed.kind !== 'file' || compressed.sha256 !== manifest.database.sha256)
-        refuse(FAILED_CHECK)
-      await gunzipCheckpoint(source, copy, manifest.database.uncompressedBytes!, fs)
-    } else if (SKILL_TREES.includes(participant.live)) await copySkillTree(source, copy, fs)
-    else await copyDurably(source, copy, fs)
-    if (!holds(await contentAt(copy, fs), participant.becomes)) refuse(FAILED_CHECK)
-  }
-
-  // A copy in rollback mode is one file: reading it read-only creates nothing beside it.
-  const copy = pathOf(userData, participantNamed(run, DATABASE_FILE), 'incoming')
-  if (!(await inRollbackMode(copy, fs))) refuse(FAILED_CHECK)
-  const recorded = await migrationsOf(copy, { fs })
-  const listed = manifest.database.migrations
-  if (
-    recorded.kind !== 'recorded' ||
-    recorded.migrations.length !== listed.length ||
-    listed.some(
-      (migration, index) =>
-        recorded.migrations[index]?.createdAt !== migration.createdAt ||
-        recorded.migrations[index]?.hash !== migration.hash,
-    )
-  ) {
-    refuse(FAILED_CHECK)
-  }
-}
-
-/** After a restore refused its copy while staging: its staged folder and journal go. */
-async function abandon(run: Run): Promise<void> {
-  const { userData, fs } = run
-  try {
-    await remove(userData, stagedDir(userData, run.journal.id), fs)
-    await removeIfEmpty(userData, stagedRoot(userData), fs)
-    await removeTheJournal(run)
-    await removeIfEmpty(userData, recoveryDir(userData), fs)
-  } catch {
-    // The journal stays, and the next recovery undoes what is left.
-  }
-}
-
-function gateFor(journal: RestoreJournal, checkpointCreatedAt: string): HistoryOnlyGate {
-  return {
-    format: GATE_FORMAT,
-    version: 1,
-    restoreId: journal.id,
-    checkpointId: journal.checkpointId,
-    checkpointCreatedAt,
-    installed: journal.participants.map(({ live, becomes }) => ({ live, ...becomes })),
-    preserved: preservedAsRecorded(journal.id),
-    preservedFiles: journal.participants.map(({ live, was }) => ({ live, ...was })),
-  }
-}
-
-async function writeTheGate(run: Run, gate: HistoryOnlyGate): Promise<void> {
-  const path = gateFile(run.userData)
-  await assertOwnedPathsAreReal(run.userData, [path], run.fs)
-  await writeAtomically(path, serializeGate(gate), run.fs)
-}
-
-/** A rename that failed, with the participant it was for. */
-class MoveFailed extends Error {
-  constructor(
-    readonly live: string,
-    readonly from: string,
-    readonly to: string,
-    readonly failure: unknown,
-  ) {
-    super(`BroCrew could not move ${live}: ${messageOf(failure)}`, { cause: failure })
-    this.name = 'MoveFailed'
-  }
-}
-
-async function move(run: Run, participant: Participant, from: Place, to: Place): Promise<void> {
-  const { userData, fs } = run
-  const source = pathOf(userData, participant, from)
-  const target = pathOf(userData, participant, to)
-  await assertOwnedPathsAreReal(userData, [source, target], fs)
-  if (await pathExists(target, fs)) {
-    throw new Error(`${target} is already there, so BroCrew did not move ${source} onto it`)
-  }
-  try {
-    await retrying(() => fs.rename(source, target))
-  } catch (error) {
-    throw new MoveFailed(participant.live, source, target, error)
-  }
-  const moved: Moved = { live: participant.live, to }
-  run.hooks.afterMove(moved)
-}
-
-async function isPermanent(error: unknown, fs: RecoveryFs): Promise<boolean> {
-  if (!(error instanceof MoveFailed)) return false
-  const code = errorCode(error.failure)
-  if (code === 'EXDEV') return true
-  return code === 'ENOENT' && (await pathExists(error.from, fs).catch(() => false))
-}
-
-function cannotPutBack(run: Run, failed: MoveFailed, undoing: unknown): CannotPutBack {
-  const why =
-    errorCode(failed.failure) === 'EXDEV'
-      ? `${dirname(failed.to)} is on another disk than ${dirname(failed.from)}, and a file cannot move between disks without being copied`
-      : `${dirname(failed.to)} is gone`
-  const stoppedBy =
-    undoing === undefined ? '' : `The ${run.journal.kind} stopped: ${messageOf(undoing)}. `
-  return new CannotPutBack(
-    `${stoppedBy}BroCrew could not put ${failed.live} back where it was, because ${why} ` +
-      `(${errorCode(failed.failure) ?? 'no code'}). Trying again as things stand cannot change ` +
-      'that, so BroCrew left every file where it is and tries again the next time it starts.',
-    { cause: failed },
-  )
-}
-
-/** The folders a run's renames changed, flushed so the renames reach the disk before the journal. */
-async function syncTheFolders(run: Run, places: readonly Place[]): Promise<void> {
-  const folders = new Set<string>()
-  for (const participant of run.journal.participants) {
-    for (const place of places) folders.add(dirname(pathOf(run.userData, participant, place)))
-  }
-  for (const folder of folders) {
-    if (await pathExists(folder, run.fs)) await syncFolder(folder, run.fs)
-  }
-}
-
-/** The folder a run sets files aside in. */
-function asideFolder(run: Run): string {
-  return run.journal.kind === 'restore'
-    ? preservedDir(run.userData, run.journal.id)
-    : restoredAsideDir(run.userData, run.journal.id)
-}
-
-type Outcome =
-  { readonly kind: 'finished' } | { readonly kind: 'rolled-back'; readonly detail: string }
-
-async function forward(run: Run): Promise<Outcome> {
-  run.hooks.beforeStep('moving')
-  try {
-    await ownedFolder(run.userData, preservedRoot(run.userData), run.fs)
-    await ownedFolder(run.userData, asideFolder(run), run.fs)
-    for (const participant of leavingOrder(run.journal.participants)) {
-      if (run.where.get(participant.live) !== 'before') continue
-      if (participant.was.present) await move(run, participant, 'live', 'aside')
-      run.where.set(participant.live, 'aside')
-    }
-    for (const participant of arrivingOrder(run.journal.participants)) {
-      if (run.where.get(participant.live) !== 'aside') continue
-      if (participant.becomes.present) await move(run, participant, 'incoming', 'live')
-      run.where.set(participant.live, 'after')
-    }
-    await syncTheFolders(run, ['live', 'aside', 'incoming'])
-  } catch (error) {
-    if (!(await isPermanent(error, run.fs))) throw error
-    await back(run, error)
-    const what = run.journal.kind === 'restore' ? 'newer data' : 'restored copy'
-    return {
-      kind: 'rolled-back',
-      detail: `${messageOf(error)}. BroCrew put the ${what} back as it was.`,
-    }
-  }
-  run.hooks.afterStep('moving')
-  await publish(run, 'moving')
-  run.tick()
-
-  await stepOf(run, 'installed', async () => {
-    for (const participant of run.journal.participants) {
-      const content = await contentAt(pathOf(run.userData, participant, 'live'), run.fs)
-      if (!holds(content, participant.becomes)) {
-        throw new Error(`${participant.live} is not what the ${run.journal.kind} installed`)
-      }
-    }
-  })
-
-  run.hooks.beforeStep('done')
-  const { userData, fs } = run
-  if (run.journal.kind === 'restore') {
-    await remove(userData, stagedDir(userData, run.journal.id), fs)
-    await removeIfEmpty(userData, stagedRoot(userData), fs)
-    await syncFolder(recoveryDir(userData), fs)
-  } else {
-    await remove(userData, gateFile(userData), fs)
-    await syncFolder(recoveryDir(userData), fs)
-    await removeIfEmpty(userData, preservedDir(userData, run.journal.id), fs)
-  }
-  run.hooks.afterStep('done')
-  await publish(run, 'done')
-  await removeTheJournal(run)
-  run.tick()
-  return { kind: 'finished' }
-}
-
-async function back(run: Run, undoing?: unknown): Promise<void> {
-  const { userData, fs } = run
-  run.hooks.beforeStep('moving')
-  try {
-    for (const participant of leavingOrder(run.journal.participants)) {
-      if (run.where.get(participant.live) !== 'after') continue
-      if (participant.becomes.present) {
-        // A restore's staged folder may be gone already; the installed file goes back into it.
-        const waiting = dirname(pathOf(userData, participant, 'incoming'))
-        await ownedFolder(userData, dirname(waiting), fs)
-        await ownedFolder(userData, waiting, fs)
-        await move(run, participant, 'live', 'incoming')
-      }
-      run.where.set(participant.live, 'aside')
-    }
-    for (const participant of arrivingOrder(run.journal.participants)) {
-      if (run.where.get(participant.live) !== 'aside') continue
-      if (participant.was.present) await move(run, participant, 'aside', 'live')
-      run.where.set(participant.live, 'before')
-    }
-  } catch (error) {
-    if (await isPermanent(error, fs)) throw cannotPutBack(run, error as MoveFailed, undoing)
-    throw error
-  }
-  await syncTheFolders(run, ['live', 'aside', 'incoming'])
-  run.hooks.afterStep('moving')
-  run.tick()
-
-  run.hooks.beforeStep('done')
-  if (run.journal.kind === 'restore') {
-    await remove(userData, stagedDir(userData, run.journal.id), fs)
-    await removeIfEmpty(userData, stagedRoot(userData), fs)
-    await remove(userData, gateFile(userData), fs)
-    await syncFolder(recoveryDir(userData), fs)
-  }
-  await removeIfEmpty(userData, asideFolder(run), fs)
-  await removeIfEmpty(userData, preservedRoot(userData), fs)
-  run.hooks.afterStep('done')
-  await removeTheJournal(run)
-  if (run.journal.kind === 'restore') await removeIfEmpty(userData, recoveryDir(userData), fs)
-  run.tick()
-}
-
-async function removeTheJournal(run: Run): Promise<void> {
-  await remove(run.userData, journalFile(run.userData), run.fs)
-  await syncFolder(recoveryDir(run.userData), run.fs)
-  await sweepLeftovers(run.userData, run.fs)
-}
-
-type Decision =
-  | {
-      readonly kind: 'forward'
-      readonly where: Map<string, Where>
-      /** The gate a restore still has to write, or null when it stands. */
-      readonly gate: HistoryOnlyGate | null
-    }
-  | { readonly kind: 'back'; readonly where: Map<string, Where>; readonly detail: string }
-  | { readonly kind: 'replaced-outside'; readonly detail: string }
-  | { readonly kind: 'unreadable'; readonly detail: string }
-
-const SAID: Record<Content['kind'], string> = {
-  absent: 'not there',
-  file: 'a file',
-  other: 'not a file',
-}
-
-function whereIs(
-  participant: Participant,
-  live: Content,
-  aside: Content,
-  incoming: Content,
-): Where | null {
-  const { was, becomes } = participant
-  if ([live, aside, incoming].some((content) => content.kind === 'other')) return null
-  if (!becomes.present && incoming.kind !== 'absent') return null
-  if (!was.present && !becomes.present) {
-    return live.kind === 'absent' && aside.kind === 'absent' ? 'nothing' : null
-  }
-  if (holds(live, was) && aside.kind === 'absent') return 'before'
-  if (was.present && holds(aside, was) && live.kind === 'absent') {
-    return becomes.present ? 'aside' : 'after'
-  }
-  if (becomes.present && holds(live, becomes) && holds(aside, was) && incoming.kind === 'absent') {
-    return 'after'
-  }
-  return null
-}
-
-async function decide(
-  userData: string,
-  journal: RestoreJournal,
-  fs: RecoveryFs,
-): Promise<Decision> {
-  const where = new Map<string, Where>()
-  let ready = true
-  let notReady = ''
-  for (const participant of journal.participants) {
-    const at = (place: Place): Promise<Content> =>
-      contentAt(pathOf(userData, participant, place), fs)
-    const [live, aside, incoming] = [await at('live'), await at('aside'), await at('incoming')]
-    const found = whereIs(participant, live, aside, incoming)
-    if (found === null) {
-      return {
-        kind: 'replaced-outside',
-        detail:
-          `${participant.live} is not where the ${journal.kind} left it: live it is ` +
-          `${describe(live, participant)}, set aside it is ${describe(aside, participant)}, and ` +
-          `waiting it is ${describe(incoming, participant)}.`,
-      }
-    }
-    where.set(participant.live, found)
-    if (
-      (found === 'before' || found === 'aside') &&
-      participant.becomes.present &&
-      !holds(incoming, participant.becomes)
-    ) {
-      ready = false
-      notReady ||= `The ${participant.live} the ${journal.kind} was to install is ${incoming.kind === 'absent' ? 'gone' : 'no longer what it checked'}.`
-    }
-  }
-
-  if (journal.kind === 'restore' && journal.step === 'planned') {
-    ready = false
-    notReady = 'The restore stopped before the copy it was to install had been checked.'
-  }
-
-  const gate = await readGateOnDisk(userData, fs)
-  if (gate.kind === 'unreadable') {
-    if (gate.canRetry) throw new Error(gate.detail)
-    return { kind: 'unreadable', detail: gate.detail }
-  }
-  if (gate.kind === 'present' && !isTheGateOf(gate.value, journal)) {
-    return {
-      kind: 'replaced-outside',
-      detail: 'The history-only record belongs to another restore.',
-    }
-  }
-  const states = [...where.values()]
-  const moved = states.some((state) => state === 'aside' || state === 'after')
-  const allInstalled = states.every((state) => state === 'after' || state === 'nothing')
-  if (gate.kind === 'absent') {
-    if (journal.kind === 'restore' && moved) {
-      return {
-        kind: 'replaced-outside',
-        detail: 'The history-only record is gone, and files had already moved.',
-      }
-    }
-    if (journal.kind === 'return' && !allInstalled) {
-      return {
-        kind: 'replaced-outside',
-        detail: 'The history-only record is gone, and the return had not finished.',
-      }
-    }
-  }
-
-  if (!ready) return { kind: 'back', where, detail: notReady }
-  if (journal.kind === 'return' || gate.kind === 'present') {
-    return { kind: 'forward', where, gate: null }
-  }
-  const createdAt = await checkpointCreatedAt(userData, journal.checkpointId, fs)
-  if (createdAt === null) {
-    return {
-      kind: 'back',
-      where,
-      detail: 'The record of the copy being restored is gone, so its date is not known.',
-    }
-  }
-  return { kind: 'forward', where, gate: gateFor(journal, createdAt) }
-}
-
-function describe(content: Content, participant: Participant): string {
-  if (content.kind !== 'file') return SAID[content.kind]
-  const { was, becomes } = participant
-  if (was.present && content.sha256 === was.sha256) return 'the file from before'
-  if (becomes.present && content.sha256 === becomes.sha256) return 'the file it installs'
-  return 'a file BroCrew did not put there'
-}
-
-function isTheGateOf(gate: HistoryOnlyGate, journal: RestoreJournal): boolean {
-  if (gate.restoreId !== journal.id || gate.checkpointId !== journal.checkpointId) return false
-  const { participants } = journal
-  const restoring = journal.kind === 'restore'
-  if (
-    restoring &&
-    (gate.installed.length !== participants.length ||
-      gate.preservedFiles.length !== participants.length)
-  ) {
-    return false
-  }
-  const listedAs = (live: string): Participant | undefined =>
-    participants.find((one) => one.live === live)
-  const installedAsLeft = gate.installed.every((entry) => {
-    const participant = listedAs(entry.live)
-    if (participant === undefined) return false
-    return sameState(asState(entry), restoring ? participant.becomes : participant.was)
-  })
-  const setAsideAsFound = participants.every((participant) => {
-    const entry = gate.preservedFiles.find((one) => one.live === participant.live)
-    const setAside: FileState = entry === undefined ? { present: false } : asState(entry)
-    return sameState(setAside, restoring ? participant.was : participant.becomes)
-  })
-  return (
-    installedAsLeft &&
-    setAsideAsFound &&
-    gate.preservedFiles.every((entry) => listedAs(entry.live) !== undefined)
-  )
-}
-
-async function checkpointCreatedAt(
-  userData: string,
-  checkpointId: string,
-  fs: RecoveryFs,
-): Promise<string | null> {
-  const text = await readTextOrNull(manifestFile(userData, checkpointId), fs).catch(() => null)
-  const parsed = text === null ? null : parseManifest(text)
-  return parsed?.ok === true && parsed.value.id === checkpointId ? parsed.value.createdAt : null
 }
