@@ -46,25 +46,22 @@ describe('filling question copies leaves the archive lane to others', () => {
   })
 
   it('every slice is asked for a whole number of rows, as its bound halves and doubles', async () => {
+    // The fill times each slice with performance.now; a controlled clock makes four slices fast
+    // (1 ms) and the rest slow (6 ms, over the 4 ms target), whatever the machine's load.
+    let clock = 0
+    vi.spyOn(performance, 'now').mockImplementation(() => clock)
     const asked: number[] = []
     vi.spyOn(world.store, 'fillQuestionCopies').mockImplementation((rows) => {
       asked.push(rows)
-      // Four fast slices take the bound to its most; then each takes longer than its target.
-      if (asked.length > 4) {
-        const until = performance.now() + 6
-        while (performance.now() < until) {
-          /* a slow slice */
-        }
-      }
-      return asked.length < 10
+      clock += asked.length <= 4 ? 1 : 6
+      return asked.length < 12
         ? { state: 'filled', visited: 1, matched: 0 }
         : { state: 'done', visited: 0, matched: 0 }
     })
     host.fillQuestionCopies()
-    await vi.waitFor(() => expect(asked).toHaveLength(10))
-    expect(asked.every((rows) => Number.isInteger(rows))).toBe(true)
-    expect(Math.max(...asked)).toBe(2000)
-    expect(Math.min(...asked)).toBeGreaterThanOrEqual(50)
+    await vi.waitFor(() => expect(asked).toHaveLength(12))
+    // Doubles to its most (2,000), then halves to its least (50), always whole rows.
+    expect(asked).toEqual([200, 400, 800, 1600, 2000, 1000, 500, 250, 125, 62, 50, 50])
   })
 
   it('a slice that finds the write lock taken is tried again, and the fill stops once done', async () => {
