@@ -10,6 +10,7 @@ import {
 import type { AgentRuntime, SessionHandle } from '../src/runtime'
 import { ResumeError } from '../src/runtime'
 import { AsyncQueue } from '../src/internal/async-queue'
+import { deferred } from './fixtures/plugin-readiness'
 import type { RuntimeEvent } from '../src/events'
 import { TurnInProgress } from '../src/turn-in-progress'
 import { ManagedPluginOwnership } from '../src/managed-plugin-ownership'
@@ -394,6 +395,30 @@ function fixture(refresh = false, exitFactory?: (index: number) => Promise<void>
     },
   }
 }
+function holdTheNextRead(f: ReturnType<typeof fixture>) {
+  let release!: (attachment: ManagedPluginAttachment) => void
+  f.source.read = vi.fn(() => {
+    const read = deferred<ManagedPluginAttachment>()
+    release = read.resolve
+    return read.promise
+  })
+  return (attachment: ManagedPluginAttachment) => release(attachment)
+}
+function holdTheHealthRead(handle: object) {
+  const asked = deferred<void>()
+  const held: { started: Promise<void>; release?: (value: string[]) => void } = {
+    started: asked.promise,
+  }
+  Object.assign(handle, {
+    managedPluginHealth: () => {
+      asked.resolve()
+      const answer = deferred<string[]>()
+      held.release = answer.resolve
+      return answer.promise
+    },
+  })
+  return held
+}
 it('supplies live scoped routes on fresh starts and resumes without changing personal servers', async () => {
   const f = fixture()
   const a = await f.runtime.start(initial)
@@ -548,13 +573,7 @@ it('bounds held discovery before ordinary start', async () => {
 it('a cancelled refresh never sends a late turn and never reopens in the middle of it', async () => {
   const f = fixture(),
     a = await f.runtime.start(initial)
-  let release!: (v: ManagedPluginAttachment) => void
-  f.source.read = vi.fn(
-    () =>
-      new Promise<ManagedPluginAttachment>((resolve) => {
-        release = resolve
-      }),
-  )
+  const release = holdTheNextRead(f)
   const sending = a.send('fictional words')
   const refused = expect(sending).rejects.toThrow('stopped')
   await a.interrupt()
@@ -567,13 +586,7 @@ it('a cancelled refresh never sends a late turn and never reopens in the middle 
 it('concurrent sends cannot slip past a held attachment refresh', async () => {
   const f = fixture(),
     a = await f.runtime.start(initial)
-  let release!: (v: ManagedPluginAttachment) => void
-  f.source.read = vi.fn(
-    () =>
-      new Promise<ManagedPluginAttachment>((resolve) => {
-        release = resolve
-      }),
-  )
+  const release = holdTheNextRead(f)
   const first = a.send('first')
   await expect(a.send('second')).rejects.toThrow('turn is in progress')
   release({ revision: 'one', servers: [route] })
@@ -1238,28 +1251,16 @@ it.each(['ready', 'unknown', 'error', 'timeout'])(
 it('cancellation during a public health read cannot send or refresh after a late stale reply', async () => {
   const f = fixture(true),
     a = await f.runtime.start(initial)
-  let release!: (value: string[]) => void
-  let began!: () => void
-  const started = new Promise<void>((resolve) => {
-    began = resolve
-  })
-  Object.assign(f.opened[0]!.handle, {
-    managedPluginHealth: () => {
-      began()
-      return new Promise<string[]>((resolve) => {
-        release = resolve
-      })
-    },
-  })
+  const health = holdTheHealthRead(f.opened[0]!.handle)
   const sent = a.send('fictional cancelled turn')
   const outcome = sent.then(
     () => undefined,
     (error: unknown) => error,
   )
-  await Promise.race([started, outcome])
-  expect(typeof release).toBe('function')
+  await Promise.race([health.started, outcome])
+  expect(typeof health.release).toBe('function')
   await a.interrupt()
-  release([route.name])
+  health.release!([route.name])
   expect(await outcome).toMatchObject({ message: expect.stringContaining('stopped') })
   expect(f.opened[0]!.send).not.toHaveBeenCalled()
   expect(f.opened[0]!.handle.refreshManagedPlugins).not.toHaveBeenCalled()
@@ -1293,28 +1294,16 @@ it('stale health cannot bypass an unknown retired process exit', async () => {
 it('a turn that becomes active during health discovery cannot be refreshed or replayed', async () => {
   const f = fixture(true),
     a = await f.runtime.start(initial)
-  let release!: (value: string[]) => void
-  let began!: () => void
-  const started = new Promise<void>((resolve) => {
-    began = resolve
-  })
-  Object.assign(f.opened[0]!.handle, {
-    managedPluginHealth: () => {
-      began()
-      return new Promise<string[]>((resolve) => {
-        release = resolve
-      })
-    },
-  })
+  const health = holdTheHealthRead(f.opened[0]!.handle)
   const sent = a.send('fictional pending turn')
   const outcome = sent.then(
     () => undefined,
     (error: unknown) => error,
   )
-  await Promise.race([started, outcome])
-  expect(typeof release).toBe('function')
+  await Promise.race([health.started, outcome])
+  expect(typeof health.release).toBe('function')
   vi.spyOn(f.opened[0]!.handle, 'status').mockReturnValue('working')
-  release([route.name])
+  health.release!([route.name])
   expect(await outcome).toBeInstanceOf(TurnInProgress)
   expect(f.opened[0]!.handle.refreshManagedPlugins).not.toHaveBeenCalled()
   expect(f.opened[0]!.send).not.toHaveBeenCalled()
