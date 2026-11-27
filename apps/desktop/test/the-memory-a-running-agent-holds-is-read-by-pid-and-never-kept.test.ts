@@ -542,8 +542,11 @@ describe('§3 · the renderer store reads the memory', () => {
 
 describe('§4 · where the read is made, asked for and drawn', () => {
   /** The screen without its comments, as `one-read-at-a-time.test.ts` §3 reads it. */
-  const screen = readFileSync(join(SRC, 'renderer/src/components/RuntimeScreen.vue'), 'utf8')
-    .replace(/<!--[\s\S]*?-->/g, '')
+  const screen = readFileSync(
+    join(SRC, 'renderer/src/composables/useRuntimeScreenReadings.ts'),
+    'utf8',
+  )
+    .replace(/^ {2}/gm, '')
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .replace(/^\s*\/\/.*$/gm, '')
 
@@ -551,7 +554,7 @@ describe('§4 · where the read is made, asked for and drawn', () => {
     const reading = sliceOf(
       'async function readProcessMemory(): Promise<void> {',
       '\n}',
-      'RuntimeScreen.vue',
+      'useRuntimeScreenReadings.ts',
       screen,
     )
     // It really does the read and draws from it …
@@ -569,7 +572,7 @@ describe('§4 · where the read is made, asked for and drawn', () => {
 
     // The figures go when the screen goes: its `onUnmounted` callback releases the screen's handle
     // on the cast, and releasing it resets the figures.
-    const at = once('castFacts.release()', 'RuntimeScreen.vue', screen)
+    const at = once('castFacts.release()', 'useRuntimeScreenReadings.ts', screen)
     const callback = screen.lastIndexOf('onUnmounted(() => {', at)
     expect(callback, 'no onUnmounted callback opens before the reset').toBeGreaterThan(-1)
     expect(screen.slice(callback, at)).not.toContain('\n})')

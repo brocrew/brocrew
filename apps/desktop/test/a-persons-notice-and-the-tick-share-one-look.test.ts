@@ -1,10 +1,9 @@
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
 import { runInNewContext } from 'node:vm'
 import ts from 'typescript'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { oneReadAtATime } from '../src/renderer/src/lib/one-read-at-a-time'
 import { LOOK_EVERY_MS, limitsReadCadence } from '../src/renderer/src/lib/persons-queue'
+import { readScreenModules } from './lib/runtime-screen-source'
 
 /**
  * The window's look at what a person must answer is asked for by the five-second tick, by the
@@ -18,10 +17,7 @@ import { LOOK_EVERY_MS, limitsReadCadence } from '../src/renderer/src/lib/person
  * for never wait.
  */
 
-const SCREEN = readFileSync(
-  fileURLToPath(new URL('../src/renderer/src/components/RuntimeScreen.vue', import.meta.url)),
-  'utf8',
-)
+const SCREEN = readScreenModules('useRuntimeAttention', 'useRuntimeScreenReadings')
 const NOW = Date.UTC(2026, 10, 5, 12)
 
 const READERS = ['personsQueue'] as const

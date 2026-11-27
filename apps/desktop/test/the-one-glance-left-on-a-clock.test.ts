@@ -1,8 +1,5 @@
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { proseSpans } from './lib/prose-spans'
+import { runtimeScreenCode } from './lib/runtime-screen-source'
 
 /**
  * # 🔴 W4.74 · D-033 · the one glance left on a clock, and no re-read of the work on one
@@ -20,26 +17,8 @@ import { proseSpans } from './lib/prose-spans'
  * to exist before anything is asserted about what lies between them.
  */
 
-const HERE = fileURLToPath(new URL('.', import.meta.url))
-const FILE = 'RuntimeScreen.vue'
-const RAW = readFileSync(join(HERE, '../src/renderer/src/components', FILE), 'utf8')
-
-/** Every comment blanked, newlines kept, so a docblock quoting the code cannot stand in for it. */
-function code(file: string, source: string): string {
-  const lines = source.split('\n')
-  for (const span of proseSpans(file, source)) {
-    span.text.split('\n').forEach((said, offset) => {
-      const at = span.line - 1 + offset
-      const from = lines[at]?.indexOf(said) ?? -1
-      if (from < 0) throw new Error(`${file}:${at + 1} does not hold the comment ${said}`)
-      const line = lines[at] ?? ''
-      lines[at] = line.slice(0, from) + ' '.repeat(said.length) + line.slice(from + said.length)
-    })
-  }
-  return lines.join('\n')
-}
-
-const SCREEN = code(FILE, RAW)
+const FILE = 'RuntimeScreen.vue and its composables'
+const SCREEN = runtimeScreenCode()
 
 /** The index of a marker that is in the code exactly once. */
 function once(marker: string): number {

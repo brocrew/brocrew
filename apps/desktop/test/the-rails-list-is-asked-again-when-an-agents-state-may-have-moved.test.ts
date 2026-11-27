@@ -1,9 +1,6 @@
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { LOOK_EVERY_MS } from '../src/renderer/src/lib/persons-queue'
-import { proseSpans } from './lib/prose-spans'
+import { runtimeScreenCode } from './lib/runtime-screen-source'
 
 /**
  * # D-019 · the rail learns what an agent is doing from the push, not by asking its list again
@@ -38,45 +35,15 @@ import { proseSpans } from './lib/prose-spans'
  * cannot satisfy or defeat a census.
  */
 
-const HERE = fileURLToPath(new URL('.', import.meta.url))
-const SRC = join(HERE, '../src')
-
-const read = (path: string): string => readFileSync(join(SRC, path), 'utf8')
-
-/**
- * Every comment blanked, newlines kept, so a docblock quoting the code cannot stand in for it.
- *
- * ⚠️ **Blanked line by line, where each span says it starts.** A run of `//` lines is one span,
- * joined WITHOUT the indentation between them, so an indented run is not in the source as one
- * string and replacing the span whole would leave it standing; each of its lines is in its own
- * source line, which is where it is looked for.
- */
-function code(file: string, source: string): string {
-  const lines = source.split('\n')
-  for (const span of proseSpans(file, source)) {
-    span.text.split('\n').forEach((said, offset) => {
-      const at = span.line - 1 + offset
-      const from = lines[at]?.indexOf(said) ?? -1
-      if (from < 0) throw new Error(`${file}:${at + 1} does not hold the comment ${said}`)
-      const line = lines[at] ?? ''
-      lines[at] = line.slice(0, from) + ' '.repeat(said.length) + line.slice(from + said.length)
-    })
-  }
-  return lines.join('\n')
-}
-
-/** One component's code, with the name its failures are said under. */
 interface Source {
   readonly file: string
   readonly code: string
 }
 
-const sourceOf = (file: string): Source => ({
-  file,
-  code: code(file, read(`renderer/src/components/${file}`)),
-})
-
-const SCREEN = sourceOf('RuntimeScreen.vue')
+const SCREEN: Source = {
+  file: 'RuntimeScreen.vue and its composables',
+  code: runtimeScreenCode(),
+}
 
 /** The index of a marker that is in the source exactly once. */
 function once(marker: string, where: Source = SCREEN): number {
