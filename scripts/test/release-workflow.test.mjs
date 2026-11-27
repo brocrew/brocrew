@@ -193,7 +193,8 @@ describe('signed validation without a paid Windows build', () => {
       },
     }
     const reachable = Object.entries(mac.jobs).filter(([, entry]) =>
-      new Function('github', 'inputs', 'needs', 'startsWith', `return (${entry.if})`)(
+      // A job without its own condition always runs, as GitHub runs it.
+      new Function('github', 'inputs', 'needs', 'startsWith', `return (${entry.if ?? true})`)(
         github,
         inputs,
         needs,
