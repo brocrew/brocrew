@@ -5,9 +5,10 @@ export const TREE = '17d79356fe29ec5b462185ca4828c7519bb7f1e7'
 export const MODE = 'controlled-queryFactory-and-child-witness'
 export const MARKER = 'packaged-plugin-gate-only:reload-v1'
 export const SDK_VERSION = '0.3.287'
-export const RELOAD_DEADLINE_MS = 60_000
-export const RELOAD_DEADLINE_TOLERANCE_MS = 2_500
-export const RELOAD_RETIRING_WAIT_MS = RELOAD_DEADLINE_MS + 20_000
+// Card 197 removed the 60 s reload clock: a held reload must outlast that old limit without failing,
+// and only the CLI's exit ends it.
+export const RELOAD_HELD_MS = 65_000
+export const RELOAD_JOURNEY_WAIT_MS = RELOAD_HELD_MS + 20_000
 export const SHA256 = /^[0-9a-f]{64}$/
 export const DELIVERY_WORDS = Object.freeze(['reload original fern', 'reload queued birch', 'reload queued cedar'])
 export function lifecycleEvidence(events) {
@@ -53,7 +54,7 @@ export function assertBehavior(value) {
 }
 export function assertMainAppBehavior(value) {
   exactKeys(value, ['schema', 'fixtureMarker', 'mode', 'sourceSha', 'sourceTree', 'sdkDeclaredVersion', 'hostBinding', 'nativeDatabaseClosure', 'nativeIpcJourney', 'adapter', 'hostQueue', 'cleanup'])
-  assert.equal(value.schema, 'brocrew.reload-main-app-behavior.v1')
+  assert.equal(value.schema, 'brocrew.reload-main-app-behavior.v2')
   assert.equal(value.fixtureMarker, MARKER)
   assert.equal(value.hostBinding, 'projected-index-runtimeHost-and-same-store')
   assert.equal(value.nativeDatabaseClosure, 'external-native-app-receipt-required')
@@ -63,36 +64,34 @@ export function assertMainAppBehavior(value) {
   void hostBinding
   void nativeDatabaseClosure
   void nativeIpcJourney
-  checkBehavior({ ...core, schema: 'brocrew.reload-behavior.v1' }, true)
+  checkBehavior({ ...core, schema: 'brocrew.reload-behavior.v2' }, true)
   return value
 }
 function checkBehavior(value, mainApp) {
   exactKeys(value, ['schema', 'mode', 'sourceSha', 'sourceTree', 'sdkDeclaredVersion', 'adapter', 'hostQueue', 'cleanup'])
-  assert.equal(value.schema, 'brocrew.reload-behavior.v1')
+  assert.equal(value.schema, 'brocrew.reload-behavior.v2')
   assert.equal(value.mode, MODE)
   assert.equal(value.sourceSha, SOURCE)
   assert.equal(value.sourceTree, TREE)
   assert.equal(value.sdkDeclaredVersion, SDK_VERSION)
   const a = value.adapter
-  exactKeys(a, ['timeoutMs', 'failedTerminals', 'failedByApp', 'oldPushes', 'oldReloads', 'oldCloses', 'oldReturns', 'retiringAtTimeout', 'oldSendRefusals', 'lateReloadReleased', 'lateResultAttempted', 'lateAddedTerminals', 'retirementEnded', 'freshQueries', 'freshResumeMatches', 'freshPushes', 'freshReloads', 'freshCompleted'])
-  assert(Number.isSafeInteger(a.timeoutMs) && a.timeoutMs >= RELOAD_DEADLINE_MS && a.timeoutMs <= RELOAD_DEADLINE_MS + RELOAD_DEADLINE_TOLERANCE_MS, 'real reload deadline not observed')
-  for (const key of ['failedTerminals', 'oldReloads', 'oldCloses', 'oldReturns', 'freshQueries', 'freshPushes', 'freshReloads', 'freshCompleted']) assert.equal(a[key], 1, key)
+  exactKeys(a, ['heldMs', 'heldWithoutFailure', 'failedTerminals', 'failedByApp', 'exitRejected', 'oldPushes', 'oldReloads', 'oldSendRefusals', 'lateAddedTerminals', 'exitObserved', 'freshQueries', 'freshResumeMatches', 'freshPushes', 'freshReloads', 'freshCompleted'])
+  assert(Number.isSafeInteger(a.heldMs) && a.heldMs >= RELOAD_HELD_MS, 'reload not held past the removed limit')
+  for (const key of ['failedTerminals', 'oldReloads', 'freshQueries', 'freshPushes', 'freshReloads', 'freshCompleted']) assert.equal(a[key], 1, key)
   for (const key of ['oldPushes', 'lateAddedTerminals']) assert.equal(a[key], 0, key)
   assert.equal(a.oldSendRefusals, 2)
-  for (const key of ['failedByApp', 'retiringAtTimeout', 'lateReloadReleased', 'lateResultAttempted', 'retirementEnded', 'freshResumeMatches']) assert.equal(a[key], true, key)
+  for (const key of ['heldWithoutFailure', 'failedByApp', 'exitRejected', 'exitObserved', 'freshResumeMatches']) assert.equal(a[key], true, key)
   const h = value.hostQueue
-  exactKeys(h, ['timeoutMs', 'failedTerminals', 'failedByApp', 'oldPushes', 'oldReloads', 'oldCloses', 'oldReturns', 'failedAtTimeout', 'queuedBeforeExit', 'freshBeforeReturn', 'freshBeforeExit', 'starts', 'resumes', 'freshQueries', 'freshResumeMatches', 'freshReloads', 'freshPushes', 'uniqueUserUuids', 'originalOnce', 'secondOnce', 'thirdOnce', 'ledgerUserTurns', 'freshCompleted', 'lateAddedPushes', 'lateAddedTerminals', 'deliveredMessages', 'ledgerMessages'])
-  assert(Number.isSafeInteger(h.timeoutMs) && h.timeoutMs >= RELOAD_DEADLINE_MS && h.timeoutMs <= RELOAD_DEADLINE_MS + RELOAD_DEADLINE_TOLERANCE_MS)
-  for (const key of ['failedTerminals', 'oldReloads', 'oldCloses', 'oldReturns', 'starts', 'resumes', 'freshQueries']) assert.equal(h[key], 1, key)
-  for (const key of ['oldPushes', 'freshBeforeReturn', 'freshBeforeExit', 'lateAddedPushes', 'lateAddedTerminals']) assert.equal(h[key], 0, key)
-  assert.equal(h.queuedBeforeExit, 2)
-  assert.equal(h.failedAtTimeout, 1)
-  assert.equal(h.failedTerminals, h.failedAtTimeout)
+  exactKeys(h, ['heldMs', 'heldWithoutFailure', 'failedTerminals', 'failedByApp', 'oldPushes', 'oldReloads', 'queuedWhileHeld', 'freshBeforeReturn', 'starts', 'resumes', 'freshQueries', 'freshResumeMatches', 'freshReloads', 'freshPushes', 'uniqueUserUuids', 'originalOnce', 'secondOnce', 'thirdOnce', 'ledgerUserTurns', 'freshCompleted', 'lateAddedPushes', 'lateAddedTerminals', 'deliveredMessages', 'ledgerMessages'])
+  assert(Number.isSafeInteger(h.heldMs) && h.heldMs >= RELOAD_HELD_MS, 'reload not held past the removed limit')
+  for (const key of ['failedTerminals', 'oldReloads', 'starts', 'resumes', 'freshQueries']) assert.equal(h[key], 1, key)
+  for (const key of ['oldPushes', 'freshBeforeReturn', 'lateAddedPushes', 'lateAddedTerminals']) assert.equal(h[key], 0, key)
+  assert.equal(h.queuedWhileHeld, 2)
   assert(Number.isSafeInteger(h.freshPushes) && h.freshPushes >= 1 && h.freshPushes <= DELIVERY_WORDS.length)
   for (const key of ['freshReloads', 'uniqueUserUuids', 'ledgerUserTurns', 'freshCompleted']) assert.equal(h[key], h.freshPushes, key)
   assert.deepEqual(h.deliveredMessages, DELIVERY_WORDS)
   assert.deepEqual(h.ledgerMessages, DELIVERY_WORDS)
-  for (const key of ['failedByApp', 'freshResumeMatches', 'originalOnce', 'secondOnce', 'thirdOnce']) assert.equal(h[key], true, key)
+  for (const key of ['heldWithoutFailure', 'failedByApp', 'freshResumeMatches', 'originalOnce', 'secondOnce', 'thirdOnce']) assert.equal(h[key], true, key)
   exactKeys(value.cleanup, ['handles', 'endedHandles', 'queries', 'closedQueries', 'returnedQueries', 'settledReturns', 'drainedPromptReaders', 'exitedChildren', 'closedPipes', 'registeredHandles', 'allHandlesClosed', 'controlledChildrenExited', 'databaseClosed'])
   for (const key of ['handles', 'endedHandles', 'queries', 'closedQueries', 'returnedQueries', 'settledReturns', 'drainedPromptReaders', 'exitedChildren']) assert.equal(value.cleanup[key], 4, key)
   assert.equal(value.cleanup.closedPipes, 12)
@@ -102,17 +101,17 @@ function checkBehavior(value, mainApp) {
   return value
 }
 
-export const OPS = Object.freeze(['arm', 'status', 'releaseReload', 'releaseRetirement', 'receipt'])
+export const OPS = Object.freeze(['arm', 'status', 'exitCli', 'receipt'])
 export function assertCommand(input) {
   exactKeys(input, ['op'])
   assert(OPS.includes(input.op), 'Reload command refused')
   return input
 }
 export function assertStatus(value) {
-  exactKeys(value, ['schema', 'phase', 'queryCount', 'oldReloads', 'oldCloses', 'oldReturns', 'oldPushes', 'freshPushes', 'failedTerminals', 'completedTerminals', 'retiring', 'arrivalTailChanges'])
-  assert.equal(value.schema, 'brocrew.reload-status.v1')
-  assert(['armed', 'retiring-held', 'reload-released', 'retirement-released', 'complete'].includes(value.phase))
-  for (const key of ['queryCount', 'oldReloads', 'oldCloses', 'oldReturns', 'oldPushes', 'freshPushes', 'failedTerminals', 'completedTerminals', 'arrivalTailChanges']) assert(Number.isSafeInteger(value[key]) && value[key] >= 0 && value[key] <= 4, key)
-  assert.equal(typeof value.retiring, 'boolean')
+  exactKeys(value, ['schema', 'phase', 'queryCount', 'oldReloads', 'oldPushes', 'freshPushes', 'failedTerminals', 'completedTerminals', 'queuedWhileHeld', 'heldMs'])
+  assert.equal(value.schema, 'brocrew.reload-status.v2')
+  assert(['armed', 'reload-held', 'cli-exited', 'complete'].includes(value.phase))
+  for (const key of ['queryCount', 'oldReloads', 'oldPushes', 'freshPushes', 'failedTerminals', 'completedTerminals', 'queuedWhileHeld']) assert(Number.isSafeInteger(value[key]) && value[key] >= 0 && value[key] <= 4, key)
+  assert(Number.isSafeInteger(value.heldMs) && value.heldMs >= 0, 'heldMs')
   return value
 }

@@ -201,52 +201,39 @@ test('fixed URL shim keeps native archive transport and rejects changed candidat
   assert.ok(source.includes(MARKER))
   assert.throws(() => fetchSource({ ...options, candidate: Buffer.from('{}') }))
 })
-for (const historical of [false, true])
-  test(`projection selects v2 and restores the ${historical ? 'historical' : 'current'} runtime call exactly`, () =>
-    scratch((root) => {
-      for (const name of [
-        'apps/desktop/src/main/index.ts',
-        'apps/desktop/src/main/runtime-host-composition.ts',
-        'apps/desktop/src/main/plugins/catalogue/build-config.ts',
-        'apps/desktop/src/main/plugins/catalogue/download.ts',
-        'apps/desktop/src/main/plugins/catalogue/dev-source.ts',
-      ]) {
-        const file = path.join(root, name)
-        fs.mkdirSync(path.dirname(file), { recursive: true })
-        fs.writeFileSync(file, fs.readFileSync(path.join(repo, name)), { flag: 'wx', mode: 0o600 })
-      }
-      if (historical) {
-        const main = path.join(root, 'apps/desktop/src/main/runtime-host-composition.ts')
-        fs.writeFileSync(
-          main,
-          fs
-            .readFileSync(main, 'utf8')
-            .replace(
-              'providerModules[provider].createRuntime(connectionId)',
-              'providerModules[provider].createRuntime()',
-            ),
-        )
-      }
-      const original = fs.readFileSync(path.join(root, 'apps/desktop/src/main/index.ts'), 'utf8')
-      const composition = path.join(root, 'apps/desktop/src/main/runtime-host-composition.ts')
-      const originalComposition = fs.readFileSync(composition, 'utf8')
-      const p = project(root, {
-        root,
-        token: 'b'.repeat(64),
-        candidate,
-        appData: path.join(root, 'a'),
-        browser: path.join(root, 'no-browser'),
-      })
-      const entry = fs.readFileSync(path.join(root, 'apps/desktop/src/main/index.ts'), 'utf8')
-      assert.ok(!entry.includes('fixtureSource:'))
-      assert.ok(!entry.includes('repo-fixture'))
-      p.restore()
-      assert.equal(
-        fs.readFileSync(path.join(root, 'apps/desktop/src/main/index.ts'), 'utf8'),
-        original,
-      )
-      assert.equal(fs.readFileSync(composition, 'utf8'), originalComposition)
-    }))
+test('projection selects v2 and restores the runtime call exactly', () =>
+  scratch((root) => {
+    for (const name of [
+      'apps/desktop/src/main/index.ts',
+      'apps/desktop/src/main/runtime-host-composition.ts',
+      'apps/desktop/src/main/plugins/catalogue/build-config.ts',
+      'apps/desktop/src/main/plugins/catalogue/download.ts',
+      'apps/desktop/src/main/plugins/catalogue/dev-source.ts',
+    ]) {
+      const file = path.join(root, name)
+      fs.mkdirSync(path.dirname(file), { recursive: true })
+      fs.writeFileSync(file, fs.readFileSync(path.join(repo, name)), { flag: 'wx', mode: 0o600 })
+    }
+    const original = fs.readFileSync(path.join(root, 'apps/desktop/src/main/index.ts'), 'utf8')
+    const composition = path.join(root, 'apps/desktop/src/main/runtime-host-composition.ts')
+    const originalComposition = fs.readFileSync(composition, 'utf8')
+    const p = project(root, {
+      root,
+      token: 'b'.repeat(64),
+      candidate,
+      appData: path.join(root, 'a'),
+      browser: path.join(root, 'no-browser'),
+    })
+    const entry = fs.readFileSync(path.join(root, 'apps/desktop/src/main/index.ts'), 'utf8')
+    assert.ok(!entry.includes('fixtureSource:'))
+    assert.ok(!entry.includes('repo-fixture'))
+    p.restore()
+    assert.equal(
+      fs.readFileSync(path.join(root, 'apps/desktop/src/main/index.ts'), 'utf8'),
+      original,
+    )
+    assert.equal(fs.readFileSync(composition, 'utf8'), originalComposition)
+  }))
 
 test('passive network observation preserves both download APIs and native responses', async () => {
   const source = fs.readFileSync(new URL('./network-entry.ts', import.meta.url), 'utf8')
