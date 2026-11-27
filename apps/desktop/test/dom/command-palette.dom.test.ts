@@ -11,19 +11,8 @@ import { channelGap, mount, paintedBackground, parseColor, unmountAll, visible }
 /**
  * # 249 · ⌘K, in an engine that can actually be pressed
  *
- * ⛔ **This file exists because the thing being shipped is a KEY**, and because the key it claims
- * was already answered by two window listeners this dispatch may not edit:
- *
- *  - `RuntimeScreen.vue`'s `onKey`, the `event.key === 'k'` branch → `say('Command palette — not
- *    wired yet.')`
- *  - `ConversationPane.vue:652-658` → **interrupt the running turn**
- *
- * ⚠️ **The second is the dangerous one.** A palette is the first surface in this app that can be
- * open over a live conversation pane, and the pane's own comment says why that matters: *"Escape
- * belongs to it… interrupting the turn as well would make one key do two unrelated things at
- * once."* Every overlay the pane can raise is named in its guard; this one cannot be, so the claim
- * has to hold from the outside. **That is what the `bubbleSpy` below stands in for** — it is a
- * bubble-phase `window` keydown listener, which is exactly what both of those are.
+ * The palette claims its keys before bubble-phase window listeners run. The bubble spy
+ * checks that ordering, including Escape, which can interrupt a running conversation.
  *
  * ⚠️ **Every "the listener saw nothing" assertion is a DELTA, never an absolute**, and the reason is
  * written down in `send-gate.dom.test.ts:273-275`: window listeners from earlier mounts in the same
@@ -57,7 +46,7 @@ const openRow = (
 
 interface Harness {
   navigations: PaletteNavigation[]
-  /** How many keydowns a BUBBLE-phase window listener has seen — the stand-in for both stubs. */
+  /** How many keydowns a BUBBLE-phase window listener has seen. */
   seen: () => number
   unbind: () => void
 }
@@ -221,7 +210,7 @@ function openLive(rows: PaletteOpenRow[]): {
 }
 
 describe('249 · ⌘K claims its key, and only its key', () => {
-  it('⛔ opens on ⌘K — and the bubble listener that would have said "not wired yet" never runs', async () => {
+  it('⛔ opens on ⌘K — and the bubble listener never runs', async () => {
     const h = open()
     expect(find('palette-panel')).toBeNull()
 
@@ -723,8 +712,7 @@ describe('249 · focus, chrome and the one question at a time', () => {
     cmdK()
     await nextTick()
     expect(find('palette-panel')).toBeNull()
-    // ⛔ The key is STILL claimed — otherwise `RuntimeScreen`'s stub would answer this press with
-    // "not wired yet", which is the exact sentence this dispatch removed.
+    // The palette still claims the chord when a dialog blocks it.
     expect(h.seen() - before).toBe(0)
     const said = overlays.toasts.value.at(-1)?.text ?? ''
     expect(said).toContain('Close what is open first')

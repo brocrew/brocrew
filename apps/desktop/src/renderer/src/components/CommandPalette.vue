@@ -29,57 +29,11 @@ import { TAB_STOPS, isLaidOut, tabStopsIn } from '../lib/tab-stops'
 import { useModalDepth } from './OverlayHost.vue'
 
 /**
- * ⌘K — **the palette that used to say "not wired yet"** (249).
+ * The palette listens in the capture phase so Escape closes it before the conversation's
+ * bubble-phase listener can interrupt a running turn.
  *
- * ## ⛔ Why the key is claimed in the CAPTURE phase, which is the whole design
- *
- * ⚠️ **Two window listeners already own keys this surface needs, and neither may be edited.**
- *
- *  - `RuntimeScreen.vue`'s `onKey` — the `event.key === 'k'` branch — answers ⌘K with
- *    `say('Command palette — not wired yet.')`. It is a
- *    bubble-phase `window` listener registered in `onMounted`. A palette that opened while that
- *    line still ran would put a real surface on screen **and** a toast denying it exists — `106`
- *    with both answers at once, which is worse than the stub it replaces.
- *  - `ConversationPane.vue`'s `onKey` answers Escape by ASKING THE TURN TO STOP (`737`: R43's
- *    words). It guards on the four overlays that pane can raise, because — its own words —
- *    *"interrupting the turn as well would
- *    make one key do two unrelated things at once"*. This palette is the first surface in the app
- *    that can be open **over** a live pane, and it is not in that list.
- *
- * ⛔ **So Escape here would close the palette AND ask a running turn to stop.** That is the defect, and it
- * is not hypothetical: `send-gate.dom.test.ts` and `frozen-interrupt.dom.test.ts` both drive that
- * exact binding.
- *
- * ⚑ **A capture-phase listener on `window` runs before every bubble-phase listener on `window`, by
- * the DOM's own ordering rather than by registration order** — so `stopImmediatePropagation()` here
- * is a deterministic claim, not a race against whichever component mounted first. The alternative
- * (register in a child's `onMounted`, which does run before the parent's) works today and would
- * break silently the day a component moved.
- *
- * ⛔ **The claim is narrow, and that is what makes it honest.** Exactly three chords are taken, and
- * only while this component owns them:
- *
- * | chord | when | what |
- * |---|---|---|
- * | ⌘/Ctrl+K | always | open, or close if open |
- * | Escape · ↑ · ↓ · Enter · Tab | only while OPEN | the palette's own contract |
- * | everything else | never | passes through untouched, including ⌘↵ and ⇧⌘↵ |
- *
- * ⚠️ **`223`'s send chords are deliberately NOT bound.** ⌘↵ sends and ⇧⌘↵ interrupts-and-sends
- * (`PromptComposer.vue:61-65, 753-761`); a palette that swallowed either would be `169`'s finding
- * upside down — one affordance gated and the others not. ⌘N is not bound either: `RuntimeScreen`
- * owns it, and a second binding for one action is `076`'s two-buttons-for-one-transition.
- *
- * ## ⚠️ What is left dead in a file this dispatch may not touch
- *
- * `onKey`'s `event.key === 'k'` branch and the `@command="say('Command palette — not wired yet.')"`
- * binding on `<SideRail>`, both in `RuntimeScreen.vue`, are now unreachable — the first because this
- * listener stops the event, the second because `SideRail` no longer emits `command`. Both are two
- * lines the PM deletes at merge; they are named in 249's response for exactly that.
- *
- * ⚠️ **Cited by CONTENT rather than by line**, deliberately: 249 was written against `52d5bc2`
- * (where they are `:822-825` and `:942`) and 248 has since moved both. A line number in a comment
- * that will be wrong the day it merges is the same class of thing as the stub it describes.
+ * ⌘/Ctrl+K always belongs to the palette. Escape, the arrow keys, Enter and Tab are handled
+ * while it is open. The new-conversation and send shortcuts still reach their usual handlers.
  */
 
 const props = defineProps<{
@@ -395,14 +349,7 @@ function onBackdrop(event: MouseEvent): void {
   if (event.target === event.currentTarget) hide()
 }
 
-/**
- * The key claim. See this component's docblock for why it is `capture` and why it is this narrow.
- *
- * ⚠️ **`stopImmediatePropagation` is called for every chord this owns, INCLUDING the ones that do
- * nothing visible** — the ⌘K that only reports a dialog is in the way, and the Tab that is
- * swallowed. A chord half-claimed is the split-gesture defect `169`/`219`/`221` each spent a
- * dispatch on: `RuntimeScreen`'s stub would answer the half this let through.
- */
+/** Claim the palette chord even when a dialog prevents the palette from opening. */
 function onKey(event: KeyboardEvent): void {
   if ((event.metaKey || event.ctrlKey) && (event.key === 'k' || event.key === 'K')) {
     event.preventDefault()
@@ -500,36 +447,12 @@ function onKey(event: KeyboardEvent): void {
   }
 }
 
-/**
- * ⛔ **`onMounted`, not the body of `setup` — and that difference turned `main` RED** (251 §0).
- *
- * ⚠️ **The `desktop` vitest project is SSR: there is no `window` while `setup` runs.** This line
- * used to sit at the top level, which was invisible for exactly as long as nothing server-rendered
- * this component — and then `249` mounted the palette inside `SideRail`, so every SSR test that
- * renders the rail imports it, and `250`'s `idle-truth.render.test.ts` was the first one to. Seven
- * tests died on `ReferenceError: window is not defined` with the failure pointing here and the
- * dispatch pointing at the rail.
- *
- * ⚑ **The capture phase survives the move**, which is the whole reason the comment above exists:
- * capture listeners run before bubble listeners on the same target no matter what order they were
- * registered in, so `RuntimeScreen`'s ⌘K stub is still answered by this panel and not by a toast.
- * And nothing can press a key between `setup` and `mounted` — the two run in the same tick.
- *
- * ⛔ **`ConversationPane.vue:699`, `RuntimeScreen.vue:843` and `OverlayHost.vue:100` are all this
- * shape**, and this was the one that was not.
- */
+// Register on mount so rendering the rail in SSR never accesses window.
 onMounted(() => window.addEventListener('keydown', onKey, { capture: true }))
 onUnmounted(() => window.removeEventListener('keydown', onKey, { capture: true }))
 
 defineExpose({
-  /**
-   * The rail's ⌘K button presses this — one path to opening, whichever gesture asked.
-   *
-   * ⚠️ **`isOpen` was here too and is gone** (found in this dispatch's own review). Nothing called
-   * it, which makes it `217` §9 (c)'s dead prop one layer up — the exact shape this dispatch's own
-   * census asserts against for the rail's retired `command` emit. Shipping one while removing the
-   * other would have been the rule applied to somebody else's code and not to mine.
-   */
+  // The rail button uses the palette's own toggle.
   toggle: (): void => (showing.value ? hide() : show()),
 })
 </script>
