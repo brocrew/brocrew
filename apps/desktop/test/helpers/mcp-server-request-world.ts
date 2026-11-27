@@ -7,14 +7,8 @@ import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
-import {
-  FakeRuntime,
-  FakeProviderSessions,
-  type FakeSessionHandle,
-  type StartOptions,
-  type ResumeOptions,
-  type SessionRef,
-} from '@brobot2/runtime'
+import { type StartOptions, type ResumeOptions, type SessionRef } from '@brobot2/runtime'
+import { FakeRuntime, FakeProviderSessions, type FakeSessionHandle } from '@brobot2/runtime/testing'
 import type { Provider } from '@brobot2/shared'
 import { openDatabase } from '../../src/main/db/connection'
 import { applyMigrations } from '../../src/main/db/migrate'

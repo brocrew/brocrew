@@ -7,11 +7,11 @@ import { fixture, cleanupLifecycleFixtures, deferred } from './plugin-lifecycle-
 import type { BrokerClock } from '../src/main/plugins/tool-broker'
 import { echoBinding } from './helpers/plugin-echo-binding'
 import {
-  FakeRuntime,
   withManagedPluginAttachments,
   type ManagedPluginMcpServer,
   type SessionHandle,
 } from '@brobot2/runtime'
+import { FakeRuntime } from '@brobot2/runtime/testing'
 
 import {
   closes,

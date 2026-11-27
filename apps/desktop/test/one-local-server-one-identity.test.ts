@@ -14,14 +14,13 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
 import {
-  FakeProviderSessions,
-  FakeRuntime,
   capabilitiesFor,
   type ExternalMcpReach,
   type ResumeOptions,
   type SessionRef,
   type StartOptions,
 } from '@brobot2/runtime'
+import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime/testing'
 // ⚑ **The adapter's own two functions, by path** — `two-verbs-one-sentence.test.ts`'s idiom, and
 // for its reason: these are Claude's half and are not on the package's neutral surface.
 import {

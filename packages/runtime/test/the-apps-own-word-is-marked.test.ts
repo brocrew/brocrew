@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import type { RuntimeEvent, SessionRef } from '../src/index'
 import { runtimeEventSchema } from '../src/index'
-import { FakeRuntime } from '../src/fake-runtime'
+import { FakeRuntime } from './fake-runtime'
 import { SessionMachine } from '../src/internal/session-machine'
 
 /**

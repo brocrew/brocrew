@@ -11,13 +11,13 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   AuthUnavailableError,
-  FakeProviderSessions,
   spawnNoWaitClearsOf,
   transientSetupFailureOf,
 } from '@brobot2/runtime'
+import { FakeProviderSessions } from '@brobot2/runtime/testing'
 import { ClaudeRuntime } from '@brobot2/runtime/claude'
 import { CodexRuntime, createSpawnTransportFactory } from '@brobot2/runtime/codex'
-import type { FakeSessionHandle } from '@brobot2/runtime'
+import type { FakeSessionHandle } from '@brobot2/runtime/testing'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'

@@ -1,12 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
-  FakeRuntime,
-  FakeSessionHandle,
   RUNTIME_EVENT_TYPES,
   ResumeError,
   type PermissionDecision,
   type RuntimeEvent,
 } from '../src/index'
+import { FakeRuntime, FakeSessionHandle } from './fake-runtime'
 
 /** Consume a handle's stream into `sink`, optionally auto-answering requests. */
 function consume(

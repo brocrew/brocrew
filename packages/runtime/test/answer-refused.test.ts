@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { AnswerRefused, answerRefusalOf, FakeRuntime } from '../src'
+import { AnswerRefused, answerRefusalOf } from '../src'
+import { FakeRuntime } from './fake-runtime'
 
 /**
  * Refusing an answer is a REASON, not a sentence (085).

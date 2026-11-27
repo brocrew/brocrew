@@ -6,7 +6,7 @@ import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import { ClaudeRuntime, type ClaudeQuery } from '../src/claude/claude-runtime'
 import { AsyncQueue } from '../src/internal/async-queue'
 import type { ManagedPluginDiscovery } from '../src/managed-plugin-observation'
-import { FakeRuntime } from '../src/fake-runtime'
+import { FakeRuntime } from './fake-runtime'
 import {
   withManagedPluginAttachments,
   type ManagedPluginAttachmentSource,
