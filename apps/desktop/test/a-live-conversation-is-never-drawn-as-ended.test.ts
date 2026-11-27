@@ -1,10 +1,10 @@
-import { neutralHostDeps, RecordingSink as WindowSink } from './lib/host-fixture'
+import { neutralHostDeps, RecordingSink as WindowSink, migrationsFolder } from './lib/host-fixture'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FakeProviderSessions, FakeRuntime, type SessionHandle } from '@brobot2/runtime'
+import { type SessionHandle } from '@brobot2/runtime'
+import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime/testing'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
@@ -15,9 +15,6 @@ import {
   type RuntimeEventSink,
 } from '../src/main/runtime/runtime-host'
 import { describeUnavailable } from '../src/main/runtime/session-unavailable'
-
-const here = dirname(fileURLToPath(import.meta.url))
-const migrationsFolder = join(here, '../src/main/db/migrations')
 
 /**
  * # 🔴 421 · what the host says it is DOING with a row, and what a gesture costs

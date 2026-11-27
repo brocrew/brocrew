@@ -1,6 +1,6 @@
 import { describe, expect, expectTypeOf, it } from 'vitest'
 import { z } from 'zod'
-import { FakeRuntime } from '../src/fake-runtime'
+import { FakeRuntime } from './fake-runtime'
 import type {
   ProviderModule,
   ProviderConnectionOperations,

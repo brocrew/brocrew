@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { AuthUnavailableError, FakeRuntime, type AuthState } from '@brobot2/runtime'
+import { AuthUnavailableError, type AuthState } from '@brobot2/runtime'
+import { FakeRuntime } from '@brobot2/runtime/testing'
 import { DEFAULT_CONVERSATION_PROVIDER } from '@brobot2/shared'
 import { modelSetupRequired } from '../src/main/runtime/launch-refusal'
 import type { ModelList } from '../src/shared/model-choice-contracts'

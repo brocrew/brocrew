@@ -14,10 +14,8 @@ import {
   type CodexTransport,
 } from '@brobot2/runtime/codex'
 import {
-  FakeProviderSessions,
   type AgentRuntime,
   type AgentToolAnswer,
-  type FakeSessionHandle,
   type ModelChoice,
   type ProviderRuntimeContext,
   type ResumeOptions,
@@ -25,6 +23,7 @@ import {
   type SessionRef,
   type StartOptions,
 } from '@brobot2/runtime'
+import { FakeProviderSessions, type FakeSessionHandle } from '@brobot2/runtime/testing'
 import type { Provider } from '@brobot2/shared'
 import { CODEX_PROTOCOL_VERSION } from '../../../packages/runtime/src/codex/protocol-version'
 import {

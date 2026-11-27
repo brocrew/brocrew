@@ -3,13 +3,12 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import {
   AuthUnavailableError,
-  FakeRuntime,
-  type FakeSessionHandle,
   type ResumeOptions,
   type RuntimeEvent,
   type SessionRef,
   type StartOptions,
 } from '@brobot2/runtime'
+import { FakeRuntime, type FakeSessionHandle } from '@brobot2/runtime/testing'
 import { CodexRefusedItsSignInError, codexCopyIdentityIn } from '@brobot2/runtime/codex'
 
 type CopiedSignIn = ReturnType<typeof codexCopyIdentityIn>

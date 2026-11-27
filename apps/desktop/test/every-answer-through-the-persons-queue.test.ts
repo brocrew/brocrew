@@ -14,18 +14,16 @@ import { fileURLToPath } from 'node:url'
 import { isProxy } from 'vue'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
-  FakeProviderSessions,
-  FakeRuntime,
   RequestBroker,
   publishedOffer,
   type AgentToolset,
-  type FakeSessionHandle,
   type PermissionDecision,
   type RuntimeEvent,
   type StartOptions,
   type UserInputQuestion,
   type UserInputResponse,
 } from '@brobot2/runtime'
+import { FakeProviderSessions, FakeRuntime, type FakeSessionHandle } from '@brobot2/runtime/testing'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'

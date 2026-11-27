@@ -4,13 +4,11 @@ import type { Options } from '@anthropic-ai/claude-agent-sdk'
 import { describe, expect, it } from 'vitest'
 import {
   AnswerRefused,
-  FakeLaunchGate,
-  FakeProviderSessions,
-  FakeRuntime,
   permissionOutcomeSchema,
   ResumeError,
   type RuntimeEvent,
 } from '../src/index'
+import { FakeLaunchGate, FakeProviderSessions, FakeRuntime } from './fake-runtime'
 import { ClaudeRuntime } from '../src/claude'
 import { CodexRuntime } from '../src/codex'
 import { cancelWith } from '../src/internal/bounded'

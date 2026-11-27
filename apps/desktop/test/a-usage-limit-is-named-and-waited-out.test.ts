@@ -6,7 +6,8 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FakeProviderSessions, type FakeSessionHandle, type StartOptions } from '@brobot2/runtime'
+import { type StartOptions } from '@brobot2/runtime'
+import { FakeProviderSessions, type FakeSessionHandle } from '@brobot2/runtime/testing'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
@@ -26,7 +27,6 @@ import type { Exchange } from '../src/shared/last-exchange'
 import { derivePieces, UNDRIVEN_SENTENCES } from '../src/shared/tasks'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
 import { ProviderDouble, anOpenGate } from './lib/provider-double'
-
 /**
  * # 🔴 F074 — a usage limit is named, with its reset, and what the app would start waits for it
  *

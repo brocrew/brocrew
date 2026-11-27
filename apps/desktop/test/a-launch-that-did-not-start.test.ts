@@ -5,12 +5,8 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import {
-  AuthUnavailableError,
-  FakeLaunchGate,
-  FakeProviderSessions,
-  FakeRuntime,
-} from '@brobot2/runtime'
+import { AuthUnavailableError } from '@brobot2/runtime'
+import { FakeLaunchGate, FakeProviderSessions, FakeRuntime } from '@brobot2/runtime/testing'
 import type { AgentToolAnswer } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'

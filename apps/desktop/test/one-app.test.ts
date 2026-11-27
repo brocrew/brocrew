@@ -2,7 +2,7 @@ import { hostsOverAScratchDatabase, providerConfigOf } from './lib/hosts-over-a-
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { FakeProcessExit, FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
+import { FakeProcessExit, FakeProviderSessions, FakeRuntime } from '@brobot2/runtime/testing'
 import type {
   AgentRuntime,
   ModelChoice,

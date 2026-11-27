@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { FakeRuntime, type FakeSessionHandle } from '@brobot2/runtime'
+import { FakeRuntime, type FakeSessionHandle } from '@brobot2/runtime/testing'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { NULL_SESSION_STORE } from '../src/main/db/session-store'
 import { LimitsReaderLifetime, type LimitsReader } from '../src/main/db/limits-reader-lifetime'

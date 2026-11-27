@@ -10,8 +10,9 @@ import {
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import { FakeProviderSessions } from '@brobot2/runtime'
-import type { AgentToolset, ApprovalMode, FakeSessionHandle } from '@brobot2/runtime'
+import { FakeProviderSessions } from '@brobot2/runtime/testing'
+import type { AgentToolset, ApprovalMode } from '@brobot2/runtime'
+import type { FakeSessionHandle } from '@brobot2/runtime/testing'
 import type { Provider } from '@brobot2/shared'
 
 import type { TranscriptEvent } from '../src/shared/conversation-events'

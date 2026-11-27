@@ -10,7 +10,7 @@ import {
 } from './lib/host-fixture'
 import { forestOf } from './lib/forest-of-host'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
+import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime/testing'
 import type { AgentToolset, StartOptions } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import type { AppDatabase } from '../src/main/db/connection'

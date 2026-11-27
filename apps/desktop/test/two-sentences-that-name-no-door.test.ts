@@ -21,7 +21,7 @@ import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 
-import { FakeProviderSessions } from '@brobot2/runtime'
+import { FakeProviderSessions } from '@brobot2/runtime/testing'
 import type { AgentToolAnswer, AgentToolset } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 

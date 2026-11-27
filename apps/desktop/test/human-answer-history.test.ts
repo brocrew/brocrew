@@ -9,7 +9,7 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { HUMAN_FINAL_TERM, HUMAN_CONTEXT_TERM } from '../src/main/db/human-answer-index'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
-import { FakeRuntime } from '@brobot2/runtime'
+import { FakeRuntime } from '@brobot2/runtime/testing'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 
 import {
