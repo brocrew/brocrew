@@ -5,13 +5,11 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
-  FakeProcessExit,
-  FakeProviderSessions,
-  FakeRuntime,
   type AgentRuntime,
   type ProviderRuntimeContext,
   type SessionHandle,
 } from '@brobot2/runtime'
+import { FakeProcessExit, FakeProviderSessions, FakeRuntime } from '@brobot2/runtime/testing'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'

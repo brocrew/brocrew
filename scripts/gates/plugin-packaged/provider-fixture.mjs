@@ -1,7 +1,7 @@
 // Gate-only scripted provider. It consumes the real per-launch broker route, never a plugin credential.
 import fs from 'node:fs'
 import path from 'node:path'
-import { FakeRuntime } from '../../../packages/runtime/src/fake-runtime.ts'
+import { FakeRuntime } from '../../../packages/runtime/test/fake-runtime.ts'
 import { Client } from '../../../apps/desktop/node_modules/@modelcontextprotocol/sdk/dist/esm/client/index.js'
 import { StreamableHTTPClientTransport } from '../../../apps/desktop/node_modules/@modelcontextprotocol/sdk/dist/esm/client/streamableHttp.js'
 import { managedPluginHttpServers } from '../../../packages/runtime/src/managed-plugin-mcp.ts'

@@ -2,14 +2,9 @@ import { addressedGive } from './lib/give-fixture'
 import { rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FakeProviderSessions } from '@brobot2/runtime'
-import type {
-  AgentToolAnswer,
-  FakeRuntime,
-  FakeSessionHandle,
-  RuntimeEvent,
-  StartOptions,
-} from '@brobot2/runtime'
+import { FakeProviderSessions } from '@brobot2/runtime/testing'
+import type { AgentToolAnswer, RuntimeEvent, StartOptions } from '@brobot2/runtime'
+import type { FakeRuntime, FakeSessionHandle } from '@brobot2/runtime/testing'
 import type { Provider } from '@brobot2/shared'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { recordForwardedQuestion } from './lib/forwarded-question-fixture'

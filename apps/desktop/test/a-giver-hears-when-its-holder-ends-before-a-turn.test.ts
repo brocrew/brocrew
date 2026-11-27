@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
-import { FakeSessionHandle } from '@brobot2/runtime'
+import { FakeSessionHandle } from '@brobot2/runtime/testing'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { answerOn } from './helpers/call-tool'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'

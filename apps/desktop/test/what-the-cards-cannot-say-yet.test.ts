@@ -26,7 +26,7 @@ import type {
 import type { UserTurnEvent } from '../src/shared/human-answer-contracts'
 import type { QueuedMessageDisclosure } from '../src/shared/runtime-ipc'
 
-import { FakeProviderSessions, FakeRuntime, type FakeSessionHandle } from '@brobot2/runtime'
+import { FakeProviderSessions, FakeRuntime, type FakeSessionHandle } from '@brobot2/runtime/testing'
 import type { AgentToolset, ResumeOptions, SessionRef, StartOptions } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 

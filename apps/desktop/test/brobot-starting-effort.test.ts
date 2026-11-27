@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, it } from 'vitest'
-import { FakeProviderSessions, type ModelChoice } from '@brobot2/runtime'
+import { type ModelChoice } from '@brobot2/runtime'
+import { FakeProviderSessions } from '@brobot2/runtime/testing'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 import { CapturingRuntime, F093World } from './lib/f093-host'
 

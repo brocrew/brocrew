@@ -1,13 +1,13 @@
-import { FakeRuntime, type FakeProviderSessions } from '@brobot2/runtime'
+import { FakeRuntime, type FakeProviderSessions } from '@brobot2/runtime/testing'
 import type {
   AgentToolset,
-  FakeSessionHandle,
   ResumeOptions,
   RuntimeEvent,
   SessionHandle,
   SessionRef,
   StartOptions,
 } from '@brobot2/runtime'
+import type { FakeSessionHandle } from '@brobot2/runtime/testing'
 import type { Provider } from '@brobot2/shared'
 
 /**

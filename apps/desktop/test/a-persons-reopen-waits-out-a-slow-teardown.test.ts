@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FakeRuntime } from '@brobot2/runtime'
+import { FakeRuntime } from '@brobot2/runtime/testing'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import type { AppDatabase } from '../src/main/db/connection'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'

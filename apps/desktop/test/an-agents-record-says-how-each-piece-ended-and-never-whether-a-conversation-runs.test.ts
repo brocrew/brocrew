@@ -24,8 +24,9 @@ import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 
-import { FakeProviderSessions } from '@brobot2/runtime'
-import type { AgentToolset, ApprovalMode, FakeSessionHandle } from '@brobot2/runtime'
+import { FakeProviderSessions } from '@brobot2/runtime/testing'
+import type { AgentToolset, ApprovalMode } from '@brobot2/runtime'
+import type { FakeSessionHandle } from '@brobot2/runtime/testing'
 import type { Provider } from '@brobot2/shared'
 import { seedHistoricalSuccessor } from './lib/historical-replacement'
 

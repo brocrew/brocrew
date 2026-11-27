@@ -1,4 +1,5 @@
-import { FakeRuntime, type FakeSessionHandle, type StartOptions } from '@brobot2/runtime'
+import { type StartOptions } from '@brobot2/runtime'
+import { FakeRuntime, type FakeSessionHandle } from '@brobot2/runtime/testing'
 import type { WebContents } from 'electron'
 import { executeRuntimeCommand, webContentsSink } from '../../src/main/runtime/ipc'
 import type { RuntimeHost } from '../../src/main/runtime/runtime-host'

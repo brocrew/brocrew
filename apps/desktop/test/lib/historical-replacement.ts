@@ -1,4 +1,5 @@
-import type { FakeProviderSessions, SessionRef } from '@brobot2/runtime'
+import type { SessionRef } from '@brobot2/runtime'
+import type { FakeProviderSessions } from '@brobot2/runtime/testing'
 import type { SessionStore } from '../../src/main/db/session-store'
 import { newQueuedMessageId } from '../../src/main/runtime/queued-message'
 
