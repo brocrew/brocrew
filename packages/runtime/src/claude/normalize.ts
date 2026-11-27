@@ -538,6 +538,11 @@ function subAgentEvent(
 
   if (subtype === 'task_started') {
     const title = readString(message, 'description')
+    const prompt = readString(message, 'prompt')
+    // A background command's notification resumes an ended sub-agent as a repeat start whose prompt
+    // is that notification. It is not what the sub-agent was asked, so the earlier input stays.
+    const end = prompt.indexOf(NOTICE_END)
+    const resumed = NOTICE.test(prompt) && end > 0 && !prompt.slice(end + NOTICE_END.length).trim()
     return {
       type: 'sub_agent',
       phase: 'started',
@@ -545,11 +550,9 @@ function subAgentEvent(
       run:
         background.runFor(parentToolCallId) ??
         nativeRun('agent', {
-          input: agentInput(
-            readString(message, 'prompt') || title,
-            kind,
-            readString(message, 'model'),
-          ),
+          input: resumed
+            ? undefined
+            : agentInput(prompt || title, kind, readString(message, 'model')),
         }),
       ...(title ? { title } : {}),
     }
@@ -1152,6 +1155,11 @@ export class ClaudeBillingWatch {
 }
 
 const STOPPED: ReadonlySet<string> = new Set(['aborted_streaming', 'aborted_tools'])
+
+// A prompt that is only Claude's notification block: the tag and its task id first, and nothing but
+// whitespace after the first closing tag.
+const NOTICE = /^<task-notification>\s*<task-id>[^<]*<\/task-id>/
+const NOTICE_END = '</task-notification>'
 
 export function claudeResultOutcome(
   message: SDKMessage,
