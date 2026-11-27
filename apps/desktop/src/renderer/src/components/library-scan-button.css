@@ -1,0 +1,20 @@
+/* ⛔ Blue, not amber (080). Checking the homes is work in flight, not a question waiting on the
+   person — and it is a secondary control, so it borrows the accent's quiet ramp
+   rather than the filled CTA the Import button uses. */
+.scan {
+  flex: 0 0 auto;
+  border-color: var(--accent-border);
+  background: transparent;
+  color: var(--accent-text-soft);
+  cursor: pointer;
+  font-size: var(--type-small);
+}
+
+.scan:hover:not(:disabled) {
+  background: var(--accent-fill);
+}
+
+.scan:disabled {
+  color: var(--faint);
+  cursor: default;
+}

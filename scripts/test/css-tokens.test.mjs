@@ -70,6 +70,7 @@ function mutate(file, from, to) {
 /** Draws the fill of the sub-agent popup and of the workflow output document. */
 const FRAME = 'components/DocumentViewerFrame.vue'
 const LIBRARY = 'components/SessionLibrary.vue'
+const EMPTY_STATE = 'components/LibraryEmptyState.vue'
 
 /* -------------------------------------------------------------- the real tree */
 
@@ -336,7 +337,7 @@ describe('raw style values outside the token file', () => {
 
   it('⛔ a literal border width put back into a real component is caught', () => {
     const mutated = mutate(
-      LIBRARY,
+      EMPTY_STATE,
       'border: var(--border-width) solid var(--line);',
       'border: 1px solid var(--line);',
     )
@@ -344,12 +345,12 @@ describe('raw style values outside the token file', () => {
       rawValueFindings(mutated)
         .filter((f) => f.family === 'border')
         .map((f) => f.file),
-    ).toEqual([LIBRARY])
+    ).toEqual([EMPTY_STATE])
   })
 
   it('…and the same literal marked raw, with its reason, passes', () => {
     const mutated = mutate(
-      LIBRARY,
+      EMPTY_STATE,
       'border: var(--border-width) solid var(--line);',
       'border: 1px solid var(--line); /* raw: a test of the mark */',
     )

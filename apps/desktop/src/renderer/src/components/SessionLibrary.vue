@@ -1,174 +1,25 @@
 <script lang="ts">
 import type { LibraryEntry } from '../../../shared/runtime-ipc'
-import { A_PROVIDER_FOLDER, ALL_PROVIDER_FOLDERS } from '../../../shared/runtime-ipc'
-import { sameLocalDay } from '../../../shared/local-time'
+import { ALL_PROVIDER_FOLDERS } from '../../../shared/runtime-ipc'
 
-/**
- * Three rules of this surface, as functions rather than as template expressions (104).
- *
- * They are here — a plain block above `<script setup>`, the same shape `NewConversation` uses for
- * `blockingGroupShows` — because each of them is a claim the surface makes about honesty, and a
- * claim buried in a `v-if` can only be tested by mounting something that happens to reach it. As
- * exports they can be asserted directly, in both directions, without a fixture.
- */
-
-/**
- * **Whether the list is a window onto something larger** (104's 200-row truth).
- *
- * `matched` is counted over the WHOLE library before `.slice(offset, offset + limit)`
- * (`session-library.ts`), so this compares what is on screen against what the query actually found
- * — not against `counts.total`, which is every conversation and would claim a truncation on every
- * search that narrowed anything.
- *
- * ⚠️ Silent when they are equal. A note that appeared at 179 conversations, where nothing is
- * truncated, would train the reader to ignore it by the time it meant something.
- */
-export function windowNoteShows(page: { shown: number; matched: number }): boolean {
-  return page.shown < page.matched
-}
-
-/**
- * **What the note offers as the way past the window** (121, extending 105's two-way version).
- *
- * Four states, because there are two independent axes and collapsing them loses the advice. "Search
- * to reach the rest", read by somebody who has already searched, is advice to do the thing they
- * did; "Narrow the search", read by somebody who has narrowed by facet and typed nothing, names a
- * box they are not using. Each combination is told what would actually help.
- */
-export function windowNoteCta(state: { searching: boolean; filtered: boolean }): string {
-  if (state.filtered && state.searching) return 'Narrow the filters or search'
-  if (state.filtered) return 'Narrow the filters'
-  return state.searching ? 'Narrow the search' : 'Search'
-}
-
-/**
- * **Which part of the surface declares that this list is narrowed** (121, `120` §6).
- *
- * ⛔ *"Silence is safe only when the list is unfiltered AND complete."* That rule is about the
- * SURFACE, not about the note: the note is silent whenever nothing is truncated, and in the
- * filtered-and-complete case the sticky `N match · Clear all` carries the fact instead. So the
- * four states of `120`'s table are three answers, and exactly one of them is silence.
- *
- * ⚠️ **This DECIDES the note — see `truncated`.** It answers which surface is the one that would
- * otherwise be missing: `'window-note'` means the note speaks (the sticky count is there too
- * whenever a filter is on, and is not this function's business), `'pinned-count'` means the note
- * has nothing to report and the badge is carrying it alone, and `'nothing-to-declare'` is the one
- * state where neither is needed.
- *
- * `matched` on both sides, counted main-side before the slice, which is why *"200 of 200"* on a
- * library of two thousand is not a sentence this surface can produce.
- */
-export function narrowingDeclaredBy(state: {
-  shown: number
-  matched: number
-  filtered: boolean
-}): 'window-note' | 'pinned-count' | 'nothing-to-declare' {
-  if (windowNoteShows(state)) return 'window-note'
-  return state.filtered ? 'pinned-count' : 'nothing-to-declare'
-}
-
-/**
- * 🔴 **What an empty result may NOT claim to have looked at** (329 §4.4).
- *
- * ## The contradiction
- *
- * `302` found the reopen band arguing with the search above it; `301` fixed that by making the band
- * say which question it answers. ⚑ **That is the right instrument, and it was applied one sentence
- * too narrowly.** A miss still said *"No title, first message or working directory across your 2,696
- * conversations contains that"* while the same screen said *"67 could not be read"* a few inches
- * below. A search cannot claim completeness over records it could not open.
- *
- * ## The arithmetic, which is the part worth getting right
- *
- * `counts.total` is `entries.length` and `entries` is built from `discovery.found` merged with our
- * own rows; `skippedTotal` is `discovery.skipped.length`, and a skipped path never becomes an entry.
- * ⛔ **So the sentence was never self-contradictory — it was self-consistent and still overclaiming**,
- * because the reader has no way to know that "your N conversations" excludes a set the same page
- * names.
- *
- * ⚠️ **Two things this must therefore NOT say.**
- *  - ⛔ Not *"another N"*, *"N more"*, or anything of the form `total + skipped = your library`. The
- *    two sets are **not disjoint**: a row we recorded earlier whose provider file is now skipped is
- *    emitted from the second loop AND counted in `skippedTotal`.
- *  - ⛔ Not *"N conversations could not be read"*. `skippedTotal` counts SKIP RECORDS, and one of them
- *    (*"its state database could not be read"*) stands for a whole folder whose conversations were
- *    never enumerated. The number on screen is a count of entries, so this points at it in the words
- *    it already wears rather than recasting it into a population.
- *
- * ⚑ **The shape is `command-palette.ts`'s `searchedNote`** (249 §2), which has said the same thing
- * about the same kind of gap since it shipped: *"The closed conversations could not be read, so none
- * of them were searched."* Name the excluded set, and state the consequence for the search.
- *
- * ⛔ **Silent when nothing was skipped**, which is 106's rule and not caution: a scope disclaimer on
- * a library that read everything is a sentence about a hazard that is not there.
- *
- * ## 🔴 Two corrections this sentence needed before it was true (found reviewing 329's own diff)
- *
- * ⛔ **It said *"they are listed at the foot of this page"*, and the list is capped at fifty.**
- * `readLibrary` sends `skipped: discovery.skipped.slice(0, MAX_SKIPPED_REPORTED)` beside the
- * uncapped `skippedTotal`, and the foot itself prints *"…and N more not listed here"* four elements
- * below. On the machine this dispatch was written against — 67 skipped — the sentence added to stop
- * the page overclaiming carried an overclaim of its own, contradicted on the same screen. ⚑
- * **COUNTED, not listed**: the `<summary>` always carries the untruncated total, so that is true at
- * every size and still points the reader at where to look.
- *
- * ⚠️ **And the verb belongs to the gesture.** `filtered` wins over `searching` in the template, so
- * this sentence renders on a screen produced by a facet press with an empty box — where
- * `matches(entry, '')` short-circuits and no search runs at all. `windowNoteCta` three functions
- * above already takes the gesture as a parameter for exactly this reason; so does this.
- */
-export function searchScopeNote(
-  page: { skippedTotal: number } | null,
-  gesture: { searching: boolean },
-): string | null {
-  if (page === null || page.skippedTotal <= 0) return null
-  // ⛔ Off `searching` rather than off which BRANCH is drawn: a person who typed *and* filtered gets
-  // the filtered branch, and a search really did run for them.
-  const what = gesture.searching ? 'was searched' : 'was narrowed by these filters'
-  return (
-    `Nothing in the ${page.skippedTotal} that could not be read ${what} — they are counted at ` +
-    'the foot of this page.'
-  )
-}
-
+export {
+  narrowingDeclaredBy,
+  recencyOf,
+  searchScopeNote,
+  windowNoteCta,
+  windowNoteShows,
+} from '../lib/library-page-notes'
 export { originChipOf } from './SessionLibraryRow.vue'
-
-export type Recency = 'today' | 'week' | 'older'
-
-/**
- * Which band of the recency list a row belongs to — a browse aid over a field already on the wire.
- *
- * "Today" is the calendar day rather than the last 24 hours, because that is what the word means to
- * the person reading it: a conversation from 9pm yesterday is not "today" at 10am, and a rule that
- * said it was would be arguing with the clock on their wall — ⚑ the Mac's calendar, which is that
- * clock's (D-031).
- */
-export function recencyOf(at: number, now: number): Recency {
-  if (sameLocalDay(at, now)) return 'today'
-  return now - at < 7 * 24 * 60 * 60 * 1000 ? 'week' : 'older'
-}
 </script>
 
 <script setup lang="ts">
 import ProviderLabel from './ProviderLabel.vue'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import type {
-  AgentIdentity,
-  ImportedFromHome,
-  LibraryFilters,
-  LibraryPage,
-  RebuiltLedger,
-} from '../../../shared/runtime-ipc'
-import {
-  agentName,
-  BUNDLE_SUFFIX,
-  LIBRARY_QUERY_MAX,
-  MAX_PATH_CHARS,
-} from '../../../shared/runtime-ipc'
-import { archiveConversation, restoreConversation } from '../lib/archive-and-delete'
-import { useBundleImport } from '../lib/bundle-import'
-import { scanSummary, useHomeScan } from '../lib/home-scan'
+import type { AgentIdentity, LibraryFilters, LibraryPage } from '../../../shared/runtime-ipc'
+import { agentName, LIBRARY_QUERY_MAX } from '../../../shared/runtime-ipc'
+import { useHomeScan } from '../lib/home-scan'
 import { useClientApi } from '../client-provider/injection'
+import { useLibraryRowActions } from '../composables/useLibraryRowActions'
 import { useProviderNames } from '../composables/useProviderNames'
 import {
   NO_FILTERS,
@@ -178,8 +29,19 @@ import {
   withoutConstraint,
   type Constraint,
 } from '../lib/library-filters'
+import {
+  ago,
+  narrowingDeclaredBy,
+  recencyOf,
+  searchScopeNote,
+  windowNoteCta,
+  type Recency,
+} from '../lib/library-page-notes'
 import { readableError } from '../lib/session-record'
 import FacetBar from './FacetBar.vue'
+import LibraryBundleRestore from './LibraryBundleRestore.vue'
+import LibraryEmptyState from './LibraryEmptyState.vue'
+import LibrarySourceGuide from './LibrarySourceGuide.vue'
 import ResumableSessions from './ResumableSessions.vue'
 import SessionLibraryRow from './SessionLibraryRow.vue'
 /**
@@ -277,22 +139,25 @@ const CHECK_HOMES = 'Check homes'
 const selectedClientApi = useClientApi()
 const nameOfProvider = useProviderNames(selectedClientApi)
 const homeScan = useHomeScan(selectedClientApi.sessions)
-/**
- * The outcome of the last import, keyed by `entry.id` — which is the PROVIDER's identity and does
- * not change when the conversation becomes one we hold. It used to be our row id, which is null
- * until the import lands: the key moved at exactly the moment the outcome arrived, so a successful
- * import silently dropped its own confirmation while a failed one kept it.
- */
-type LibraryOutcome = ImportedFromHome & { goneProvider?: LibraryEntry['provider'] }
-const outcomes = ref<Record<string, LibraryOutcome>>({})
-/** Which rows have an import in flight, so a row cannot be pressed twice into the same queue. */
-const importing = ref<Record<string, boolean>>({})
-/**
- * The same, for a rebuild (065) — a SECOND map rather than one shared "busy" flag, because a row can
- * legitimately be offered both and they are different questions: import brings the bytes in, rebuild
- * re-reads the bytes already here.
- */
-const rebuilding = ref<Record<string, boolean>>({})
+const {
+  outcomes,
+  importing,
+  rebuilding,
+  bringingBack,
+  restoreRefused,
+  archiving,
+  archiveRefused,
+  importEntry,
+  rebuildEntry,
+  archiveEntry,
+  restoreEntry,
+  outcomeNote,
+} = useLibraryRowActions({
+  api: selectedClientApi,
+  nameOfProvider,
+  reload: load,
+  archived: (conversations) => emit('archived', conversations),
+})
 
 /**
  * Which read the list is showing.
@@ -373,171 +238,7 @@ watch([query, filters], () => {
 
 onMounted(() => void load())
 // A pending keystroke must not fire into a component that is gone.
-onUnmounted(() => {
-  window.clearTimeout(debounce)
-  // The freshness clock, which would otherwise keep waking a component that is gone.
-  if (ticking !== undefined) window.clearInterval(ticking)
-})
-
-/**
- * Import one conversation out of a provider home.
- *
- * Whatever comes back is shown as itself. "Already imported" is an outcome the host names, not a
- * failure — a row that reported it as an error would send someone looking for a bug in a working
- * import.
- */
-async function importEntry(entry: LibraryEntry): Promise<void> {
-  if (entry.providerSessionId === null || importing.value[entry.id]) return
-  importing.value = { ...importing.value, [entry.id]: true }
-  try {
-    const sessions = selectedClientApi.sessions
-    if (!sessions) throw new Error('Session library is unavailable')
-    outcomes.value = {
-      ...outcomes.value,
-      [entry.id]: await sessions.importUserHomeSession({
-        provider: entry.provider,
-        providerSessionId: entry.providerSessionId,
-      }),
-    }
-    // Re-read so the row's own state — imported, readable — comes from the store rather than from
-    // what the button assumed the press would do.
-    await load()
-  } catch (cause) {
-    outcomes.value = {
-      ...outcomes.value,
-      [entry.id]: {
-        outcome: 'unreadable',
-        sessionId: null,
-        readable: false,
-        note: readableError(cause),
-      },
-    }
-  } finally {
-    importing.value = { ...importing.value, [entry.id]: false }
-  }
-}
-
-/**
- * Rebuild one conversation's transcript from its provider's file (065).
- *
- * Offered only where the contract says it is worth offering — see {@link behind}. The row re-reads
- * itself afterwards for the same reason the import does: what state it ended in is the store's to
- * say, not the button's to assume.
- */
-async function rebuildEntry(entry: LibraryEntry): Promise<void> {
-  if (entry.recordId === null || rebuilding.value[entry.id]) return
-  rebuilding.value = { ...rebuilding.value, [entry.id]: true }
-  const originalProvider = entry.provider
-  try {
-    const sessions = selectedClientApi.sessions
-    if (!sessions) throw new Error('Session library is unavailable')
-    const result = await sessions.rebuildLedger({ sessionId: entry.recordId })
-    outcomes.value = {
-      ...outcomes.value,
-      [entry.id]: {
-        // The rebuild's own words, mapped onto the same row surface the import already uses rather
-        // than a second one beside it.
-        //
-        // ⚠️ **Three buckets, not two** (review). Everything-but-success used to land on
-        // `unreadable`, which this surface paints in warning colour — so "BroBot2 is shutting down,
-        // so nothing was started" arrived looking like a fault, and a user who read the sentence and
-        // then saw the colour would believe the colour. Only the endings where something actually
-        // did not work are warned about; the benign ones borrow `up-to-date`, which is what the
-        // import path already uses for "you already have this".
-        outcome: rebuildOutcome(result.outcome),
-        sessionId: entry.recordId,
-        readable: result.status?.present ?? false,
-        note: rebuildNote(result),
-        ...(result.outcome === 'gone' ? { goneProvider: originalProvider } : {}),
-      },
-    }
-    await load()
-  } catch (cause) {
-    outcomes.value = {
-      ...outcomes.value,
-      [entry.id]: {
-        outcome: 'unreadable',
-        sessionId: entry.recordId,
-        readable: false,
-        note: readableError(cause),
-      },
-    }
-  } finally {
-    rebuilding.value = { ...rebuilding.value, [entry.id]: false }
-  }
-}
-
-/**
- * Which of this surface's three tones an ending deserves.
- *
- * `imported` reads as success, `up-to-date` as ordinary, `unreadable` as a warning. The split is by
- * *did something go wrong*, not by *did it rebuild*: a refusal during shutdown and a session that is
- * already whole are both the system working, and colouring them like a failure would contradict the
- * sentence printed beside them.
- */
-function rebuildOutcome(outcome: RebuiltLedger['outcome']): ImportedFromHome['outcome'] {
-  switch (outcome) {
-    case 'imported':
-      return 'imported'
-    case 'still-writing':
-      return 'still-writing'
-    case 'skipped':
-    case 'recorded':
-    case 'in-use':
-    case 'refused':
-    case 'stopped':
-    case 'superseded':
-      // ⛔ **`superseded` reads as ordinary and NOT as a failure** (293 §4). Another writer promoted
-      // a different generation from the same file, so the conversation the reader is looking at
-      // is whole — this pass simply lost the flip, which is the system working.
-      return 'up-to-date'
-    case 'failed':
-    case 'nothing-readable':
-    case 'unknown-session':
-    case 'gone':
-      return 'unreadable'
-  }
-}
-
-function goneNote(name: string): string {
-  return `${name}'s file for this conversation is gone, so it can't be rebuilt.`
-}
-
-function outcomeNote(outcome: LibraryOutcome | undefined): string | undefined {
-  return outcome?.goneProvider === undefined
-    ? outcome?.note
-    : goneNote(nameOfProvider(outcome.goneProvider) ?? 'The provider')
-}
-
-/** One line per ending, and none of them is "error". See {@link RebuiltLedger}. */
-function rebuildNote(result: RebuiltLedger): string {
-  switch (result.outcome) {
-    case 'imported':
-      return 'Read again from its file.'
-    case 'skipped':
-      return 'Nothing to rebuild.'
-    case 'nothing-readable':
-      return 'Its file holds no readable conversation, so nothing was replaced.'
-    case 'still-writing':
-      return 'Still being written. Try again later.'
-    case 'gone':
-      return goneNote('The provider')
-    case 'stopped':
-      return 'Stopped part-way. The previous transcript is untouched; try again.'
-    case 'in-use':
-      return 'Open now; rebuild after closing.'
-    case 'recorded':
-      return 'Keeping the fuller recorded transcript.'
-    case 'refused':
-      return 'BroCrew is shutting down, so nothing was started.'
-    case 'unknown-session':
-      return 'There is no record of that conversation here any more.'
-    case 'superseded':
-      return 'Rebuilt elsewhere just now.'
-    case 'failed':
-      return `It could not be rebuilt: ${result.status?.failure ?? 'unknown'}. The previous transcript is untouched.`
-  }
-}
+onUnmounted(() => window.clearTimeout(debounce))
 
 const entries = computed(() => page.value?.entries ?? [])
 const counts = computed(() => page.value?.counts ?? null)
@@ -554,71 +255,6 @@ const archivedOnly = computed({
 /** Delete is offered on every conversation this app records; the sheet it opens does the asking. */
 function askToDelete(entry: LibraryEntry): void {
   if (entry.recordId !== null) emit('delete', entry.recordId)
-}
-
-/** A restore in flight, and main's words when it refused one, by row. */
-const bringingBack = ref<Record<string, boolean>>({})
-const restoreRefused = ref<Record<string, string>>({})
-
-/** Rows whose archive is under way, and what main said when it refused one. */
-const archiving = ref<Record<string, boolean>>({})
-const archiveRefused = ref<Record<string, string>>({})
-
-/** Archive a recorded conversation and every helper below it, from its row. */
-async function archiveEntry(entry: LibraryEntry): Promise<void> {
-  if (entry.recordId === null || archiving.value[entry.id]) return
-  archiving.value = { ...archiving.value, [entry.id]: true }
-  archiveRefused.value = Object.fromEntries(
-    Object.entries(archiveRefused.value).filter(([id]) => id !== entry.id),
-  )
-  try {
-    const outcome = await archiveConversation(
-      {
-        archiveConversation: (input) => {
-          const sessions = selectedClientApi.sessions
-          if (!sessions) throw new Error('Session library is unavailable')
-          return sessions.archiveConversation(input)
-        },
-      },
-      entry.recordId,
-    )
-    if (!outcome.done) {
-      archiveRefused.value = { ...archiveRefused.value, [entry.id]: outcome.refusal }
-      return
-    }
-    emit('archived', outcome.conversations)
-    await load()
-  } finally {
-    archiving.value = { ...archiving.value, [entry.id]: false }
-  }
-}
-
-/** Bring an archived conversation and its archived tree back to the lists. */
-async function restoreEntry(entry: LibraryEntry): Promise<void> {
-  if (entry.recordId === null || bringingBack.value[entry.id]) return
-  bringingBack.value = { ...bringingBack.value, [entry.id]: true }
-  restoreRefused.value = Object.fromEntries(
-    Object.entries(restoreRefused.value).filter(([id]) => id !== entry.id),
-  )
-  try {
-    const outcome = await restoreConversation(
-      {
-        restoreConversation: (input) => {
-          const sessions = selectedClientApi.sessions
-          if (!sessions) throw new Error('Session library is unavailable')
-          return sessions.restoreConversation(input)
-        },
-      },
-      entry.recordId,
-    )
-    if (!outcome.done) {
-      restoreRefused.value = { ...restoreRefused.value, [entry.id]: outcome.refusal }
-      return
-    }
-    await load()
-  } finally {
-    bringingBack.value = { ...bringingBack.value, [entry.id]: false }
-  }
 }
 
 /**
@@ -762,94 +398,6 @@ async function checkHomes(): Promise<void> {
  */
 const scanError = ref<string | null>(null)
 
-/**
- * # ⛔ Bringing a bundle back — the return half of Export (214 §1, from 213 finding 1)
- *
- * `213`, after an hour: *"Export succeeded and BroBot described it as a self-contained copy. The
- * visible Import actions only import provider-history messages; there was no bundle/file import
- * action or picker anywhere in the Sessions UI."* ⛔ **Its verdict was that this is what stops
- * BroBot being a durable workbench**, and `011`/`027` had already proved the bytes were right.
- *
- * ⚠️ **A field AND a picker, which is 076 §3's shape** and not a hedge. The picker is for the file
- * you just exported — main defaults the dialog to the app's own exports directory. The field is for
- * the one somebody sent you, which is the case the whole feature is for: a path out of a chat
- * window is pasted, not browsed to. `NewConversation`'s cwd control is the same pair for the same
- * reason, and its typed half is the one this app's own smoke can drive.
- */
-const { bundlePath, restoring, restored, restoreBundle } = useBundleImport(selectedClientApi, load)
-
-async function chooseBundle(): Promise<void> {
-  const desktop = selectedClientApi.desktop
-  if (!desktop) return
-  const picked = await desktop.chooseBundle()
-  // Null is CANCELLED, which is not a failure and must not clear what was already typed.
-  if (picked === null) return
-  bundlePath.value = picked
-  restored.value = null
-}
-
-/**
- * What the last restore did, in one sentence.
- *
- * ⚑ **"already here" is its own sentence, not a quieter "restored"** (`194` H4) — and since 236 §1
- * it is THREE sentences, because *"you already have this"* was being said about files that were
- * newer than what we had. The host compares now; this only reads the answer. See
- * `RuntimeHost.importBundleFile` for why the newer half is reported rather than taken in.
- */
-const restoreNote = computed<string | null>(() => {
-  const result = restored.value
-  if (result === null) return null
-  if (!result.ok) return result.reason
-  if (result.behind) {
-    // ⛔ **The numbers, in the sentence.** *"A newer copy exists"* with no figures is a claim the
-    // reader cannot check or act on; `231` #7's objection is to a sentence that was confidently
-    // wrong, and a vaguely-worded true one would be the same failure with better manners.
-    const { held, inFile } = result.behind
-    return (
-      `This file is NEWER than the copy you have — it holds ${inFile} entries to your ${held}, ` +
-      `${inFile - held} of them yours does not. Nothing was written: BroCrew matches a bundle by ` +
-      'the provider’s own id and cannot yet take a second life of one conversation into the copy ' +
-      'it already has.'
-    )
-  }
-  return result.already
-    ? 'You already have this conversation.'
-    : `Restored ${result.events} entries from ${result.provider}. It ran in ${result.cwd}, so it is here to read rather than to carry on — there is no Resume for it.`
-})
-
-const scanNote = computed(() => scanSummary(homeScan.lastScan.value))
-/**
- * When the last scan landed, in the same relative words the rows use.
- *
- * Null until one has, and the note is gated on BOTH — a freshness line that said "just now" for
- * ever, or "0m ago" about a scan nobody ran, would be this surface asserting something it has not
- * been told. There is no persisted last-scan time to read: what this reports is the press that
- * happened on this screen, and it says nothing about presses it did not see.
- */
-const lastChecked = computed(() =>
-  homeScan.scannedAt.value === null ? null : ago(homeScan.scannedAt.value, tick.value),
-)
-
-/**
- * ⛔ **A clock this component can see** (121, review). `ago()` reads `Date.now()`, which is not a
- * reactive dependency — so `lastChecked` was a `computed` that re-evaluated only when another scan
- * landed, and the note read *"last checked 0m ago"* for as long as the surface stayed open. The
- * comment above says in as many words that a line saying "just now" for ever is what this must not
- * be; it was that.
- *
- * A minute is the resolution `ago()` reports in, so anything finer would be work with nothing to
- * show for it. Started only once a scan has landed, and cleared on unmount.
- */
-const tick = ref(Date.now())
-let ticking: number | undefined
-watch(
-  () => homeScan.scannedAt.value,
-  (at) => {
-    if (at === null || ticking !== undefined) return
-    ticking = window.setInterval(() => (tick.value = Date.now()), 60_000)
-  },
-)
-
 /** The recency bands, in order, with the empty ones dropped rather than drawn as bare headings. */
 const groups = computed(() => {
   const now = Date.now()
@@ -864,22 +412,7 @@ const groups = computed(() => {
   }
   return bands.filter((band) => band.entries.length > 0)
 })
-
-/**
- * How long ago, in the reader's terms.
- *
- * ⚠️ **`now` is a parameter**, so a caller that has to RE-RENDER as time passes can pass a reactive
- * clock. Rows read the wall clock on every render and are re-rendered by every read; the scan's
- * freshness line is not, and was frozen at "0m ago" until it was given one (121 review).
- */
-function ago(at: number, now: number = Date.now()): string {
-  const minutes = Math.max(0, Math.round((now - at) / 60000))
-  if (minutes < 60) return `${minutes}m ago`
-  const hours = Math.round(minutes / 60)
-  return hours < 48 ? `${hours}h ago` : `${Math.round(hours / 24)}d ago`
-}
 </script>
-
 <template>
   <section class="library bb-conversation-ground" data-cy="session-library" data-chat-theme="light">
     <div class="lib-headingbar">
@@ -974,79 +507,19 @@ function ago(at: number, now: number = Date.now()): string {
 
           <p v-if="loading && entries.length === 0" class="hint">Reading…</p>
 
-          <div
+          <LibraryEmptyState
             v-else-if="page !== null && entries.length === 0"
-            class="empty"
-            data-cy="library-empty"
-          >
-            <template v-if="filtered">
-              <div class="mk" aria-hidden="true">⌗</div>
-              <h2 data-cy="library-filtered-empty">No conversations match this combination</h2>
-              <p>
-                Nothing
-                <template v-if="counts">across your {{ counts.total }} conversations </template>
-                matches all these filters. Remove one.
-              </p>
-
-              <p v-if="scopeNote" class="scope" data-cy="library-filtered-scope">{{ scopeNote }}</p>
-              <div class="constraints" data-cy="library-constraints">
-                <button
-                  v-for="constraint in constraints"
-                  :key="constraint.key"
-                  type="button"
-                  class="cons-chip"
-                  :data-cy="`library-constraint-${constraint.key}`"
-                  :aria-label="`Remove ${constraint.chip}`"
-                  @click="dropConstraint(constraint)"
-                >
-                  {{ constraint.chip }} <span aria-hidden="true">×</span>
-                </button>
-              </div>
-              <div class="relax">
-                <button
-                  type="button"
-                  class="prim"
-                  data-cy="library-clear-filters"
-                  @click="clearFilters"
-                >
-                  Clear filters
-                </button>
-
-                <button
-                  v-if="searching"
-                  type="button"
-                  data-cy="library-empty-clear-search"
-                  @click="clearSearch"
-                >
-                  Clear search
-                </button>
-              </div>
-            </template>
-
-            <template v-else-if="searching">
-              <div class="mk" aria-hidden="true">?</div>
-              <h2 data-cy="library-no-match">Nothing matches “{{ query.trim() }}”</h2>
-
-              <p>
-                No title, first message, working directory or provider name
-                <template v-if="counts">across your {{ counts.total }} conversations </template>
-                contains that. Try fewer words, or a directory name.
-              </p>
-
-              <p v-if="scopeNote" class="scope" data-cy="library-search-scope">{{ scopeNote }}</p>
-            </template>
-
-            <template v-else-if="firstRun">
-              <div class="mk" aria-hidden="true">◇</div>
-              <h2 data-cy="library-first-run">Nothing swept yet</h2>
-              <p>No conversations yet. Start one with New conversation.</p>
-            </template>
-
-            <template v-else>
-              <h2>No conversations to show</h2>
-              <p>None here or in {{ A_PROVIDER_FOLDER }}.</p>
-            </template>
-          </div>
+            :filtered="filtered"
+            :searching="searching"
+            :first-run="firstRun"
+            :counts="counts"
+            :query="query"
+            :scope-note="scopeNote"
+            :constraints="constraints"
+            @drop-constraint="dropConstraint"
+            @clear-filters="clearFilters"
+            @clear-search="clearSearch"
+          />
 
           <ul v-else-if="entries.length > 0" class="rows" data-cy="library-rows">
             <template v-for="group in groups" :key="group.key">
@@ -1102,82 +575,19 @@ function ago(at: number, now: number = Date.now()): string {
         </div>
       </div>
       <aside class="library-aside">
-        <div class="restore bb-card" data-cy="library-restore">
-          <label for="library-bundle-path">Restore a conversation from a bundle</label>
-          <div class="restore-row">
-            <input
-              id="library-bundle-path"
-              v-model="bundlePath"
-              type="text"
-              :maxlength="MAX_PATH_CHARS"
-              class="mono bb-input"
-              data-cy="library-bundle-path"
-              :placeholder="`a …${BUNDLE_SUFFIX} file Export wrote, or one somebody sent you`"
-              @keyup.enter="restoreBundle"
-            />
-            <button
-              class="bb-button"
-              type="button"
-              data-cy="library-bundle-choose"
-              @click="chooseBundle"
-            >
-              Choose…
-            </button>
-            <button
-              type="button"
-              class="scan bb-button"
-              :disabled="bundlePath.trim() === '' || restoring"
-              data-cy="library-bundle-restore"
-              @click="restoreBundle"
-            >
-              {{ restoring ? 'Restoring…' : 'Restore' }}
-            </button>
-          </div>
+        <LibraryBundleRestore :reload="load" />
 
-          <p
-            v-if="restoreNote"
-            class="restore-note"
-            :class="{ refused: restored !== null && !restored.ok }"
-            data-cy="library-bundle-result"
-            :role="restored !== null && !restored.ok ? 'alert' : 'status'"
-          >
-            {{ restoreNote }}
-          </p>
-        </div>
-
-        <section class="source-guide bb-card">
-          <p class="reads" data-cy="library-reads">
-            Includes conversations from {{ ALL_PROVIDER_FOLDERS }}, read-only. {{ CHECK_HOMES }}
-            searches agent folders separately.
-          </p>
-
-          <p v-if="scanNote && lastChecked" class="freshness" data-cy="library-scan-note">
-            last checked {{ lastChecked }} — {{ scanNote }}
-          </p>
-
-          <p v-if="scanError" class="scan-failed" data-cy="library-scan-error">
-            The homes could not be checked: {{ scanError }}
-          </p>
-
-          <details
-            v-if="homeScan.lastScan.value && homeScan.lastScan.value.skipped.length > 0"
-            class="scan-skipped"
-            data-cy="library-scan-skipped"
-          >
-            <summary>
-              {{ homeScan.lastScan.value.skipped.length }} found but not adopted — why
-            </summary>
-            <ul>
-              <li v-for="item in homeScan.lastScan.value.skipped" :key="item.path" class="mono">
-                <ProviderLabel :provider="item.provider" /> · {{ item.path }} — {{ item.reason }}
-              </li>
-            </ul>
-          </details>
-        </section>
+        <LibrarySourceGuide
+          :home-scan="homeScan"
+          :scan-error="scanError"
+          :check-homes-label="CHECK_HOMES"
+        />
       </aside>
     </div>
   </section>
 </template>
+
+<style scoped src="./library-scan-button.css"></style>
 
 <style scoped>
 /**
@@ -1249,128 +659,11 @@ function ago(at: number, now: number = Date.now()): string {
   color: var(--accent-text-soft);
 }
 
-/* 🔴 **When this page reads the machine** (329 §4.3). Under the counts, above the scan's own
-   report, and one step LOUDER than either — `--muted`, not the `--faint` of the footnotes around
-   it. It is the only sentence on the page that says where the rows came from, and 031 rates a line
-   nobody reads as worse than none. `max-width` because it is the longest line in the head and the
-   layout sweep asserts nothing here overflows at 400px. */
-.reads {
-  max-width: 78ch;
-  margin: var(--space-2) 0 0;
-  color: var(--muted);
-  font-size: var(--type-caption);
-  line-height: var(--leading-normal);
-}
-
-/* The scan's own result, under the counts it will change. `--faint` like the counts: it is a
-   footnote about freshness, not a claim competing with the library's own numbers. */
-.freshness {
-  margin: var(--space-2) 0 0;
-  color: var(--faint);
-  font-size: var(--type-caption);
-  line-height: var(--leading-normal);
-}
-
-/* The one place on this surface that reports something having gone wrong outside a row, and it is
-   the danger ramp for the same reason the banner is: a scan that failed is not a state. */
-.scan-failed {
-  margin: var(--space-2) 0 0;
-  color: var(--danger-text-notice);
-  font-size: var(--type-caption);
-  line-height: var(--leading-normal);
-}
-
-/* The scan's own rejects, in the shape the rail already draws them. Quiet, and closed by default:
-   it is a footnote about files, not a failure. */
-.scan-skipped {
-  margin: var(--space-2) 0 0;
-  color: var(--faint);
-  font-size: var(--type-caption);
-  line-height: var(--leading-normal);
-}
-
-.scan-skipped summary {
-  cursor: pointer;
-}
-
-.scan-skipped ul {
-  margin: var(--space-2) 0 0;
-  padding-left: var(--space-5);
-}
-
 .head-actions {
   display: flex;
   flex: 0 0 auto;
   align-items: center;
   gap: var(--space-3);
-}
-
-/* ⛔ Blue, not amber (080). Checking the homes is work in flight, not a question waiting on the
-   person — and it is a secondary control, so it borrows the accent's quiet ramp
-   rather than the filled CTA the Import button uses. */
-.scan {
-  flex: 0 0 auto;
-  border-color: var(--accent-border);
-  background: transparent;
-  color: var(--accent-text-soft);
-  cursor: pointer;
-  font-size: var(--type-small);
-}
-
-.scan:hover:not(:disabled) {
-  background: var(--accent-fill);
-}
-
-.scan:disabled {
-  color: var(--faint);
-  cursor: default;
-}
-
-/* ⛔ The return path (214 §1). Its own row under the header rather than a fourth button beside
-   "Check homes": it takes a path, and a control that opens a field is not the same shape as one
-   that acts on press. Quiet by default — this is the rarer of the two gestures on this screen. */
-.restore {
-  display: grid;
-  padding: var(--space-4) 0 0;
-  gap: var(--space-2);
-}
-
-.restore label {
-  color: var(--muted);
-  font-size: var(--type-caption);
-}
-
-/* ⚠️ **`wrap`, and the row above it is why** (104 §3, 103). The two buttons are unshrinkable, so at
-   300px — the width `library-layout.dom.test.ts` measured as the one that bites — they and the
-   field cannot share a line. Wrapping is what every other line on this screen does there, and the
-   sweep that caught this is the same one that caught the row's provenance phrase. */
-.restore-row {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--space-3);
-}
-
-.restore-row input {
-  flex: 1 1 12rem;
-  font-size: var(--type-small);
-}
-
-.restore-row > button:first-child {
-  flex: 0 0 auto;
-}
-
-.restore-note {
-  margin: 0;
-  color: var(--muted);
-  font-size: var(--type-caption);
-  line-height: var(--leading-relaxed);
-}
-
-/* A refusal is the one outcome that has to catch the eye — and it is still not an error colour on
-   the list, which read perfectly well (121's rule, applied to this pair). */
-.restore-note.refused {
-  color: var(--danger-text, var(--waiting));
 }
 
 .search {
@@ -1486,120 +779,6 @@ function ago(at: number, now: number = Date.now()): string {
   font-size: var(--type-small);
 }
 
-/* ---------------------------------------------------------------- empty */
-
-.empty {
-  max-width: 440px;
-  margin: var(--space-12) 0 0;
-}
-
-/* ⚠️ Not `--brand-mark-border`/`--brand-mark-fg`: both are defined in dark only, so the mark would
-   have kept a blue rim and blue glyph on paper. The fill has a light value and the accent pair
-   below it does too. */
-.mk {
-  display: grid;
-  width: 34px;
-  height: 34px;
-  margin-bottom: var(--space-6);
-  border: var(--border-width) solid var(--accent-border);
-  border-radius: var(--radius-lg);
-  background: var(--brand-mark-bg);
-  color: var(--accent-text);
-  font-size: var(--type-reading);
-  place-items: center;
-}
-
-.empty h2 {
-  margin: 0 0 var(--space-4);
-  color: var(--text-soft);
-  font-size: var(--type-reading);
-  font-weight: var(--fw-semibold);
-}
-
-.empty p {
-  margin: 0;
-  color: var(--muted);
-  font-size: var(--type-small);
-  line-height: var(--leading-relaxed);
-}
-
-/* Every constraint that produced this empty list, each one a real control that drops itself. A
-   chip drawn with an × that does nothing is 106's unwired control at chip scale. */
-.constraints {
-  display: flex;
-  flex-wrap: wrap;
-  margin: var(--space-5) 0 0;
-  gap: var(--space-3);
-}
-
-.cons-chip {
-  display: inline-flex;
-  align-items: center;
-  height: 24px;
-  padding: 0 var(--space-4);
-  border: var(--border-width) solid var(--accent-2);
-  border-radius: var(--radius-sm);
-  background: var(--info-bg);
-  color: var(--accent-2-text);
-  cursor: pointer;
-  font-size: var(--type-caption);
-  gap: var(--space-2);
-}
-
-/* The filter's own indigo, as the facet row above it: never the warm accent. */
-.cons-chip:hover {
-  background: var(--info-bg);
-  border-color: var(--accent-2);
-}
-
-.relax {
-  display: flex;
-  flex-wrap: wrap;
-  margin: var(--space-6) 0 0;
-  gap: var(--space-3);
-}
-
-.relax button {
-  padding: var(--space-2) var(--space-5);
-  border: var(--border-width) solid var(--line);
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--muted);
-  cursor: pointer;
-  font-size: var(--type-small);
-}
-
-.relax button:hover {
-  background: var(--wash-2);
-  color: var(--text-soft);
-}
-
-/* The likelier of the two hatches carries the accent, because the facets are what a person just
-   set — but it is a border, not a fill: Import is this surface's one accent CTA and staying that
-   way is 104's rule. */
-.relax .prim {
-  border-color: var(--accent-border);
-  color: var(--accent-text-soft);
-}
-
-.relax .prim:hover {
-  background: var(--accent-fill);
-  color: var(--accent-text);
-}
-
-.empty p + p {
-  margin-top: var(--space-4);
-  color: var(--faint);
-}
-
-/* ⛔ **What the read could not look at, beside the claim about what it did** (329 §4.4). It would
-   inherit `.empty p + p` above today, and says its own register anyway: an inherited rule is one
-   reorder away from silently changing what this sentence looks like. Quieter than the claim it
-   qualifies and NOT a caution — it reports the bound of a read, not something that went wrong. */
-.scope {
-  color: var(--faint);
-}
-
 /* ---------------------------------------------------------------- the list */
 
 .rows {
@@ -1709,23 +888,6 @@ function ago(at: number, now: number = Date.now()): string {
   gap: var(--space-8);
   min-width: 0;
   overflow-y: auto;
-}
-.restore {
-  margin: 0;
-  padding: var(--card-padding);
-  gap: var(--space-5);
-}
-.restore-row {
-  flex-wrap: wrap;
-}
-.restore-row input {
-  flex: 1 0 100%;
-}
-.source-guide .reads {
-  margin: 0;
-}
-.source-guide {
-  overflow-wrap: anywhere;
 }
 @container (max-width: 760px) {
   .library-columns {
