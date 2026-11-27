@@ -11,7 +11,12 @@ import type {
   PieceWaitingOnPurpose,
 } from '../../../shared/runtime-ipc'
 import { WORK_STATE_WORD } from '../../../shared/work-state-words'
-import { agentName, DEFAULT_PROFILE_ID, foldProfileName } from '../../../shared/runtime-ipc'
+import {
+  agentName,
+  agentNamer,
+  DEFAULT_PROFILE_ID,
+  foldProfileName,
+} from '../../../shared/runtime-ipc'
 
 import { theWorkThatNamesItSaid, type WorkThatNamesIt } from '../../../shared/piece-called'
 import { mergeProviderBlock, type ProviderBlockFacts } from './provider-limit-status'
@@ -92,7 +97,8 @@ export interface ConversationListInput {
  * never ran — neither was started here, and both are on *All conversations*, which holds everything.
  */
 export function conversationList(input: ConversationListInput): ListedConversation[] {
-  const identities = input.identities ?? null
+  // ⚑ **One read of the roster per list** (614): 2,637 rows each searching it cost 20–28 ms a read.
+  const nameOf = agentNamer(input.identities ?? null)
   const rows: ListedConversation[] = []
   const add = (row: ResumableSessionInfo | UnresumableSessionInfo): void => {
     rows.push({
@@ -101,7 +107,7 @@ export function conversationList(input: ConversationListInput): ListedConversati
       ...(row.waitingOnPurpose ? { waitingOnPurpose: row.waitingOnPurpose } : {}),
       sessionId: row.sessionId,
       provider: row.provider,
-      label: agentName(row.profileId, identities),
+      label: nameOf(row.profileId),
       identity: foldProfileName(row.profileId ?? DEFAULT_PROFILE_ID),
       place: basenameOf(row.cwd) || null,
       state: input.said?.get(row.sessionId) ?? row.state,

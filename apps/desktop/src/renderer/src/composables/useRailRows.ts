@@ -41,7 +41,7 @@ import { railFacts, useWhoCalledWhom } from './useWhoCalledWhom'
 import { workByConversation } from '../lib/working-together'
 import type { AppInfo } from '@brobot2/shared'
 import { whereItWorks } from '../lib/session-record'
-import { agentName } from '../../../shared/runtime-ipc'
+import { agentName, agentNamer } from '../../../shared/runtime-ipc'
 import { DEFAULT_PROFILE_ID } from '../../../shared/profile-name'
 import type { SessionRecord } from '../lib/session-record'
 import type { useClientApi } from '../client-provider/injection'
@@ -248,6 +248,7 @@ export function useRailRows(
         },
       })
     }
+    const recentName = agentNamer(props.agents?.identities ?? null)
     for (const row of initialRecent.value) {
       if (drawn.has(row.sessionId)) continue
       drawn.set(row.sessionId, {
@@ -261,7 +262,7 @@ export function useRailRows(
           facets: { doing: 'unknown' },
           standing: 'unknown',
           word: '',
-          label: agentName(row.profileId, props.agents?.identities ?? null),
+          label: recentName(row.profileId),
           named: null,
           place: basenameOf(row.cwd) || null,
           opening: null,

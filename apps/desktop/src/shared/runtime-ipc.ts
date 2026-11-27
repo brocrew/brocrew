@@ -400,6 +400,25 @@ export function agentName(
 }
 
 /**
+ * {@link agentName} for many rows against one roster: the roster is read once, into a map by slug,
+ * so naming every row of a long list costs one pass over the roster, not one search per row (614).
+ * ⚑ The first identity with a slug answers for it, as a search would.
+ */
+export function agentNamer(
+  identities: readonly AgentIdentityName[] | null,
+): (profileId: string | null) => string {
+  const bySlug = new Map<string, string | null>()
+  for (const identity of identities ?? []) {
+    const slug = identity.slug
+    if (!bySlug.has(slug)) bySlug.set(slug, identity.displayName)
+  }
+  return (profileId) => {
+    const slug = foldProfileName(profileId ?? DEFAULT_PROFILE_ID)
+    return bySlug.get(slug) ?? profileLabel(slug)
+  }
+}
+
+/**
  * First-run provider choices, applied only when an identity is created.
  * Existing rows are never backfilled: a null choice may already mean the person
  * has been using the app-wide fallback. A seed grants nothing and can be changed
