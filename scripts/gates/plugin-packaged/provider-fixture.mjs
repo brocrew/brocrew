@@ -122,26 +122,22 @@ export function scriptedHandle(handle, options, directory, connect = brokerClien
       if (action === 'open') {
         if (tabId) throw new Error('Fixture tab already open')
         const plan = JSON.parse(fs.readFileSync(path.join(directory, 'browser-fixture.json')))
+        // open_tab answers once the tab is placed; the page loads after that.
         const opened = JSON.parse(await tool('open_tab', { profile: 'fern', url: plan.url }))
-        if (
-          !/^t\d+$/.test(opened.tabId) ||
-          opened.url !== plan.url ||
-          opened.title !== fixtureTitle ||
-          opened.loadError
-        )
-          throw refused('navigation')
+        if (!/^t\d+$/.test(opened.tabId) || opened.url !== plan.url) throw refused('navigation')
         tabId = opened.tabId
         proof.opened = true
         save()
+        await tool('wait_for', { tabId, urlIncludes: plan.url, timeoutMs: 5000 })
         const read = await tool('snapshot', { tabId, mode: 'text', timeoutMs: 5000 })
-        if (!read.includes(`title: ${fixtureTitle}`) || !read.includes(fixtureText))
-          throw refused('snapshot')
+        const title = read.match(/^title: (.*)$/m)?.[1]
+        if (title !== fixtureTitle || !read.includes(fixtureText)) throw refused('snapshot')
         proof.read = true
         save()
         proof.errorCategory = 'bridge'
         save()
         // The scripted provider answers only from the actual tool response.
-        await send(`Chrome title: ${opened.title}`, origin)
+        await send(`Chrome title: ${title}`, origin)
         proof.errorCategory = 'other'
         proof.titleReturned = true
         save()

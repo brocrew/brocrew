@@ -1065,7 +1065,7 @@ export async function gate(node22) {
         opened.toolOpened &&
           opened.toolRead &&
           opened.titleReturned &&
-          opened.calls === 2 &&
+          opened.calls === 3 &&
           opened.navigations === 1 &&
           opened.evaluations > 0,
       )
@@ -1081,7 +1081,7 @@ export async function gate(node22) {
       await closeView(a, view)
       await providerTurn.turn(closePrompt, 'Chrome fixture tab closed.')
       const closed = browserEvidence(root, readOwned)
-      if (!closed.toolClosed || closed.calls !== 3 || closed.closedTabs < 1)
+      if (!closed.toolClosed || closed.calls !== 4 || closed.closedTabs < 1)
         throw new Error('Fixture close not witnessed')
       await openPluginsTab(a)
       view = await configure(a)

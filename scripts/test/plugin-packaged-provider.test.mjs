@@ -40,7 +40,7 @@ import {
 } from '../gates/plugin-packaged/provider-state.mjs'
 import { safeReport } from '../gates/plugin-packaged/contract.mjs'
 import { withManagedPluginAttachments } from '../../packages/runtime/src/managed-plugin-session.ts'
-import { fixtureTitle } from '../gates/plugin-packaged/fake-browser.mjs'
+import { fixtureTitle, fixtureText } from '../gates/plugin-packaged/fake-browser.mjs'
 const cleanup = [],
   roots = []
 const chromeTarget = { os: process.platform, cpu: process.arch }
@@ -469,13 +469,13 @@ describe.skipIf(process.platform === 'win32')(
           toolOpened: true,
           toolRead: true,
           titleReturned: true,
-          calls: 2,
+          calls: 3,
           navigations: 1,
         })
         await handle.send(`${closePrompt}\n\nFictional prior-task context:\n${openPrompt}`)
         expect(browserEvidence(root, (file) => fs.readFileSync(file))).toMatchObject({
           toolClosed: true,
-          calls: 3,
+          calls: 4,
           closedTabs: 1,
         })
         expect(attachmentReads).toBeGreaterThanOrEqual(3)
@@ -493,6 +493,7 @@ describe.skipIf(process.platform === 'win32')(
           JSON.stringify({ url: 'http://127.0.0.1:1234/fern' }),
         )
         let sent = false
+        const title = kind === 'wrong-title' ? 'wrong' : fixtureTitle
         const handle = scriptedHandle(
           {
             send: async () => {
@@ -515,9 +516,11 @@ describe.skipIf(process.platform === 'win32')(
                         ? JSON.stringify({
                             tabId: 't1',
                             url: 'http://127.0.0.1:1234/fern',
-                            title: kind === 'wrong-title' ? 'wrong' : fixtureTitle,
+                            title: '',
                           })
-                        : 'missing text',
+                        : name === 'snapshot' && kind !== 'missing-read'
+                          ? `title: ${title}\n${fixtureText}`
+                          : 'missing text',
                   },
                 ],
               }),
