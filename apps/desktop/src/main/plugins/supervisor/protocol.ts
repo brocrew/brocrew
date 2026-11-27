@@ -109,6 +109,7 @@ export type Refusal =
   | 'network'
   | 'download-stalled'
   | 'package-invalid'
+  | 'path-too-long'
 export const OwnerDiagnostic = z.strictObject({
   phase: z.enum(['accepting', 'draining', 'blocked', 'stopped', 'missing', 'unreadable']),
   stage: z.enum(['attach-record', 'hello', 'hold', 'detach', 'lease-lost', 'recovery']),
