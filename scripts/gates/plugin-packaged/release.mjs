@@ -5,6 +5,7 @@ import { createRequire } from 'node:module'
 import { command, repository, privateFolder } from './fixture-command.mjs'
 import { digest } from './contract.mjs'
 import { phaseStep } from './diagnostics.mjs'
+import { NOTICE_CAUSES, readNoticeTable } from './install-trace.mjs'
 export function listFor(entry) {
   return { format: entry.authors === undefined ? 1 : 2, entries: [entry] }
 }
@@ -134,5 +135,36 @@ export async function buildFixtureRelease(root, node22, go) {
     )
     await phaseStep(root, 'release-verify', () => command(node22, [proof], root, env))
   }
+  await writeNoticeTable(root, exported, node22, env)
   return commit
+}
+// Diagnostic only: the app's own mutation-failure notices, bundled from the shared plugin settings,
+// for the journey's closed notice categories. A failure leaves the journey without them.
+async function writeNoticeTable(root, exported, node22, env) {
+  try {
+    const script = path.join(root, 'proof', 'plugin-notices.cjs')
+    await releaseBundler(exported).build({
+      stdin: {
+        contents: `
+  import {pluginMutationFailureNotice} from ${JSON.stringify(path.join(repository, 'apps/desktop/src/shared/plugin-settings.ts'))};
+  const causes=${JSON.stringify(NOTICE_CAUSES)};
+  process.stdout.write(JSON.stringify(Object.fromEntries(causes.map((cause)=>[cause,pluginMutationFailureNotice(cause)]))));
+  `,
+        resolveDir: repository,
+        loader: 'ts',
+      },
+      bundle: true,
+      platform: 'node',
+      format: 'cjs',
+      outfile: script,
+      logLevel: 'silent',
+    })
+    const table = readNoticeTable(await command(node22, [script], root, env))
+    fs.writeFileSync(path.join(root, 'plugin-notices.json'), JSON.stringify(table), {
+      mode: 0o600,
+      flag: 'wx',
+    })
+  } catch {
+    /* The journey then reports its notices as unobserved. */
+  }
 }

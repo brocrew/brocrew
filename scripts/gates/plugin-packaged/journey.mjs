@@ -19,7 +19,13 @@ import { observeApp, probeStep, waitDevtools } from './probe.mjs'
 import { failureFor, printFailure, stepFailure, printAppStderr } from './diagnostics.mjs'
 import { pageStateSnapshot, printPageState } from './page-state.mjs'
 import { pluginStateSnapshot, printPluginState, unknownPluginState } from './plugin-state.mjs'
-import { startInstallTrace, printInstallTrace } from './install-trace.mjs'
+import {
+  startInstallTrace,
+  printInstallTrace,
+  readNoticeTable,
+  noticeInPage,
+  safeNoticeObservation,
+} from './install-trace.mjs'
 import { openPlugins, enabledProfile, pluginPage, switchOnProfile, waitFor } from './cdp.mjs'
 import { requireSelection } from './matrix.mjs'
 import { serveFixture, createProviderTurn, browserEvidence, waitTabs } from './browser-journey.mjs'
@@ -354,12 +360,31 @@ export async function journey(root) {
         readOwned(path.join(staged, 'archives', expected + '.tar.gz'), 128 * 1024 * 1024),
       )
       installTrace = startInstallTrace(stagedDigest, stagedDigest === expected)
+      const table = readNoticeTable(readOwned(path.join(root, 'plugin-notices.json')))
+      installTrace.observeNotice = async () => {
+        try {
+          const seen = await bounded(
+            a.cdp.evaluate(
+              `return (${noticeInPage.toString()})(document, ${JSON.stringify(table)})`,
+            ),
+            5000,
+          )
+          return safeNoticeObservation(seen) ? seen : null
+        } catch {
+          return null
+        }
+      }
+      installTrace.noticeBefore = await installTrace.observeNotice()
     } catch {
       // A diagnostic that cannot be observed never changes the journey.
     }
     // Exactly one install press. No bridge install call is used for the successful path.
     await press(a.cdp, '[data-plugin="chrome"] [data-cy="plugin-install"]')
-    await installed(a, true, installTrace)
+    try {
+      await installed(a, true, installTrace)
+    } finally {
+      if (installTrace?.observeNotice) installTrace.noticeAfter = await installTrace.observeNotice()
+    }
     printInstallTrace(installTrace)
     requireCheck(summary, 'installed', true)
     step = 'profile-create'
