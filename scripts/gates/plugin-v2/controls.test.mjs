@@ -6,17 +6,16 @@ import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import vm from 'node:vm'
-import { createHash } from 'node:crypto'
 import { readOwnedFile, rootWitness } from './owned-files.mjs'
 import { sampleScript, stopAll, environment } from './processes.mjs'
 import { assertAccessLabels } from './journey.mjs'
 import { waitForLaunchProviders } from '../../lib/update-rehearsal-app.mjs'
 import { pressInPlugins } from '../plugin-packaged/cdp.mjs'
-import { projectedVersionArguments, stageSource } from './staging.mjs'
+import { stageSource } from './staging.mjs'
 import { esbuildInvocation, nativeEsbuildTarget } from './tool-entry.mjs'
 import { fileURLToPath } from 'node:url'
-import { hash, hosted, receipt, LIST, BASE017, appSourceFor, MARKER } from './contract.mjs'
-import { fetchSource, project, bundleProof } from './projection.mjs'
+import { hash, hosted, receipt } from './contract.mjs'
+import { project } from './projection.mjs'
 import { verifyOperation } from './verify-operation.mjs'
 import { projectDiagnostics } from './diagnostics.mjs'
 
@@ -70,7 +69,7 @@ test('projected child diagnostics capture raw stderr, spawn errors and exits and
   })
 })
 
-test('SDK stage drain retries transient descendants and refuses persistent or failed censuses', async () => {
+test('stage drain retries transient descendants and refuses persistent or failed censuses', async () => {
   const source = fs.readFileSync(new URL('./processes.mjs', import.meta.url), 'utf8')
   const body = source
     .slice(
@@ -109,24 +108,20 @@ test('SDK stage drain retries transient descendants and refuses persistent or fa
 })
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..')
-const candidate = fs.readFileSync(new URL('./candidate.json', import.meta.url))
 function networkFixture() {
   return {
-    v1: '16d5c9f55779f85bc94f632812cf4ec7afd3585ca54ac5799c00263732aa9f93',
-    v2: '68c495035726241ddf6862567d932c0f3c8086969875cb06b07552aa573b9171',
+    v1: 'c'.repeat(64),
+    v2: 'd'.repeat(64),
     archives: 2,
     synthetic: false,
-    archiveMeasurements: JSON.parse(candidate).entries.map((e) => {
-      const t = e.targets[0]
-      return {
-        id: e.id,
-        version: e.version,
-        os: t.os,
-        cpu: t.cpu,
-        bytes: t.bytes,
-        sha256: t.sha256,
-      }
-    }),
+    archiveMeasurements: ['chrome', 'whatsapp'].map((id, i) => ({
+      id,
+      version: `0.1.${i + 1}`,
+      os: 'darwin',
+      cpu: 'arm64',
+      bytes: 1000 + i,
+      sha256: String(i + 1).repeat(64),
+    })),
     hops: ['v1', 'v2', 'chrome', 'whatsapp'].map((request) => ({
       request,
       host: 'raw.githubusercontent.com',
@@ -143,72 +138,28 @@ function scratch(work) {
     fs.rmSync(root, { recursive: true, force: true })
   }
 }
-test('candidate bytes are the exact previously reviewed two-row list', () => {
-  assert.equal(hash(candidate), LIST)
-  assert.deepEqual(
-    JSON.parse(candidate).entries.map((e) => [e.id, e.version, e.authors]),
-    [
-      ['chrome', '0.1.3', ['brocrew']],
-      ['whatsapp', '0.1.4', ['brocrew']],
-    ],
-  )
-})
-test('no-input observed source plan refuses local, wrong role or source', () => {
-  const plan = JSON.parse(fs.readFileSync(new URL('./source-plan.json', import.meta.url)))
+test('the hosted role takes a main push or a dispatch and refuses local or foreign runs', () => {
   const env = {
     GITHUB_ACTIONS: 'true',
     RUNNER_ENVIRONMENT: 'github-hosted',
     GITHUB_REPOSITORY: 'brocrew/brocrew',
-    GITHUB_REF: 'refs/heads/gate/plugin-v2-mac-closed',
-    GITHUB_EVENT_NAME: 'workflow_dispatch',
-    GITHUB_SHA: 'a'.repeat(40),
+    GITHUB_EVENT_NAME: 'push',
   }
-  assert.doesNotThrow(() => hosted(plan, '0.1.8', env, 'darwin', 'arm64'))
-  assert.throws(() => hosted(plan, '0.1.8', {}, 'darwin', 'arm64'))
-  assert.throws(() => hosted(plan, '0.1.9', env, 'darwin', 'arm64'))
-  assert.throws(() => hosted({ ...plan, candidateSha256: null }, '0.1.8', env, 'darwin', 'arm64'))
-  assert.throws(() =>
-    hosted(
-      { ...plan, appSources: [{ version: '0.1.8', commit: 'a'.repeat(40) }] },
-      '0.1.8',
-      env,
-      'darwin',
-      'arm64',
-    ),
-  )
-  assert.throws(() =>
-    hosted(plan, '0.1.8', { ...env, RUNNER_ENVIRONMENT: 'self-hosted' }, 'darwin', 'arm64'),
-  )
-  assert.throws(() =>
-    hosted(plan, '0.1.8', { ...env, GITHUB_REPOSITORY: 'foreign/repo' }, 'darwin', 'arm64'),
-  )
-  assert.throws(() => hosted(plan, '0.1.8', env, 'win32', 'x64'))
-  assert.throws(() =>
-    hosted(plan, '0.1.8', { ...env, GITHUB_EVENT_NAME: 'push' }, 'darwin', 'arm64'),
-  )
+  assert.equal(hosted(env, 'win32', 'x64').role, 'windows')
+  const dispatch = { ...env, GITHUB_EVENT_NAME: 'workflow_dispatch' }
+  assert.equal(hosted(dispatch, 'darwin', 'arm64').role, 'mac')
+  assert.throws(() => hosted({}, 'win32', 'x64'))
+  assert.throws(() => hosted({ ...env, RUNNER_ENVIRONMENT: 'self-hosted' }, 'win32', 'x64'))
+  assert.throws(() => hosted({ ...env, GITHUB_REPOSITORY: 'foreign/repo' }, 'win32', 'x64'))
+  assert.throws(() => hosted({ ...env, GITHUB_EVENT_NAME: 'pull_request' }, 'win32', 'x64'))
+  assert.throws(() => hosted(env, 'linux', 'x64'))
 })
-test('fixed URL shim keeps native archive transport and rejects changed candidate', () => {
-  const options = { root: fs.realpathSync.native(os.tmpdir()), token: 'a'.repeat(64), candidate }
-  const source = fetchSource(options)
-  assert.ok(
-    source.includes(
-      'u.href!=="https://raw.githubusercontent.com/brocrew/brocrew/main/plugins/catalogue-v2.json"',
-    ),
-  )
-  assert.ok(source.includes('return native(input,init)'))
-  assert.ok(source.includes("process.versions.electron?'client':'owner'"))
-  assert.ok(source.includes('sha(candidate)!==expected'))
-  assert.ok(source.includes(MARKER))
-  assert.throws(() => fetchSource({ ...options, candidate: Buffer.from('{}') }))
-})
-test('projection selects v2 and restores the runtime call exactly', () =>
+test('projection drops the fixture source and restores the app source exactly', () =>
   scratch((root) => {
     for (const name of [
       'apps/desktop/src/main/index.ts',
       'apps/desktop/src/main/runtime-host-composition.ts',
       'apps/desktop/src/main/plugins/catalogue/build-config.ts',
-      'apps/desktop/src/main/plugins/catalogue/download.ts',
-      'apps/desktop/src/main/plugins/catalogue/dev-source.ts',
     ]) {
       const file = path.join(root, name)
       fs.mkdirSync(path.dirname(file), { recursive: true })
@@ -219,8 +170,6 @@ test('projection selects v2 and restores the runtime call exactly', () =>
     const originalComposition = fs.readFileSync(composition, 'utf8')
     const p = project(root, {
       root,
-      token: 'b'.repeat(64),
-      candidate,
       appData: path.join(root, 'a'),
       browser: path.join(root, 'no-browser'),
     })
@@ -262,23 +211,6 @@ test('passive network observation preserves both download APIs and native respon
   assert.ok(hops.every((hop) => hop.host === 'github.com' && hop.status === 200))
 })
 
-test('one bundled path alone cannot establish both-path admission', () =>
-  scratch((root) => {
-    const paths = [
-      'apps/desktop/out/main/index.js',
-      'apps/desktop/resources/plugin-supervisor/entry.cjs',
-    ]
-    for (const p of paths) {
-      fs.mkdirSync(path.dirname(path.join(root, p)), { recursive: true })
-      fs.writeFileSync(path.join(root, p), LIST + ' fetch- gate-token ' + MARKER)
-    }
-    assert.equal(bundleProof(root).owner, true)
-    fs.writeFileSync(path.join(root, paths[1]), 'unprojected owner')
-    assert.throws(() => bundleProof(root))
-    fs.writeFileSync(path.join(root, paths[1]), LIST + ' fetch- gate-token ' + MARKER)
-    fs.writeFileSync(path.join(root, paths[0]), 'unprojected main')
-    assert.throws(() => bundleProof(root))
-  }))
 test('missing runtime/package/consent/management/drain evidence fails closed', () => {
   const p = {
     review: true,
@@ -286,7 +218,6 @@ test('missing runtime/package/consent/management/drain evidence fails closed', (
     staleRefused: true,
     confirmed: true,
     running: true,
-    emptyManaged: true,
     configured: true,
     removed: true,
     nativeDetailsMatched: true,
@@ -300,8 +231,6 @@ test('missing runtime/package/consent/management/drain evidence fails closed', (
     platformMeasured: true,
     packageSha256: 'a'.repeat(64),
     cleanup: { directClosed: true, twoEmptySamples: true },
-    bundlePaths: { main: true, owner: true },
-    runtimePaths: { client: true, owner: true },
     measurement: { platform: 'darwin', arch: 'arm64' },
     plugins: { chrome: { ...p }, whatsapp: { ...p } },
     unmodifiedNetwork: networkFixture(),
@@ -312,14 +241,13 @@ test('missing runtime/package/consent/management/drain evidence fails closed', (
     JSON.stringify({
       ...s,
       passed: true,
-      observedIdentity: { routeCommit: sha, appVersion: '0.1.8', appSource: sha },
+      observedIdentity: { routeCommit: sha, appVersion: '0.2.27' },
     }),
   )
   assert.equal(verifyOperation(sha, summary).accepted, true)
   assert.throws(() => verifyOperation('b'.repeat(40), summary), /Source SHA mismatch/)
   for (const changed of [
     { ...s, packageSha256: null },
-    { ...s, runtimePaths: { client: true, owner: false } },
     { ...s, cleanup: { directClosed: true, twoEmptySamples: false } },
     { ...s, plugins: { ...s.plugins, chrome: { ...p, confirmed: false } } },
     { ...s, plugins: { ...s.plugins, whatsapp: { ...p, bridgeObserved: false } } },
@@ -330,7 +258,7 @@ test('missing runtime/package/consent/management/drain evidence fails closed', (
         ...s.unmodifiedNetwork,
         archiveMeasurements: s.unmodifiedNetwork.archiveMeasurements.map((a) => ({
           ...a,
-          bytes: a.bytes + 1,
+          sha256: 'not-a-digest',
         })),
       },
     },
@@ -344,115 +272,64 @@ test('missing runtime/package/consent/management/drain evidence fails closed', (
         ],
       },
     },
+    { ...s, unmodifiedNetwork: { ...s.unmodifiedNetwork, v2: 'not-a-digest' } },
     { ...s, measurement: { platform: 'win32', arch: 'x64' } },
   ])
     assert.throws(() => receipt(changed))
 })
-test('every ordinary job is excluded on both test-role prefixes; no new workflow/input', () => {
-  for (const [name, jobs] of [
-    ['macos.yml', ['flags', 'macos', 'guided-update-rehearsal', 'recovery-real-entry']],
-    ['windows.yml', ['flags', 'windows', 'recovery-real-entry']],
-  ]) {
-    const text = fs.readFileSync(path.join(repo, '.github/workflows', name), 'utf8')
-    for (const id of jobs) {
-      const block = text.split(`\n  ${id}:\n`)[1]?.split(/\n {2}[a-z][a-z0-9-]+:\n/)[0]
-      assert.ok(block)
-      const expression = block.match(/^ {4}if:.*(?:\n {6,}.*)*/m)?.[0]
-      assert.ok(expression?.includes("!startsWith(github.ref, 'refs/heads/gate/plugin-v2-mac-')"))
-      assert.ok(
-        expression?.includes("!startsWith(github.ref, 'refs/heads/gate/plugin-v2-windows-')"),
-      )
-    }
-    assert.ok(text.includes('plugin-v2-review:'))
-    assert.ok(!text.includes('admission_json'))
-    assert.ok(text.includes("app_version: ['0.1.7', '0.1.8']"))
-  }
-  assert.ok(!fs.existsSync(path.join(repo, '.github/workflows/plugin-v2-mac.yml')))
-  assert.ok(!fs.existsSync(path.join(repo, '.github/workflows/plugin-v2-windows.yml')))
+test('Windows runs on plugin-area main pushes and dispatch; Mac only on dispatch', () => {
+  const workflows = path.join(repo, '.github/workflows')
+  const text = fs.readFileSync(path.join(workflows, 'plugin-review.yml'), 'utf8')
+  const on = text.split('\non:\n')[1].split('\npermissions:')[0]
+  assert.ok(on.includes('branches: [main]') && on.includes('workflow_dispatch:'))
+  for (const area of [
+    'plugins/**',
+    'apps/desktop/src/main/plugins/**',
+    'apps/desktop/resources/plugin-host/**',
+    'scripts/gates/plugin-v2/**',
+  ])
+    assert.ok(on.includes(`- '${area}'`))
+  assert.ok(text.includes(`if: github.repository == 'brocrew/brocrew'\n`))
+  assert.ok(
+    text.includes(
+      `os: \${{ fromJSON(github.event_name == 'workflow_dispatch' && '["windows","mac"]' || '["windows"]') }}`,
+    ),
+  )
+  const steps = text.split('\n      - ').slice(1)
+  assert.ok(steps.some((step) => step.includes('reload-owner.mjs run')))
+  const reload = steps.filter((step) => /reload-(owner|stage)/.test(step))
+  assert.equal(reload.length, 4)
+  for (const step of reload) assert.ok(step.includes("matrix.os == 'windows'"))
+  assert.ok(!/app_version|sdk-/.test(text))
+  for (const name of ['macos.yml', 'windows.yml'])
+    assert.ok(!fs.readFileSync(path.join(workflows, name), 'utf8').includes('plugin-v2'))
 })
-test('generated framing emits separate LF records, not a literal backslash-n', async () => {
-  const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), 'plugin-v2-framing-')))
-  try {
-    const token = 'a'.repeat(64)
-    fs.writeFileSync(path.join(root, 'gate-token'), token)
-    fs.writeFileSync(path.join(root, 'list-mode'), 'candidate')
-    const emitted = fetchSource({ root, token, candidate })
-    assert.ok(!emitted.includes("from './owned-files.mjs'"))
-    const js =
-      emitted
-        .replace(/^import .*;$/gm, '')
-        .replace('const sha=(b:Uint8Array)', 'const sha=(b)')
-        .replace('name:string,max:number', 'name,max')
-        .replace('export const gateFetch:typeof fetch', 'const gateFetch') +
-      '\nglobalThis.call=gateFetch;'
-    const context = vm.createContext({
-      fs,
-      path,
-      createHash,
-      Buffer,
-      URL,
-      Response,
-      process,
-      fetch: () => {
-        throw new Error('network forbidden')
-      },
-    })
-    vm.runInContext(js, context)
-    await context.call(
-      'https://raw.githubusercontent.com/brocrew/brocrew/main/plugins/catalogue-v2.json',
-    )
-    fs.writeFileSync(path.join(root, 'list-mode'), 'empty')
-    await context.call(
-      'https://raw.githubusercontent.com/brocrew/brocrew/main/plugins/catalogue-v2.json',
-    )
-    const witness = fs.readFileSync(path.join(root, 'fetch-owner.jsonl'), 'utf8')
-    assert.equal(witness.includes('\\n'), false)
-    const lines = witness.trim().split('\n')
-    assert.equal(lines.length, 2)
-    assert.deepEqual(
-      lines.map((line) => JSON.parse(line).mode),
-      ['candidate', 'empty'],
-    )
-  } finally {
-    fs.rmSync(root, { recursive: true, force: true })
-  }
-})
-test('the actual staging body reaches017 from0.0.0 and refuses wrong source/version', async () => {
+test('the actual staging body checks out the tested source with its own version', async () => {
   const temp = fs.realpathSync.native(
     fs.mkdtempSync(path.join(os.tmpdir(), 'plugin-v2-stage-controls-')),
   )
   try {
     const source = path.join(temp, 'source')
-    fs.mkdirSync(source)
-    const fixtureFiles = [
-      'apps/desktop/package.json',
-      'apps/desktop/src/main/index.ts',
-      'apps/desktop/src/main/runtime-host-composition.ts',
-      'apps/desktop/src/main/plugins/catalogue/build-config.ts',
-      'apps/desktop/src/main/plugins/catalogue/dev-source.ts',
-    ]
-    for (const f of fixtureFiles) {
-      const to = path.join(source, f)
-      fs.mkdirSync(path.dirname(to), { recursive: true })
-      fs.writeFileSync(to, fs.readFileSync(path.join(repo, f)), { flag: 'wx', mode: 0o600 })
-    }
+    fs.mkdirSync(path.join(source, 'apps/desktop'), { recursive: true })
+    fs.copyFileSync(
+      path.join(repo, 'apps/desktop/package.json'),
+      path.join(source, 'apps/desktop/package.json'),
+    )
     const testedVersion = JSON.parse(
       fs.readFileSync(path.join(source, 'apps/desktop/package.json')),
     ).version
-    assert.ok(!['0.1.7', '0.1.8'].includes(testedVersion))
-    let wrongGit = false,
-      sourceVersion = '0.0.0',
-      observedSource = 'a4dfcf611c244f8365d485022dc674309c2e7ae1',
+    let head = 'a'.repeat(40),
+      sourceVersion = testedVersion,
       protection = 0,
       cleaned = 0
-    const observed = { appVersion: '0.1.7', appSource: observedSource, routeCommit: 'a'.repeat(40) }
+    const observed = { appVersion: testedVersion, routeCommit: 'a'.repeat(40) }
     const boundaries = {
       temp,
       repository: source,
       privateRoot: async () => {
         protection++
       },
-      observe: async () => ({ ...observed, appSource: observedSource }),
+      observe: async () => observed,
       command: async (program, args, root, records, options) => {
         assert.equal(program, 'git')
         if (args[0] === 'clone') {
@@ -460,48 +337,32 @@ test('the actual staging body reaches017 from0.0.0 and refuses wrong source/vers
           return ''
         }
         if (args.includes('checkout')) {
+          assert.equal(args.at(-1), observed.routeCommit)
           fs.writeFileSync(
             path.join(options.cwd, 'apps/desktop/package.json'),
             JSON.stringify({ version: sourceVersion }),
           )
           return ''
         }
-        if (args[0] === 'ls-files') return ''
         assert.deepEqual(args, ['rev-parse', 'HEAD'])
-        return wrongGit ? '0'.repeat(40) : observedSource
+        return head
       },
       cleanup: async () => {
         cleaned++
       },
     }
-    const root = await stageSource('0.1.7', boundaries)
+    const root = await stageSource(boundaries)
     assert.equal(protection, 1)
     assert.equal(cleaned, 0)
     assert.deepEqual(JSON.parse(fs.readFileSync(path.join(root, 'observed-source.json'))), observed)
     assert.equal(fs.readFileSync(path.join(root, 'staged'), 'utf8'), hash(JSON.stringify(observed)))
-    assert.deepEqual(
-      projectedVersionArguments(
-        JSON.parse(fs.readFileSync(path.join(root, 'observed-source.json'))).appVersion,
-      ),
-      ['-c.extraMetadata.version=0.1.7'],
-    )
-    // The tested checkout keeps its released version; Builder's stamp still differs from it.
-    sourceVersion = testedVersion
-    await stageSource('0.1.7', boundaries)
-    assert.equal(cleaned, 0)
-    sourceVersion = '0.0.0'
-    wrongGit = true
-    await assert.rejects(() => stageSource('0.1.7', boundaries))
+    head = '0'.repeat(40)
+    await assert.rejects(() => stageSource(boundaries))
     assert.equal(cleaned, 1)
-    wrongGit = false
-    sourceVersion = '0.1.7'
-    await assert.rejects(() => stageSource('0.1.7', boundaries))
-    assert.equal(cleaned, 2)
+    head = 'a'.repeat(40)
     sourceVersion = '0.0.0'
-    observedSource = '0'.repeat(40)
-    await assert.rejects(() => stageSource('0.1.7', boundaries))
-    assert.equal(cleaned, 3)
-    assert.throws(() => projectedVersionArguments('0.0.0'))
+    await assert.rejects(() => stageSource(boundaries))
+    assert.equal(cleaned, 2)
   } finally {
     fs.rmSync(temp, { recursive: true, force: true })
   }
@@ -563,13 +424,9 @@ test('dependency install is a held Node child with fictional provider homes and 
       owner,
       /await\s+command\(\s*process\.execPath,\s*\[\s*entry,\s*'install',\s*'--frozen-lockfile',?\s*\],\s*root,\s*records/,
     )
-    for (const workflow of ['macos.yml', 'windows.yml']) {
-      const text = fs
-        .readFileSync(path.join(repo, '.github/workflows', workflow), 'utf8')
-        .split('  plugin-v2-review:')[1]
-      assert.ok(text.includes('owner.mjs install "$REVIEW_CONTROL"'))
-      assert.ok(!text.includes('pnpm install --frozen-lockfile'))
-    }
+    const text = fs.readFileSync(path.join(repo, '.github/workflows/plugin-review.yml'), 'utf8')
+    assert.ok(text.includes('owner.mjs install "$REVIEW_CONTROL"'))
+    assert.ok(!text.includes('pnpm install --frozen-lockfile'))
   }))
 test('cleanup attempts every held child after a stop failure and refuses overall drain', async () => {
   const records = [
@@ -632,46 +489,6 @@ test('held esbuild launch resolves only platform native PE/Mach-O and rejects wr
   const malformed = Buffer.from(pe)
   malformed.writeUInt32LE(0xffffffff, 0x3c)
   assert.throws(() => esbuildInvocation(binary, args, malformed, 'win32', 'x64'))
-})
-
-test('final app source uses observed route HEAD and preserves the fixed published baseline', () => {
-  assert.equal(appSourceFor('0.1.7', 'a'.repeat(40)), BASE017)
-  assert.equal(appSourceFor('0.1.8', 'a'.repeat(40)), 'a'.repeat(40))
-  assert.equal(appSourceFor('0.1.8', 'b'.repeat(40)), 'b'.repeat(40))
-  for (const sha of [null, '', 'A'.repeat(40), 'a'.repeat(39)])
-    assert.throws(() => appSourceFor('0.1.8', sha))
-  assert.throws(() => appSourceFor('0.1.9', 'a'.repeat(40)))
-})
-
-test('source intent refuses historical final-app literals and altered baselines', () => {
-  const plan = JSON.parse(fs.readFileSync(new URL('./source-plan.json', import.meta.url)))
-  const env = {
-    GITHUB_ACTIONS: 'true',
-    RUNNER_ENVIRONMENT: 'github-hosted',
-    GITHUB_REPOSITORY: 'brocrew/brocrew',
-    GITHUB_REF: 'refs/heads/gate/plugin-v2-mac-closed',
-    GITHUB_EVENT_NAME: 'workflow_dispatch',
-    GITHUB_SHA: 'a'.repeat(40),
-  }
-  assert.equal(hosted(plan, '0.1.8', env, 'darwin', 'arm64').appSource, env.GITHUB_SHA)
-  assert.equal(hosted(plan, '0.1.7', env, 'darwin', 'arm64').appSource, BASE017)
-  for (const appSources of [
-    [
-      { version: '0.1.7', commit: BASE017 },
-      { version: '0.1.8', commit: 'b'.repeat(40) },
-    ],
-    [
-      { version: '0.1.7', commit: 'b'.repeat(40) },
-      { version: '0.1.8', source: 'observed-route-head' },
-    ],
-    [...plan.appSources, { version: '0.1.8', source: 'observed-route-head' }],
-    [
-      { version: '0.1.7', commit: BASE017 },
-      { version: '0.1.8', source: 'observed-route-head', commit: env.GITHUB_SHA },
-    ],
-  ])
-    assert.throws(() => hosted({ ...plan, appSources }, '0.1.8', env, 'darwin', 'arm64'))
-  assert.throws(() => hosted(plan, '0.1.8', { ...env, GITHUB_SHA: null }, 'darwin', 'arm64'))
 })
 
 test('launch synchronization accepts Providers and resets the quiet period after a tab change', async () => {
