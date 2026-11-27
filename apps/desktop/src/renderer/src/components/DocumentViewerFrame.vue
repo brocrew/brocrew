@@ -50,10 +50,12 @@ const emit = defineEmits<{ close: [] }>()
 
 <style scoped>
 /* `--drawer-solid`: the opaque fill for something floating over the transcript, with a value in
-   both themes. `--paper-bg` has no dark value and would put the head's pale ink on white. */
+   both themes. `--paper-bg` has no dark value and would put the head's pale ink on white.
+   The width keeps clear of the Waiting on you corner, which `OverlayHost` draws at the layer's left
+   edge, `--lane-clear` wide: centred, it gives that band back on both sides. */
 .viewer-frame {
   display: flex;
-  max-width: min(900px, 92vw);
+  max-width: min(900px, 92vw, calc(100% - 2 * var(--lane-clear)));
   max-height: 88vh;
   flex-direction: column;
   border: var(--border-width) solid var(--line);
@@ -112,5 +114,14 @@ const emit = defineEmits<{ close: [] }>()
   padding: var(--space-6) var(--space-5);
   color: var(--muted);
   font-size: var(--type-caption);
+}
+
+/* In a narrow window, giving the corner's band back on both sides leaves too little to read in.
+   The corner is only at the left, so the viewer clears it there and takes the rest of the width. */
+@media (max-width: 1000px) {
+  .viewer-frame {
+    max-width: calc(100% - var(--lane-clear) - var(--space-5));
+    margin-left: var(--lane-clear);
+  }
 }
 </style>
