@@ -1,29 +1,25 @@
-import { readingOf } from './forest-fixture'
-import type { ForestScope } from '../../src/shared/the-whole-forest'
-import { createModelLists } from '../lib/provider-launch-fixture'
+import {
+  installRuntimeScreenFixture,
+  disposeRuntimeScreenFixture,
+  changed,
+  runtime,
+  sessions,
+  transcriptLinks,
+} from './runtime-screen-fixture'
 import type { ModelList } from '../../src/shared/model-choice-contracts'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import { fictionalSkills } from '../../look/fixtures/skills'
-import RuntimeScreen from '../../src/renderer/src/components/RuntimeScreen.vue'
-import { createSessionStore, type SessionStore } from '../../src/renderer/src/lib/session-store'
-import { createAgentStore } from '../../src/renderer/src/lib/agent-store'
-
 import { useOverlays } from '../../src/renderer/src/lib/overlay-store'
 import { DEFAULT_PROFILE_ID } from '../../src/shared/runtime-ipc'
-import type {
-  AgentIdentities,
-  Provider,
-  RuntimeBridge,
-  ResumedSession,
-} from '../../src/shared/runtime-ipc'
+import type { Provider, RuntimeBridge, ResumedSession } from '../../src/shared/runtime-ipc'
 import type { ResolvedMessageLink } from '../../src/renderer/src/lib/message-links'
-import { applyTheme } from '../../src/renderer/src/lib/apply-theme'
 import {
   forgetProfileSignIns,
   useProfileSignIn,
 } from '../../src/renderer/src/composables/useProfileSignIn'
-import { mount, unmountAll, META } from './harness'
+import { mount, META } from './harness'
+import { settleFrames as settle } from './settle-dom'
 
 // The computer the window runs on, set by each test rather than read from the runner's.
 const here = vi.hoisted(() => ({ platform: 'MacIntel' }))
@@ -32,176 +28,33 @@ vi.mock('../../src/renderer/src/lib/this-computer', async (original) => ({
   platformHere: () => here.platform,
 }))
 
-// Provider setup has its own tests; this screen fixture never enters sign-in.
-vi.mock('../../src/renderer/src/components/ProviderSetupAtLaunch.vue', () => ({
-  default: { render: () => null },
-}))
+const { default: RuntimeScreen } =
+  await import('../../src/renderer/src/components/RuntimeScreen.vue')
 
-let sessions: SessionStore
-let agentStore: ReturnType<typeof createAgentStore>
-let modelLists: ReturnType<typeof createModelLists>
-vi.mock('../../src/renderer/src/composables/useSessionStore', () => ({
-  useSessionStore: () => sessions,
-}))
-vi.mock('../../src/renderer/src/composables/useAgentStore', () => ({
-  useAgentStore: () => agentStore,
-}))
-vi.mock('../../src/renderer/src/composables/useModelLists', () => ({
-  useModelLists: () => modelLists,
-}))
-
-const agents: AgentIdentities = {
-  identities: [
-    {
-      id: 'agent:editor',
-      slug: 'editor',
-      displayName: 'Editor',
-      createdAt: 1,
-      createdBy: null,
-      provider: 'codex',
-      externalMcpServerIds: [],
-    },
-  ],
-  use: [
-    {
-      slug: 'editor',
-      conversations: 0,
-      thisAppMintsIt: false,
-      isLaunching: false,
-      isStarting: false,
-      runsOn: { provider: 'codex', from: 'saved' },
-    },
-  ],
-  foldersWithoutARow: [],
-  defaultApprovalMode: 'ask',
-  externalMcpServers: [],
-}
-const walk = () => ({
-  rows: [],
-  walk: 'every-conversation-that-routed' as const,
-  ledgers: 0,
-  rowsUnread: 0,
-})
-const forestWalk = () => ({ ...walk(), walk: 'every-conversation-this-app-placed' as const })
-const runtime = {
-  skills: vi.fn<RuntimeBridge['skills']>(fictionalSkills().bridge),
-  onEvent: vi.fn(() => () => {}),
-  onLiveness: vi.fn(() => () => {}),
-  onChanged: vi.fn((listener: Parameters<RuntimeBridge['onChanged']>[0]) => {
-    hostSaysChanged = listener
-    return () => {}
-  }),
-  onStates: vi.fn(() => () => {}),
-  onLimitsDisplayChanged: vi.fn(() => () => {}),
-  attachOpen: vi.fn(async (): Promise<ResumedSession[]> => []),
-  resolveLink: vi.fn<RuntimeBridge['resolveLink']>(async () => ({
-    state: 'unavailable',
-    kind: 'piece',
-    title: null,
-    status: null,
-    opens: null,
-  })),
-  look: vi.fn(async ({ sessionId }: { sessionId: string }): Promise<ResumedSession> => ({
-    ...META,
-    sessionId,
-    handover: 'recorded',
-    history: { entries: [], from: 0, hasOlder: false, turnAligned: true },
-  })),
-  latestHistory: vi.fn<RuntimeBridge['latestHistory']>(async () => ({
-    entries: [],
-    from: 0,
-    hasOlder: false,
-    turnAligned: true,
-  })),
-  archiveConversation: vi.fn(async ({ sessionId }: { sessionId: string }) => ({
-    done: true as const,
-    conversations: [sessionId],
-  })),
-  startAndSend: vi.fn(),
-  stopLooking: vi.fn(async () => {}),
-  send: vi.fn(),
-  resume: vi.fn(),
-  interrupt: vi.fn<RuntimeBridge['interrupt']>(async () => {}),
-  listResumable: vi.fn(async () => []),
-  listUnresumable: vi.fn(async () => []),
-  agentIdentities: vi.fn(async () => agents),
-  profiles: vi.fn<RuntimeBridge['profiles']>(async () => []),
-  capabilities: vi.fn(async () => ({})),
-  providerVersions: vi.fn(async () => ({
-    claude: { version: null, reason: 'No version in this fixture.' },
-    codex: { version: null, reason: 'No version in this fixture.' },
-  })),
-  providerSetup: vi.fn(async () => ({})),
-  providerUsage: vi.fn(async () => ({ claude: [], codex: [] })),
-  providerResources: vi.fn(async () => ({
-    claude: { running: 0, at: 1, rssBytes: 0, cpuPercent: 0 },
-    codex: { running: 0, at: 1, rssBytes: 0, cpuPercent: 0 },
-  })),
-  onProvidersChanged: vi.fn(() => () => {}),
-  questionsForAPerson: vi.fn(async () => walk()),
-  decisionsForAPerson: vi.fn(async () => walk()),
-  stalledWorkForAPerson: vi.fn(async () => walk()),
-  stoppedWorkForAPerson: vi.fn(async () => walk()),
-  workIncidentsForAPerson: vi.fn(async () => walk()),
-  waitingOnWhoWroteForAPerson: vi.fn(async () => walk()),
-  instructionAsksForAPerson: vi.fn(async () => []),
-  mcpServerRequestsForAPerson: vi.fn(async () => []),
-  readLimitsDisplay: vi.fn(async () => null),
-  readWorkspace: vi.fn(async () => null),
-  whatEachConversationIsWaitingOn: vi.fn(async () => null),
-  whatIsBeingDone: vi.fn(async () => ({ readAt: 1, conversations: [] })),
-  forestReading: vi.fn(async (scope: ForestScope) => readingOf([], scope)),
-  forestNodes: vi.fn(async () => ({ nodes: forestWalk(), gone: [], readAt: 1 })),
-}
+let navigateListener: ((direction: 'back' | 'forward') => void) | null = null
 
 beforeEach(() => {
-  vi.clearAllMocks()
-  runtime.resolveLink.mockImplementation(async () => ({
-    state: 'unavailable',
-    kind: 'piece',
-    title: null,
-    status: null,
-    opens: null,
-  }))
-  runtime.look.mockImplementation(async ({ sessionId }): Promise<ResumedSession> => ({
-    ...META,
-    sessionId,
-    handover: 'recorded',
-    history: { entries: [], from: 0, hasOlder: false, turnAligned: true },
-  }))
-  runtime.latestHistory.mockImplementation(async () => ({
-    entries: [],
-    from: 0,
-    hasOlder: false,
-    turnAligned: true,
-  }))
-  runtime.agentIdentities.mockImplementation(async () => agents)
   here.platform = 'MacIntel'
-  useOverlays().close()
-  localStorage.clear()
+  installRuntimeScreenFixture()
+  Object.assign(window.api.runtime, {
+    skills: vi.fn<RuntimeBridge['skills']>(fictionalSkills().bridge),
+    archiveConversation: vi.fn(async ({ sessionId }: { sessionId: string }) => ({
+      done: true as const,
+      conversations: [sessionId],
+    })),
+    providerVersions: vi.fn(async () => ({
+      claude: { version: null, reason: 'No version in this fixture.' },
+      codex: { version: null, reason: 'No version in this fixture.' },
+    })),
+  })
   window.api = {
-    runtime,
-    getAppInfo: async () => ({
-      name: 'Fictional BroBot',
-      windowTitle: 'Fictional BroBot',
-      version: '0.0.0',
-      step: 'test',
-      workspace: { name: 'Fiction', path: '/fictional/work', isDefault: false },
-      build: { id: 'test', commit: '', dirty: false, branches: null },
-      db: { migrationsApplied: 0, providerSessionCount: 0 },
-    }),
+    ...window.api,
     onNavigate: (listener: (direction: 'back' | 'forward') => void) => {
       navigateListener = listener
       return () => (navigateListener = null)
     },
-  } as unknown as Window['api']
-  sessions = createSessionStore(window.api.runtime as RuntimeBridge)
-  agentStore = createAgentStore(window.api.runtime)
-  modelLists = createModelLists(() => window.api.runtime)
+  }
 })
-
-let hostSaysChanged: Parameters<RuntimeBridge['onChanged']>[0] | null = null
-let navigateListener: ((direction: 'back' | 'forward') => void) | null = null
 
 /**
  * Back and Forward through the places a person went in this window: screens, conversations with
@@ -219,20 +72,8 @@ afterEach(() => {
     runtime.agentIdentities,
   ])
     one.mockReset()
-  applyTheme(null)
-  unmountAll()
-  sessions.dispose()
-  useOverlays().close()
-  localStorage.clear()
+  disposeRuntimeScreenFixture()
 })
-
-const settle = async (): Promise<void> => {
-  await new Promise((done) => setTimeout(done, 0))
-  await nextTick()
-  await new Promise<void>((done) =>
-    requestAnimationFrame(() => requestAnimationFrame(() => done())),
-  )
-}
 
 /** The screen, showing one conversation with `messages` lines, and its Back and Forward. */
 async function screen(messages = 1) {
@@ -486,10 +327,6 @@ const linkTo = (sessionId: string, title: string): ResolvedMessageLink => ({
   opens: { sessionId },
 })
 
-function transcriptLinks(m: ReturnType<typeof mount>) {
-  return m.all('message-link').filter((el) => el.closest('[data-cy="transcript"]'))
-}
-
 /**
  * The screen showing recorded conversation A, opened from a link in the attached one, then on
  * `after`: A is let go once it is off screen. `host` answers what the host says of each link now.
@@ -635,6 +472,7 @@ it('past a profile removed meanwhile, the conversation reached is opened, not gu
   m.q('rail-settings').click()
   await expect.poll(() => sessions.get('recorded-a')).toBeNull()
   await settle()
+  const agents = await runtime.agentIdentities()
   runtime.agentIdentities.mockResolvedValue({ ...agents, identities: [] })
   runtime.look.mockResolvedValueOnce(handed('recorded-a', 'W9.2'))
   ;(m.q('nav-back') as HTMLButtonElement).click()
@@ -771,7 +609,7 @@ async function pendingForwardFromA() {
 it('the conversation list refreshing while a step reads does not stop the step', async () => {
   // A busy app refreshes its conversation list all the time; the place on screen is the same.
   const { m, finish } = await pendingForwardFromA()
-  hostSaysChanged?.({ what: 'conversations' } as never)
+  changed({ what: 'conversations' } as never)
   await settle()
   await settle()
   finish(handed('recorded-a', 'Words of A.'))
