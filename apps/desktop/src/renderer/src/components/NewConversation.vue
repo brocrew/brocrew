@@ -74,6 +74,7 @@ import type { SendIntent } from '../lib/session-store'
 import PromptComposer from './PromptComposer.vue'
 import SessionHeader from './SessionHeader.vue'
 import SignInPanel from './SignInPanel.vue'
+import LaunchRefusalBox from './LaunchRefusalBox.vue'
 import ModelPicker from './ModelPicker.vue'
 import { conversationTitle, type ListedConversation } from '../lib/conversation-list'
 import { agentStateWords } from '../../../shared/agent-state'
@@ -894,12 +895,7 @@ watch(
             </div>
 
             <div v-if="blockingShowing" class="blockers" data-cy="launch-blocked">
-              <div v-if="props.error" class="blocker" role="alert">
-                <p class="b-head">
-                  <svg class="icon"><use href="#i-alert" /></svg>The launch didn’t start
-                </p>
-                <p class="b-body" data-cy="command-error">{{ props.error }}</p>
-              </div>
+              <LaunchRefusalBox v-if="props.error" :error="props.error" text-cy="command-error" />
               <SignInPanel
                 :provider="props.defaultProvider"
                 :display-name="providerName(props.defaultProvider)"
@@ -1284,37 +1280,6 @@ h2 {
   margin-top: var(--space-7);
   flex-direction: column;
   gap: var(--space-5);
-}
-
-.blocker {
-  padding: var(--space-4) var(--space-5);
-  border: var(--border-width) solid var(--danger-border);
-  border-radius: var(--radius-sm);
-  background: var(--danger-bg);
-  text-align: left;
-}
-
-.blocker .b-head {
-  display: flex;
-  align-items: center;
-  margin: 0;
-  color: var(--danger-text);
-  font-size: var(--type-caption);
-  font-weight: var(--fw-bold);
-  gap: var(--space-3);
-}
-
-.blocker .b-head .icon {
-  width: 13px;
-  height: 13px;
-  color: var(--danger);
-}
-
-.blocker .b-body {
-  margin: var(--space-2) 0 0;
-  color: var(--danger-text-notice);
-  font-size: var(--type-caption);
-  line-height: var(--leading-normal);
 }
 
 .front-door {

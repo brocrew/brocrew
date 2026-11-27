@@ -16,6 +16,7 @@ import type { AgentStore } from '../lib/agent-store'
 import { YOLO_MEANS } from '../lib/approval-mode'
 import { joiningTheBox, shouldRestoreDraft, type DraftHanding } from '../lib/drafts'
 import PromptComposer from './PromptComposer.vue'
+import LaunchRefusalBox from './LaunchRefusalBox.vue'
 import ModelPicker from './ModelPicker.vue'
 import type { ModelLists, PickedModel } from '../lib/model-lists'
 import { useClientProviders } from '../client-provider/injection'
@@ -363,16 +364,13 @@ async function startWith(
       <!-- ⛔ **The SAME composer the front door uses** (013, 217 §1). Not a second implementation:
          one `canSend`, one chip list, one picker call — and the first message IS the conversation,
          so this sheet can never create an empty one. -->
-      <!-- 🔴 **718 · `710` F-9 — the refusal, where the press was made.** ⚑ The launcher's own box —
-         its words, its register — because it is the same failure at the second door. ⚠️ The
-         `data-cy` is on the SENTENCE, as the launcher's is, so a reader of it reads the host's words
-         and nothing else. -->
-      <div v-if="props.error" class="blocker" data-cy="start-as-agent-refused">
-        <p class="b-head">
-          <svg class="icon"><use href="#i-alert" /></svg>The launch didn’t start
-        </p>
-        <p class="b-body" data-cy="start-as-agent-error">{{ props.error }}</p>
-      </div>
+      <LaunchRefusalBox
+        v-if="props.error"
+        class="refusal"
+        :error="props.error"
+        text-cy="start-as-agent-error"
+        data-cy="start-as-agent-refused"
+      />
 
       <PromptComposer
         :state="props.busy ? 'starting' : 'idle'"
@@ -433,38 +431,7 @@ async function startWith(
   overflow-wrap: anywhere;
 }
 
-/* ⚑ **718 · the launcher's refusal box, as declarations** — `NewConversation`'s `.blocker`, copied
-   rather than borrowed as a class name for this file's standing reason: `scoped` styles are
-   per-component, so a shared name shares nothing. */
-.blocker {
+.refusal {
   margin: 0 var(--space-9) var(--space-6);
-  padding: var(--space-4) var(--space-5);
-  border: var(--border-width) solid var(--danger-border);
-  border-radius: var(--radius-sm);
-  background: var(--danger-bg);
-  text-align: left;
-}
-
-.blocker .b-head {
-  display: flex;
-  align-items: center;
-  margin: 0;
-  color: var(--danger-text);
-  font-size: var(--type-caption);
-  font-weight: var(--fw-bold);
-  gap: var(--space-3);
-}
-
-.blocker .b-head .icon {
-  width: 13px;
-  height: 13px;
-  color: var(--danger);
-}
-
-.blocker .b-body {
-  margin: var(--space-2) 0 0;
-  color: var(--danger-text-notice);
-  font-size: var(--type-caption);
-  line-height: var(--leading-normal);
 }
 </style>
