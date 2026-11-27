@@ -2,12 +2,8 @@ import { observeDatabaseMemory } from '../database-memory'
 import Database from 'better-sqlite3'
 import { serialize } from 'node:v8'
 import { SUPPORTED_PROVIDERS, type Provider } from '@brobot2/shared'
-import {
-  foldProviderLimits,
-  PROVIDER_WALL_LOOKBACK_MS,
-  wallsFromUsage,
-} from '../../shared/provider-limit'
-import { warningWindow } from '../providers/usage-period'
+import { PROVIDER_WALL_LOOKBACK_MS } from '../../shared/provider-limit'
+import { limitsOfTheAccountInUse } from '../providers/limits-in-use'
 import { createSessionStore } from './session-store'
 import { LimitsMaterialization, type LimitsReadBounds } from './bounded-limits-statements'
 import {
@@ -98,14 +94,7 @@ export class LimitsReadEngine {
         wanted.accountLives,
       )
       materialization.assert()
-      const near = wallsFromUsage(wanted.usage, canonical.rows, evaluatedAt, warningWindow)
-      const display =
-        near.length === 0
-          ? canonical
-          : {
-              ...canonical,
-              rows: foldProviderLimits([...canonical.rows, ...near], [], evaluatedAt),
-            }
+      const display = limitsOfTheAccountInUse(canonical, wanted.usage, evaluatedAt)
       const read = limitsReadResult.parse({
         operation: wanted.operation,
         databaseEpoch: wanted.databaseEpoch,
