@@ -4711,17 +4711,20 @@ export class RuntimeHost implements LiveHost {
         this.everyKeptReadingIsStale()
         return
       }
+      // A history trim removes only old chatter, never a row a state, a fold or a person's queue is
+      // read from (the newest of each kind is always kept), so it is not announced as a change.
+      const whole = [...change.whole].filter(([, why]) => why !== 'trimmed')
       // A rebuild's batches change nothing a reader of the active ledger sees.
       if (
         change.rows.length > 0 ||
-        change.whole.size > 0 ||
+        whole.length > 0 ||
         change.kept.length > 0 ||
         change.visibleTables.size > 0
       )
         this.moveTheListing()
       for (const row of change.rows) this.aRowWasWritten(row.session, row)
       if (
-        change.whole.size > 0 ||
+        whole.length > 0 ||
         change.stagedRemovedSeen.size > 0 ||
         [...change.visibleTables].some((table) => NAMES_WHAT_A_PERSON_IS_ASKED.has(table)) ||
         change.rows.some(
@@ -4738,7 +4741,7 @@ export class RuntimeHost implements LiveHost {
         else resources.push({ resource })
       }
       for (const [piece, resources] of kept) this.filesWereKept(piece, resources)
-      for (const [session, why] of change.whole) this.aWholeLedgerChanged(session, why)
+      for (const [session, why] of whole) this.aWholeLedgerChanged(session, why)
     } catch (error) {
       console.warn(`runtime host could not follow a committed change: ${errorMessage(error)}`)
     }
