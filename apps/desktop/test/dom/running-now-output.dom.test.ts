@@ -1,10 +1,14 @@
 import { mapWorkflowEvents } from '../panel-run.fixture'
 import { afterEach, expect, it, vi } from 'vitest'
+import { page } from 'vitest/browser'
 import { defineComponent, h, nextTick, ref } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import RunningNowCard from '../../src/renderer/src/components/RunningNowCard.vue'
 import { applyEvent, createTranscript } from '../../src/renderer/src/lib/transcript'
 import { META, mount, paneProps, record, unmountAll } from './harness'
+import { applyTheme, THEME_STYLE_ID } from '../../src/renderer/src/lib/apply-theme'
+import { wearTheme } from '../../look/fixtures/themes'
+import { drawnReady } from './drawn'
 
 afterEach(unmountAll)
 const tick = async (): Promise<void> => {
@@ -284,4 +288,117 @@ it('does not put a late missing output into the next conversation', async () => 
   m.q('past-runs-open').click()
   await tick()
   expect(m.q('past-runs-dialog').textContent).toContain('Past runs')
+})
+
+it('keeps the checklist inside Running now, inset like its other content, in each look', async () => {
+  const session = record([
+    {
+      type: 'plan_update',
+      steps: [
+        { text: 'Read the map', status: 'done' },
+        { text: 'Check the footpath', status: 'active' },
+      ],
+      run: { kind: 'checklist', input: 'Check the route', progress: 'Checking the footpath' },
+    },
+    { type: 'sub_agent', agentId: 'map-reader', phase: 'started', title: 'Read the map' },
+  ])
+  const folds = ['brobot2.cardRunningNowFolded', 'brobot2.cardChecklistFolded']
+  const savedFolds = folds.map((key) => localStorage.getItem(key))
+  const root = document.documentElement
+  const savedAttributes = [...root.attributes].map(({ name, value }) => [name, value] as const)
+  const savedThemeCss = document.getElementById(THEME_STYLE_ID)?.textContent ?? null
+  const viewport = { width: innerWidth, height: innerHeight }
+  const text = (el: Element): DOMRect => {
+    const box = el.getBoundingClientRect()
+    const own = getComputedStyle(el)
+    const left = box.left + parseFloat(own.borderLeftWidth) + parseFloat(own.paddingLeft)
+    const top = box.top + parseFloat(own.borderTopWidth) + parseFloat(own.paddingTop)
+    const right = box.right - parseFloat(own.borderRightWidth) - parseFloat(own.paddingRight)
+    const bottom = box.bottom - parseFloat(own.borderBottomWidth) - parseFloat(own.paddingBottom)
+    return new DOMRect(left, top, right - left, bottom - top)
+  }
+  try {
+    for (const key of folds) localStorage.removeItem(key)
+    await page.viewport(1440, 900)
+    for (const look of ['crew-night', 'defined', 'synthwave'] as const) {
+      wearTheme(look)
+      const m = mount(ConversationPane, paneProps({ record: session, drawerOpen: true }), {
+        width: 1400,
+        height: 900,
+      })
+      await tick()
+      await drawnReady()
+      const panel = m.q('panel-agents')
+      const checklist = m.q('panel-todo')
+      const rows = m.q('running-now-rows')
+      expect(panel.contains(checklist), look).toBe(true)
+      const box = panel.getBoundingClientRect()
+      const style = getComputedStyle(panel)
+      const content = {
+        left: box.left + parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft),
+        right: box.right - parseFloat(style.borderRightWidth) - parseFloat(style.paddingRight),
+        top: box.top + parseFloat(style.borderTopWidth) + parseFloat(style.paddingTop),
+        bottom: box.bottom - parseFloat(style.borderBottomWidth) - parseFloat(style.paddingBottom),
+      }
+      const steps = [...checklist.querySelectorAll('.step .text')]
+      expect(steps, look).toHaveLength(2)
+      const title = (el: Element) => el.querySelector(':scope > .head .title')!
+      const stepParts = steps.map((step, i): [string, Element] => [`step ${i + 1}`, step])
+      const inside: [string, Element][] = [
+        ['checklist', checklist],
+        ['checklist title', title(checklist)],
+        ...stepParts,
+      ]
+      for (const [name, el] of inside) {
+        const drawn = el === checklist ? el.getBoundingClientRect() : text(el)
+        expect(drawn.width * drawn.height, `${look} ${name} drawn`).toBeGreaterThan(0)
+        expect(drawn.left, `${look} ${name} left`).toBeGreaterThanOrEqual(content.left - 0.5)
+        expect(drawn.right, `${look} ${name} right`).toBeLessThanOrEqual(content.right + 0.5)
+        expect(drawn.top, `${look} ${name} top`).toBeGreaterThanOrEqual(content.top - 0.5)
+        expect(drawn.bottom, `${look} ${name} bottom`).toBeLessThanOrEqual(content.bottom + 0.5)
+      }
+      const own = checklist.getBoundingClientRect()
+      expect(own.left, `${look} checklist left`).toBeCloseTo(content.left)
+      expect(own.right, `${look} checklist right`).toBeCloseTo(content.right)
+      expect(rows.getBoundingClientRect().left, `${look} rows left`).toBeCloseTo(own.left)
+      expect(rows.getBoundingClientRect().right, `${look} rows right`).toBeCloseTo(own.right)
+      const boxes: [string, Element][] = [
+        ['checklist head', checklist.querySelector(':scope > .head')!],
+        ['steps', checklist.querySelector('.steps')!],
+        ...[...checklist.querySelectorAll('.step')].map((step, i): [string, Element] => [
+          `step row ${i + 1}`,
+          step,
+        ]),
+      ]
+      for (const [name, el] of boxes)
+        expect(text(el).left, `${look} ${name} inset`).toBeCloseTo(content.left)
+      // The step mark, header icon and row icon differ by a pixel; spacing steps are 2px or more.
+      const inset = text(title(panel)).left
+      const aligned: [string, Element][] = [['checklist title', title(checklist)], ...stepParts]
+      for (const [name, el] of aligned)
+        expect(Math.abs(text(el).left - inset), `${look} ${name} text inset`).toBeLessThanOrEqual(1)
+      if (import.meta.env.VITE_RUNNING_SECTION_CAPTURE)
+        await page.screenshot({
+          element: panel,
+          path: `${import.meta.env.VITE_RUNNING_SECTION_CAPTURE}/checklist-${look}.png`,
+        })
+      m.unmount()
+    }
+  } finally {
+    folds.forEach((key, i) => {
+      const value = savedFolds[i]
+      if (value == null) localStorage.removeItem(key)
+      else localStorage.setItem(key, value)
+    })
+    applyTheme(null)
+    for (const { name } of [...root.attributes]) root.removeAttribute(name)
+    for (const [name, value] of savedAttributes) root.setAttribute(name, value)
+    if (savedThemeCss !== null) {
+      const tag = document.createElement('style')
+      tag.id = THEME_STYLE_ID
+      tag.textContent = savedThemeCss
+      document.head.append(tag)
+    }
+    await page.viewport(viewport.width, viewport.height)
+  }
 })
