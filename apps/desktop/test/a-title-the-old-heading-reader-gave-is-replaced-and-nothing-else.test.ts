@@ -31,9 +31,7 @@ import { ProviderDouble, anOpenGate } from './lib/provider-double'
  * (`FRONT_MATTER_READ_EVERYWHERE_SINCE = Date.UTC(2026, 9, 11)`). The write is a compare-and-set
  * (`retitleResource(id, was, title)`).
  *
- * The dev's case (`a-kept-file-is-titled-by-what-its-own-bytes-say.test.ts`) pins a heading-titled
- * file replaced, a chosen title, two cut titles, gone bytes, a file kept AT the cutoff, a second
- * launch, and the store's two refusals. This file adds:
+ * This file pins the re-title from every side:
  *
  *  1. **The date bound from both sides** — a millisecond before it is read, at it and a day after are
  *     not; a file titled by its NAME is read whatever its date.
@@ -46,6 +44,11 @@ import { ProviderDouble, anOpenGate } from './lib/provider-double'
  *     once; and through the pass, a title written between its read and its write is kept.
  *  5. **Every page of the scan** — a file the old reader titled behind more than one page of
  *     candidates is still reached.
+ *  6. **One pass, two counts** — the untitled rows are titled and the read ones re-titled in the same
+ *     pass, counted apart; a file titled by its name whose bytes give only its name is not counted.
+ *  7. **What is left alone** — an old reader's title whose bytes are gone, a heading over the cap
+ *     that both readers cut the same, and a front matter title kept cut at the cap; and (F085) a
+ *     file a spaced key hid from the reader is re-titled.
  *
  * ⚑ Every time is a literal UTC instant written onto the row, never the wall clock: the store's
  * clock here is 1970-something, so a row's `created_at` is exactly what the test sets.
@@ -343,5 +346,79 @@ describe('F046 · a title the old heading reader gave is replaced — and nothin
     expect(titleOf(behind)).toBe('Behind front')
     expect(titleOf('res_filler_0')).toBe('filler-0.md')
     expect(titleOf('res_filler_54')).toBe('filler-54.md')
+  })
+
+  // ── 6 · one pass, two counts ─────────────────────────────────────────────────────────────────
+
+  it('⚑ one pass titles the untitled rows and re-titles the read ones, counted apart — and a file titled by its name whose bytes give only its name is not counted', async () => {
+    const { owner, label, piece } = await aRootToKeepOn()
+    // ⚑ Titled by its name by a build that read no front matter: the quoted title keeps its ` #`.
+    const slip = await keeps(
+      owner,
+      label,
+      'slip.md',
+      '---\ntitle: "Slipping a #piece in"\n---\nbody\n',
+    )
+    asLeft(slip, 'slip.md')
+    const heading = await keeps(owner, label, 'heading.md', '# A heading\n\nbody\n')
+    asLeft(heading, 'heading.md')
+    // ⛔ Titled by its name, and its bytes give nothing else: read, and neither changed nor counted.
+    const none = await keeps(owner, label, 'notes.md', 'just notes\n')
+    expect(titleOf(none)).toBe('notes.md')
+    // ⚑ A row as a build before titles wrote it: no title, and no bytes kept.
+    db.prepare(
+      'INSERT INTO work_resource (id, work_id, role, name, sha256, bytes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    ).run('res_legacy', piece, 'made', 'old.md', 'a'.repeat(64), 1, tick())
+
+    expect(await host.titleTheOlderFiles()).toEqual({ titled: 1, retitled: 2 })
+    expect(titleOf(slip), 'a front matter title, quoted').toBe('Slipping a #piece in')
+    expect(titleOf(heading), 'a heading').toBe('A heading')
+    expect(titleOf(none), 'no title in its bytes: its name').toBe('notes.md')
+    expect(titleOf('res_legacy'), 'no bytes: its name').toBe('old.md')
+    expect(await host.titleTheOlderFiles()).toEqual({ titled: 0, retitled: 0 })
+  })
+
+  // ── 7 · what is left alone, and the key the reader missed ────────────────────────────────────
+
+  it('🔴 an old reader’s title whose bytes are gone is left, and so is a heading over the cap both readers cut the same — while F085’s file, whose spaced key hid its title, is re-titled', async () => {
+    const { owner, label, piece } = await aRootToKeepOn()
+    // ⛔ Titled `Method` by the old reader, kept long ago, its bytes never kept here: nothing to read.
+    db.prepare(
+      'INSERT INTO work_resource (id, work_id, role, title, name, sha256, bytes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    ).run('res_gone', piece, 'made', 'Method', 'gone.md', 'd'.repeat(64), 1, Date.UTC(2026, 8, 30))
+    // ⛔ No front matter, a heading over the cap: the old reader and a fresh read cut it the same.
+    const longHeading = await keeps(owner, label, 'long-heading.md', `# ${'H'.repeat(260)}\n`)
+    expect(titleOf(longHeading)).toBe(`${'H'.repeat(199)}…`)
+    // ⛔ A front matter title over the cap, kept cut: a fresh read cuts it the same, so it stays.
+    const cappedFront = await keeps(
+      owner,
+      label,
+      'long-front.md',
+      `---\ntitle: ${'A'.repeat(260)}\n---\n\n# Short heading\n`,
+    )
+    expect(titleOf(cappedFront), 'a title over the cap is kept cut').toBe(`${'A'.repeat(199)}…`)
+    // ⚑ F085: `range checked:` is a key, so the title is read now; as a reader that refused the
+    // spaced key stored it, the title was the first heading.
+    const heading = 'Re-check: F001, F006, F007, F008, F033, F035, F037, F038 against d074f4c2'
+    const spaced = await keeps(
+      owner,
+      label,
+      'recheck-ui.md',
+      `---\nauthor: Anh\nrange checked: 551c81d5..d074f4c2\ntitle: Re-check of 8 UI-side findings against d074f4c2\n---\n\n# ${heading}\n`,
+    )
+    expect(titleOf(spaced), 'kept now, the key is read').toBe(
+      'Re-check of 8 UI-side findings against d074f4c2',
+    )
+    asLeft(spaced, heading)
+
+    expect(await host.titleTheOlderFiles()).toEqual({ titled: 0, retitled: 1 })
+    expect(titleOf('res_gone'), 'bytes gone: left as it is').toBe('Method')
+    expect(titleOf(longHeading), 'a cut heading is what a fresh read gives').toBe(
+      `${'H'.repeat(199)}…`,
+    )
+    expect(titleOf(cappedFront), 'a cut front matter title is what a fresh read gives').toBe(
+      `${'A'.repeat(199)}…`,
+    )
+    expect(titleOf(spaced)).toBe('Re-check of 8 UI-side findings against d074f4c2')
   })
 })
