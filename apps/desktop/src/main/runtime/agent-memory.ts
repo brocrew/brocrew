@@ -11,6 +11,7 @@ import {
 } from '../saved-method-library'
 import { SUPPORTED_PROVIDERS, type Provider } from '@brobot2/shared'
 import { providerKnowledge } from '../providers/index'
+import type { MemoryAmendmentJournal } from '../database/knowledge'
 import type { SessionStore } from '../db/session-store'
 import { isPathSegment } from '../../shared/runtime-ipc'
 import type { ActedBy } from '../../shared/who-did-it'
@@ -742,17 +743,11 @@ export async function correctMemoryEntry(
   }
 }
 
-type MemoryServiceStore = Pick<
-  SessionStore,
-  | 'agentIdentities'
-  | 'memoryAmendmentsOf'
-  | 'memoryAmendment'
-  | 'beginMemoryAmendment'
-  | 'settleMemoryAmendment'
-  | 'hasPendingMemoryAmendment'
->
+export type CloseMemoryJournal = (waitMs?: number) => Promise<void>
+
 export interface MemoryServiceInputs {
-  readonly store: MemoryServiceStore
+  readonly store: Pick<SessionStore, 'agentIdentities' | 'hasPendingMemoryAmendment'>
+  readonly journal: MemoryAmendmentJournal
   readonly inputsOf: (slug: string) => AgentMemoryInputs
   readonly now: () => number
   /** Main binds its separate app-only observer; the service never fabricates a person. */
@@ -761,7 +756,8 @@ export interface MemoryServiceInputs {
     id: string,
     actual: MemoryObservation,
     by: ActedBy,
-  ) => boolean
+  ) => boolean | Promise<boolean>
+  readonly acquired?: (closeJournal: CloseMemoryJournal) => void
   readonly changed?: (slug: string) => void
   readonly seams?: {
     readonly beforeEffect?: () => Promise<void>
@@ -797,6 +793,15 @@ export async function createMemoryService(deps: MemoryServiceInputs) {
   let closing: Promise<void> | undefined
   const tails = new Map<string, Promise<void>>()
   const active = new Set<Promise<void>>()
+  const inFlight = new Set<Promise<void>>()
+  const accepted = <T>(result: Promise<T>): Promise<T> => {
+    const finished = () => {
+      inFlight.delete(completion)
+    }
+    const completion = result.then(finished, finished)
+    inFlight.add(completion)
+    return result
+  }
   const counts = new Map<string, number>()
   const failed = (reason: string): MemoryServiceResult => ({ ok: false, reason })
   const identity = (slug: string) =>
@@ -839,16 +844,14 @@ export async function createMemoryService(deps: MemoryServiceInputs) {
     tails.set(slug, settled)
     return result
   }
-  const candidate = (slug: string, provider: Provider, entry: string) =>
-    deps.store
-      .memoryAmendmentsOf(slug)
-      .find(
-        (row) =>
-          row.provider === provider &&
-          row.entry === entry &&
-          row.outcome !== 'pending' &&
-          row.outcome !== 'unchanged',
-      )
+  const candidate = async (slug: string, provider: Provider, entry: string) =>
+    (await accepted(deps.journal.memoryAmendmentsOf(slug))).find(
+      (row) =>
+        row.provider === provider &&
+        row.entry === entry &&
+        row.outcome !== 'pending' &&
+        row.outcome !== 'unchanged',
+    )
   const observePending = async (
     slug: string,
     by: ActedBy,
@@ -859,15 +862,17 @@ export async function createMemoryService(deps: MemoryServiceInputs) {
     if (one === undefined) return failed('no-such-agent')
     let observedCause: string | undefined
     try {
-      for (const row of deps.store.memoryAmendmentsOf(slug)) {
+      for (const row of await accepted(deps.journal.memoryAmendmentsOf(slug))) {
         if (row.outcome !== 'pending') continue
         context.check()
         const actual = observeMemoryEntry(deps.inputsOf(slug), row.provider, row.entry)
         observedCause ??= actual.cause
         context.check()
-        const recorded = app
+        const write = app
           ? deps.reconcile(one.id, row.id, actual, { who: 'the-app-itself' })
-          : deps.store.settleMemoryAmendment(slug, row.id, actual, by)
+          : deps.journal.settleMemoryAmendment(slug, row.id, actual, by)
+        const recorded = await accepted(Promise.resolve(write))
+        context.check()
         if (!recorded) throw new Error('The interruption could not be recorded')
         // Observation never changes memory. Only hidden, inactive app stages are swept.
         const location = memoryLocation(deps.inputsOf(slug), row.provider, row.entry)
@@ -886,12 +891,15 @@ export async function createMemoryService(deps: MemoryServiceInputs) {
           }
         }
       }
-      if (deps.store.hasPendingMemoryAmendment(slug))
-        throw new Error('An interrupted memory change is still pending')
+      context.check()
+      const pending = await accepted(deps.journal.hasPendingMemoryAmendment(slug))
+      context.check()
+      if (pending) throw new Error('An interrupted memory change is still pending')
       return observedCause === undefined
         ? { ok: true }
         : { ok: false, reason: 'change-incomplete', cause: observedCause }
     } catch (error) {
+      if (!context.canRecord()) return failed('closing')
       return {
         ok: false,
         reason: 'interruption-needs-checking',
@@ -899,9 +907,37 @@ export async function createMemoryService(deps: MemoryServiceInputs) {
       }
     }
   }
+  const close = (waitMs = 5000): Promise<void> => {
+    accepting = false
+    if (closing !== undefined) return closing
+    closing = (async () => {
+      let timer: ReturnType<typeof setTimeout> | undefined
+      try {
+        await Promise.race([
+          Promise.all([...active]),
+          new Promise<void>((resolve) => {
+            timer = setTimeout(resolve, Math.max(0, Math.min(30000, waitMs)))
+          }),
+        ])
+      } finally {
+        if (timer !== undefined) clearTimeout(timer)
+        databaseAvailable = false
+      }
+    })()
+    return closing
+  }
+  // The database owner can close the journal even while startup reconciliation is in flight.
+  deps.acquired?.(async (waitMs) => {
+    await close(waitMs)
+    await Promise.all(inFlight)
+  })
   // The same lock is used at boot and for every later app writer on every platform.
-  for (const one of deps.store.agentIdentities())
-    await exclusive(one.slug, () => observePending(one.slug, { who: 'the-app-itself' }, true))
+  if (accepting) {
+    for (const one of deps.store.agentIdentities()) {
+      if (!accepting) break
+      await exclusive(one.slug, () => observePending(one.slug, { who: 'the-app-itself' }, true))
+    }
+  }
 
   const change = async (
     slug: string,
@@ -913,9 +949,14 @@ export async function createMemoryService(deps: MemoryServiceInputs) {
   ): Promise<MemoryServiceResult> => {
     access.check()
     if (identity(slug) === undefined) return failed('no-such-agent')
-    if (deps.store.hasPendingMemoryAmendment(slug)) return failed('pending')
+    const pending = await accepted(deps.journal.hasPendingMemoryAmendment(slug))
+    if (!access.canRecord()) return failed('closing')
+    if (pending) return failed('pending')
     capture.check()
-    const row = deps.store.beginMemoryAmendment({ ...plan, profileSlug: slug, by }, deps.now())
+    const row = await accepted(
+      deps.journal.beginMemoryAmendment({ ...plan, profileSlug: slug, by }, deps.now()),
+    )
+    if (!access.canRecord()) return failed('closing')
     if (row === null) return failed('not-recorded')
     announce(slug)
     const guard = () => {
@@ -968,10 +1009,12 @@ export async function createMemoryService(deps: MemoryServiceInputs) {
       access.check()
       const actual = observeMemoryEntry(deps.inputsOf(slug), plan.provider, capture.entry)
       access.check()
-      if (!deps.store.settleMemoryAmendment(slug, row.id, actual, by))
-        throw new Error('The outcome was not recorded')
+      const recorded = await accepted(deps.journal.settleMemoryAmendment(slug, row.id, actual, by))
+      if (!access.canRecord()) return failed('closing')
+      if (!recorded) throw new Error('The outcome was not recorded')
       announce(slug)
-      const settled = deps.store.memoryAmendment(slug, row.id)
+      const settled = await accepted(deps.journal.memoryAmendment(slug, row.id))
+      if (!access.canRecord()) return failed('closing')
       if (settled === null) throw new Error('The recorded outcome cannot be read')
       if (settled.outcome === 'done') return { ok: true, amendment: settled }
       return {
@@ -983,6 +1026,7 @@ export async function createMemoryService(deps: MemoryServiceInputs) {
         amendment: settled,
       }
     } catch (error) {
+      if (!access.canRecord()) return failed('closing')
       return { ok: false, reason: 'not-recorded', cause: `${capture.entry}: ${String(error)}` }
     }
   }
@@ -1039,14 +1083,13 @@ export async function createMemoryService(deps: MemoryServiceInputs) {
     undo(slug: string, sourceId: string, confirmed: boolean, by: ActedBy) {
       return operate(slug, async (access) => {
         if (confirmed !== true) return failed('confirmation-required')
-        const source = deps.store.memoryAmendment(slug, sourceId)
-        if (
-          source === null ||
-          source.outcome === 'pending' ||
-          source.outcome === 'unchanged' ||
-          candidate(slug, source.provider, source.entry)?.id !== source.id
-        )
+        const source = await accepted(deps.journal.memoryAmendment(slug, sourceId))
+        access.check()
+        if (source === null || source.outcome === 'pending' || source.outcome === 'unchanged')
           return failed('source-changed')
+        const latest = await candidate(slug, source.provider, source.entry)
+        access.check()
+        if (latest?.id !== source.id) return failed('source-changed')
         const capture = captureMemoryEntry(deps.inputsOf(slug), source.provider, source.entry, true)
         if (capture === null) return failed('changed-or-unreadable')
         const known = source.actual
@@ -1083,24 +1126,6 @@ export async function createMemoryService(deps: MemoryServiceInputs) {
         confirmed ? observePending(slug, by) : failed('confirmation-required'),
       )
     },
-    close(waitMs = 5000): Promise<void> {
-      accepting = false
-      if (closing !== undefined) return closing
-      closing = (async () => {
-        let timer: ReturnType<typeof setTimeout> | undefined
-        try {
-          await Promise.race([
-            Promise.all([...active]),
-            new Promise<void>((resolve) => {
-              timer = setTimeout(resolve, Math.max(0, Math.min(30000, waitMs)))
-            }),
-          ])
-        } finally {
-          if (timer !== undefined) clearTimeout(timer)
-          databaseAvailable = false
-        }
-      })()
-      return closing
-    },
+    close,
   }
 }
