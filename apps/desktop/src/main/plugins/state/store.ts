@@ -53,8 +53,6 @@ export class GlobalPluginState {
       if (!equalState(previous.operation.request, request)) refuseState('conflict')
       return frozen(previous.operation)
     }
-    // Workspace receipts are no longer kept, so no new operation may ask for them.
-    if (request.workspaces !== undefined) refuseState('conflict')
     if (request.consent.action !== 'global-restore') this.active(state)
     const allocated = { installId: randomUUID(), incarnation: randomUUID(), epoch: randomUUID() }
     const operation = planOperation(state, request, allocated)

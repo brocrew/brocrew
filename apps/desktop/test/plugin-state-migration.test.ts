@@ -19,6 +19,7 @@ import { tmpdir } from 'node:os'
 import { GlobalPluginState } from '../src/main/plugins/state/store'
 import { MOVED_MARKER } from '../src/main/plugins/state/disk'
 import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
+import { LifecycleEffects } from '../src/main/plugins/lifecycle/files'
 import { pluginSha256 } from '../src/main/plugins/package-digests'
 import { GlobalPluginState as JournalStore } from './fixtures/plugin-journal-parent/store'
 import { GlobalPluginState as UpdateParentStore } from './fixtures/plugin-update-parent/state-store'
@@ -250,6 +251,66 @@ describe.skipIf(process.platform === 'win32')('migrating the plugin journal once
       expect(outcomes[1]).toEqual(outcomes[0])
       expect(outcomes[0]!.pending).toBeNull()
       expect(outcomes[0]!.phases).toEqual([['chrome', 'removed']])
+    },
+  )
+
+  // Recovery only finishes operations whose effect is unsettled. The controller settles an
+  // effect before it resolves the operation, except an abort's own label, and an abort leaves
+  // the plugin removed, so its next operation is a fresh install. Here the journal keeps every
+  // operation and the state file only the latest; a restart must end the same way in both.
+  it.each(['completed with a crash after its resolution', 'aborted with its label left'] as const)(
+    'an install %s, then a new operation and a restart, ends as it does with every operation kept',
+    async (scenario) => {
+      const outcomes = []
+      for (const journal of [true, false]) {
+        const f = await fixture({}, 'chrome', {}, { journal })
+        const after = scenario.startsWith('completed') ? 'activated' : 'ready'
+        f.opts.fault = (point) => {
+          if (point === after) throw new Error('fictional crash')
+        }
+        await f.controller.install(f.handle, 'chrome').catch(() => undefined)
+        f.opts.fault = undefined
+        const first = f.state.inspect().operations[0]!
+        expect(first.status).toBe(scenario.startsWith('completed') ? 'completed' : 'aborted')
+        const effects = await LifecycleEffects.open(f.root, false)
+        if (scenario.startsWith('aborted')) {
+          // Fixture image of a crash after the abort, before its effect said so.
+          const effect = (await effects.read(first.operation.request.operationId))!
+          expect(effect.phase).toBe('aborted')
+          await effects.write({ ...effect, phase: 'prepared' })
+        }
+        // A new operation for the same plugin: the state file now drops the first one.
+        if (scenario.startsWith('completed')) await f.controller.uninstall(f.handle, 'chrome')
+        else await f.controller.install(f.handle, 'chrome')
+        expect(f.state.inspect().operations.length).toBe(journal ? 2 : 1)
+        let state: GlobalPluginState
+        if (journal) {
+          f.state.close()
+          state = kept(
+            JournalStore.open({ root: join(f.root, 'state'), workspaceRoots: [f.workspace] }),
+          ) as unknown as GlobalPluginState
+        } else state = reopenLifecycleFixture(f)
+        const at = f.events.length
+        const recovered = await PluginLifecycleController.open({ ...f.opts, state })
+        const labels = await Promise.all(
+          state
+            .inspect()
+            .operations.map(
+              async (one) => (await effects.read(one.operation.request.operationId))?.phase,
+            ),
+        )
+        outcomes.push({
+          pending: state.inspect().pending,
+          phases: state.inspect().guards.map((one) => [one.pluginId, one.phase]),
+          active: state.exportActivation().entries.map((one) => one.pluginId),
+          card: (await recovered.status()).cards[0]?.state,
+          recovery: f.events.slice(at),
+          latest: labels.at(-1),
+          first: (await effects.read(first.operation.request.operationId))?.phase,
+        })
+      }
+      expect(outcomes[1]).toEqual(outcomes[0])
+      expect(outcomes[0]!.pending).toBeNull()
     },
   )
 
