@@ -16,9 +16,8 @@ import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
 import { executeRuntimeCommand, runtimeCommandSchema } from '../src/main/runtime/ipc'
 import { AN_AGENT_THIS_APP_CANNOT_NAME } from '../src/main/runtime/reply-rails'
-import { resourceTitle, resourcesRoot } from '../src/main/resources/resources'
+import { resourcesRoot } from '../src/main/resources/resources'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import type { DocumentForm } from '../src/shared/documents'
 import { type FilesKept, type KeptFile, type RuntimeStatesMessage } from '../src/shared/runtime-ipc'
 import { ProviderDouble, anOpenGate, type ResumeGate } from './lib/provider-double'
 import {
@@ -28,6 +27,7 @@ import {
   neutralHostDeps,
   fixtureDatabase,
   closeHostFixture,
+  settleFixtureTurns,
 } from './lib/host-fixture'
 
 /**
@@ -35,248 +35,26 @@ import {
  *
  * D-026 gave a window one door to list the files this app keeps (`filesKept`: a conversation's
  * tree, one conversation, one piece), titled every file once as it is kept, and pushed each kept
- * file to every window on `runtime:states`. This file measures those three, and the rule that does
- * the titling, from the two ends a landing can reach:
+ * file to every window on `runtime:states`. This file measures the listing and the push; the rule
+ * that does the titling and the doors that write it are pinned in
+ * `a-kept-file-is-titled-by-what-its-own-bytes-say.test.ts`.
  *
- *  - **§1 · the rule** (`resourceTitle`), read straight with no host: a Markdown file's first
- *    level-1 heading outside a fenced code block, a page's first `<title>` a browser would use, and
- *    the file's name for everything else — the headings that only look like one, the fences, the
- *    byte-level reading, the entities decoded once, the cap, and the forms with no text to read.
- *  - **§2 · the doors that write a title** — over a real `RuntimeHost`, a real ledger and the real
- *    toolsets (Fake provider only): a give's inputs, `update_work`'s files and a reply's files each
- *    keep the title their own bytes give, and `list_tasks {made}` says it only where it differs
- *    from the name.
- *  - **§3 · the door a window lists by** — one forest of four conversations and seven files, read
+ *  - **§1 · the door a window lists by** — one forest of four conversations and seven files, read
  *    by piece (a label or an id), by tree and by conversation: the rows, their order (a tenth
  *    sibling after a second), a conversation standing in for a replaced one, the words for a scope
  *    that names nothing, a piece's title as it stands now, the rows an old build left, and the wire
  *    that carries the command.
- *  - **§4 · the push** — every kept file reaches every window on `runtime:states` as the row the
+ *  - **§2 · the push** — every kept file reaches every window on `runtime:states` as the row the
  *    door answers, once its row is down: a reply's, `update_work`'s and a give's, never a call that
  *    kept nothing, and never costing the states, nor one piece's files another's.
  *
- * ⚑ Two rules of the file: **the bounds are literals** (200, 199, 198), so a changed constant is
- * read as a change and not followed; and **a negative is paired with a positive from the same
- * reader**, every presence asserted before an order or a text. ⚠️ The bytes handed to the rule are
- * always a `Buffer`: the rule decodes them itself, and a string would hide how it does.
+ * ⚑ A rule of the file: **a negative is paired with a positive from the same reader**, every
+ * presence asserted before an order or a text.
  *
  * ⚑ Every file is kept by ONE `update_work` call so each takes its own `tick` timestamp (resource
  * ids are random: a shared timestamp would tie-break at random).
  */
 const shaOf = (bytes: Buffer | string): string => createHash('sha256').update(bytes).digest('hex')
-
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-// §1 · the rule
-// ─────────────────────────────────────────────────────────────────────────────────────────────
-
-/** What the rule answers for `content` kept under `name` as `form`. */
-const titled = (name: string, form: DocumentForm, content: string | Buffer): string =>
-  resourceTitle({
-    name,
-    form,
-    bytes: Buffer.isBuffer(content) ? content : Buffer.from(content, 'utf8'),
-  })
-
-/** One text, and the title the rule must give it; every row names its case. */
-type Case = readonly [what: string, text: string, expected: string]
-
-/**
- * Every row of the table under one name. ⚑ The table must hold BOTH answers — a row the name
- * answers and a row a title found answers — so a function that returns the name for everything, or
- * never returns it, is not what passed.
- */
-const readTable = (name: string, form: DocumentForm, table: readonly Case[]): void => {
-  expect(
-    table.some(([, , expected]) => expected === name),
-    `${name}: the table holds a row answered by the name`,
-  ).toBe(true)
-  expect(
-    table.some(([, , expected]) => expected !== name),
-    `${name}: the table holds a row answered by a title found`,
-  ).toBe(true)
-  for (const [what, text, expected] of table) {
-    expect(titled(name, form, text), `${name} · ${what}`).toBe(expected)
-  }
-}
-
-/** Whether a string holds no lone surrogate. */
-const hasALoneSurrogate = (text: string): boolean =>
-  /[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/.test(text)
-
-describe('D-026 · the rule: a file is titled by what its own bytes say', () => {
-  it('a Markdown file is titled by its first level-1 heading, and by its name when it has none or the first is empty', () => {
-    const NAME = 'notes.md'
-    const BOM = Buffer.from([0xef, 0xbb, 0xbf])
-    readTable(NAME, 'markdown', [
-      // ⚑ The positives first: each answers a heading, so the name below is the text's and not a
-      // reader that never looks.
-      ['a level-1 heading answers at all', '# Quarterly report\n\nbody\n', 'Quarterly report'],
-      ['three spaces in is still a heading', '   # three spaces in\n', 'three spaces in'],
-      ['the first of two headings', '# One\n# Two\n', 'One'],
-      ['trimmed, inline Markdown kept as written', '#   **Bold** `code`  \n', '**Bold** `code`'],
-      // ⚑ The closing run: dropped only when a space stands before it.
-      ['a closing run is dropped', '# Title ##\n', 'Title'],
-      ['a `#` that ends a word is kept', '# Learn C#\n', 'Learn C#'],
-      ['a closing run after a word that ends in `#`', '# C# ##\n', 'C#'],
-      // ⚑ Line ends: CRLF and a lone CR break a line like LF does.
-      ['CRLF line ends', '# T\r\nbody', 'T'],
-      ['a lone CR line end', '# T\rbody', 'T'],
-      // ⛔ What only looks like a heading is not one: each is the name.
-      ['`#Title` has no space after the `#`', '#Title\n', NAME],
-      ['`## Sub` is level 2', '## Sub\n', NAME],
-      ['four spaces in is code', '    # four spaces is code\n', NAME],
-      ['plain words', 'plain words\n', NAME],
-      // ⚑ An EMPTY first heading titles nothing, and a second is never looked for.
-      ['a bare `#`, then a second heading', '#\n\n# Second\n', NAME],
-      ['a `#` and a space, then a second heading', '# \n# Second\n', NAME],
-    ])
-
-    // ⚑ A leading byte order mark does not hide the first `#`; the twin with none is the same text.
-    expect(titled(NAME, 'markdown', Buffer.concat([BOM, Buffer.from('# Titled\n')]))).toBe('Titled')
-    expect(titled(NAME, 'markdown', '# Titled\n'), 'the same heading with no mark').toBe('Titled')
-  })
-
-  it('a heading inside a fenced code block is not the title: backtick and tilde fences, closed only by a run as long, and the first heading outside one is', () => {
-    const NAME = 'notes.md'
-    // ⚑ The paired positive: with the fence removed, the same line IS the heading.
-    expect(titled(NAME, 'markdown', '# install\n'), 'the line with no fence').toBe('install')
-    readTable(NAME, 'markdown', [
-      ['a backtick fence holds the heading', '```sh\n# install\n```\n# Real\n', 'Real'],
-      ['a tilde fence holds the heading', '~~~\n# tilde\n~~~\n# Real2\n', 'Real2'],
-      [
-        'a 4-backtick fence is not closed by a 3-backtick line',
-        '````\n```\n# inside\n````\n# After\n',
-        'After',
-      ],
-      ['a tilde line does not close a backtick fence', '```\n~~~\n# inside\n```\n# Out\n', 'Out'],
-      ['an unclosed fence runs to the end', '```\n# never\n', NAME],
-      ['a three-space-indented fence is a fence', '   ```\n# in\n   ```\n# Out\n', 'Out'],
-      ['four spaces in is code, no fence', '    ```\n# Not in a fence\n', 'Not in a fence'],
-      [
-        'a backtick in a backtick fence’s info string opens none',
-        '```js`x\n# Heading\n',
-        'Heading',
-      ],
-    ])
-  })
-
-  it('a page is titled by the first title a browser would use: comments, script, style, svg and math are passed over and what is left unclosed gives none', () => {
-    const NAME = 'p.html'
-    readTable(NAME, 'page', [
-      [
-        'a plain page, whitespace collapsed and an entity decoded',
-        '<!doctype html><title>Sales  &amp;\n  Costs</title>',
-        'Sales & Costs',
-      ],
-      ['the tag in capitals, with an attribute', '<TITLE lang="en">Upper</TITLE>', 'Upper'],
-      // ⚑ Each construct below is passed over, and the real <title> after it is what comes back.
-      ['a <title> inside a comment', '<!-- <title>Old</title> --><title>Real</title>', 'Real'],
-      ['`<!-->` is a whole comment', '<!--><title>After</title>', 'After'],
-      [
-        'a <title> in a script’s text',
-        '<script>var t="<title>Fake</title>";</script><title>Real</title>',
-        'Real',
-      ],
-      [
-        'a <title> in a style’s text',
-        '<style>/* <title>Fake</title> */</style><title>Real</title>',
-        'Real',
-      ],
-      [
-        'an <svg> tooltip',
-        '<svg viewBox="0 0 1 1"><title>Tooltip</title></svg><title>Real</title>',
-        'Real',
-      ],
-      [
-        'an <svg> nested in an <svg>',
-        '<svg><svg></svg><title>Inner</title></svg><title>Real</title>',
-        'Real',
-      ],
-      ['a self-closed <svg/> holds nothing', '<svg/><title>Real</title>', 'Real'],
-      ['a <math>', '<math><title>m</title></math><title>Real</title>', 'Real'],
-      ['`<titles>` is not a title', '<titles>x</titles><title>Real</title>', 'Real'],
-      // ⚠️ No title at all, and what is left unclosed, give the name.
-      ['no title at all', '<p>x</p>', NAME],
-      ['an empty <title>', '<title>  </title>', NAME],
-      ['an unclosed <title>', '<title>Never', NAME],
-      ['an unclosed comment', '<!-- <title>Hidden</title>', NAME],
-      ['an unclosed <script>', '<script><title>x</title>', NAME],
-      ['an unclosed <svg>', '<svg><title>x</title>', NAME],
-    ])
-  })
-
-  it('a title is decoded in one pass, and what names no character stays as written', () => {
-    const NAME = 'p.html'
-    const page = (text: string): string => `<title>${text}</title>`
-    readTable(NAME, 'page', [
-      // ⚑ The positive of every refusal below: an entity that names a character is decoded.
-      ['a named entity', page('Tom &amp; Jerry'), 'Tom & Jerry'],
-      ['one pass: `&amp;lt;` stops at `&lt;`', page('&amp;lt;b&amp;gt;'), '&lt;b&gt;'],
-      [
-        'the common named entities',
-        page('&lt;b&gt; &quot;q&quot; &apos;a&apos; &mdash; &hellip; &copy;'),
-        '<b> "q" \'a\' — … ©',
-      ],
-      [
-        'decimal, hex and capital-X hex, and an astral value',
-        page('&#65;&#x42;&#X43;&#x1F600;'),
-        'ABC😀',
-      ],
-      // ⚠️ What names no scalar value stays as written.
-      ['zero', page('&#0;'), '&#0;'],
-      ['a surrogate', page('&#xD800;'), '&#xD800;'],
-      ['a value above 0x10FFFF', page('&#x110000;'), '&#x110000;'],
-      ['an unknown name', page('&nosuch;'), '&nosuch;'],
-      ['no semicolon', page('&amp'), '&amp'],
-      ['a bare ampersand in a word', page('AT&T'), 'AT&T'],
-      // ⚑ And what is left of a title with nothing in it is the name.
-      ['an empty title', page(''), NAME],
-    ])
-  })
-
-  it('a title found is cut at 200 characters ending in an ellipsis and never inside a surrogate pair, and a name is kept whole', () => {
-    // ⚑ 200 whole beside 201 cut: the same heading, one character longer.
-    const whole = titled('notes.md', 'markdown', `# ${'a'.repeat(200)}`)
-    expect(whole, '200 characters').toBe('a'.repeat(200))
-    expect(whole.endsWith('…'), '200 characters are not cut').toBe(false)
-    const cut = titled('notes.md', 'markdown', `# ${'a'.repeat(201)}`)
-    expect(cut, '201 characters').toBe(`${'a'.repeat(199)}…`)
-    expect(cut.length, '201 characters, counted').toBe(200)
-
-    // ⚠️ A pair that straddles the cut is dropped whole, and no lone surrogate is left. The
-    // instrument first: it tells half a pair from a whole one.
-    expect(hasALoneSurrogate('x😀'), 'a whole pair').toBe(false)
-    expect(hasALoneSurrogate('x\ud83d'), 'half a pair').toBe(true)
-    const straddling = titled('notes.md', 'markdown', `# ${'a'.repeat(198)}😀tail`)
-    expect(straddling).toBe(`${'a'.repeat(198)}…`)
-    expect(hasALoneSurrogate(straddling)).toBe(false)
-
-    // …a page’s <title> is cut the same way, beside one that fits.
-    expect(titled('p.html', 'page', `<title>${'p'.repeat(200)}</title>`)).toBe('p'.repeat(200))
-    expect(titled('p.html', 'page', `<title>${'p'.repeat(300)}</title>`)).toBe(
-      `${'p'.repeat(199)}…`,
-    )
-
-    // ⚑ A name, the fallback, is kept whole: 250 characters and an extension.
-    const longName = `${'n'.repeat(250)}.md`
-    expect(longName.length).toBe(253)
-    expect(titled(longName, 'markdown', 'no heading\n')).toBe(longName)
-  })
-
-  it('an image or a PDF is titled by its name whatever its bytes say', () => {
-    // ⚑ The same bytes, one fact over: where the FORM has text to look in the bytes answer, and
-    // where it has none the name does.
-    expect(titled('chart.html', 'page', '<title>Chart</title>')).toBe('Chart')
-    expect(titled('chart.svg', 'image', '<title>Chart</title>')).toBe('chart.svg')
-    expect(titled('pic.md', 'markdown', '# not a heading')).toBe('not a heading')
-    expect(titled('pic.png', 'image', '# not a heading')).toBe('pic.png')
-    expect(titled('paper.md', 'markdown', '%PDF-1.4\n# Not a title\n')).toBe('Not a title')
-    expect(titled('paper.pdf', 'pdf', '%PDF-1.4\n# Not a title\n')).toBe('paper.pdf')
-    // ⚠️ A drawing in a PAGE is a tooltip and not the page’s title — the very bytes of the .svg.
-    expect(titled('chart.html', 'page', '<svg><title>Chart</title></svg>')).toBe('chart.html')
-    expect(titled('chart.svg', 'image', '<svg><title>Chart</title></svg>')).toBe('chart.svg')
-  })
-})
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 // The rig: a real host, a real ledger, the real toolsets, the Fake provider only
@@ -286,12 +64,7 @@ describe('D-026 · the rule: a file is titled by what its own bytes say', () => 
  * A stretch of the event loop long enough for everything a provider row starts to have run: five
  * turns of `setImmediate` (each pump, and the flush a mark arms, run there) and a short timer.
  */
-async function settle(): Promise<void> {
-  for (let round = 0; round < 2; round++) {
-    for (let turn = 0; turn < 5; turn++) await new Promise((resolve) => setImmediate(resolve))
-    await new Promise((resolve) => setTimeout(resolve, 30))
-  }
-}
+const settle = (): Promise<void> => settleFixtureTurns(2, 30)
 
 type Answered = { structured: Record<string, unknown>; text: string }
 
@@ -302,7 +75,7 @@ interface Kept {
   readonly content: string
 }
 
-/** The forest every §3 test reads: who holds what, and the seven files kept on it. */
+/** The forest every §1 test reads: who holds what, and the seven files kept on it. */
 interface Forest {
   readonly carol: string
   readonly pm: string
@@ -564,79 +337,10 @@ describe('D-026 · one door lists the kept files, and every door that keeps one 
   const pushedFiles = (): KeptFile[] => pushed.flatMap((message) => [...message.kept])
 
   // ───────────────────────────────────────────────────────────────────────────────────────────
-  // §2 · the doors that write a title
+  // §1 · the door a window lists by
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
-  describe('§2 · the doors that write a title', () => {
-    it('every door titles the files it keeps from their bytes: a reply, update_work and a give’s inputs', async () => {
-      // (1) A give: its input is titled by its heading, and the row says it is an input.
-      const brief = wrote('brief.md', '# The brief\n')
-      const { pm, worker, piece, label } = await aPair([brief])
-      const givenInput = piecesFiles(piece).find((row) => row.name === 'brief.md')
-      expect(givenInput, 'the give kept its input').toBeDefined()
-      expect(givenInput).toMatchObject({ role: 'input', title: 'The brief', label })
-      expect(rowOf(givenInput?.resourceId as string).title, 'the stored row').toBe('The brief')
-
-      // (2) update_work: as the giver, a page kept as an input; as the owner, a file it made.
-      const scope = await keeps(pm, piece, 'scope.html', '<title>Plan &amp; scope</title>')
-      const notes = await keeps(worker, piece, 'notes.md', '# Notes\n')
-      expect(rowOf(scope.id)).toMatchObject({ role: 'input', title: 'Plan & scope' })
-      expect(rowOf(notes.id)).toMatchObject({ role: 'made', title: 'Notes' })
-
-      // (3) A reply — last, because it ends the piece. ⚑ The heading-less file beside it is titled
-      // by its name, so a door that titled everything by name, or everything by heading, is not
-      // what passed.
-      const replied = await callOn(worker, 'reply_to_parent', {
-        piece,
-        outcome: 'done',
-        summary: 'the findings',
-        resource_paths: [
-          wrote('report.md', '# Findings\nbody\n'),
-          wrote('plain.md', 'no heading\n'),
-        ],
-      })
-      expect(replied.outcome, JSON.stringify(replied)).toBe('ok')
-      const ids = replied.resources as string[]
-      expect(ids).toHaveLength(2)
-      expect(ids.map((id) => rowOf(id).title)).toEqual(['Findings', 'plain.md'])
-
-      // Each title is read from the door as well as from the stored row.
-      const door = piecesFiles(piece)
-      const byName = (name: string): KeptFile | undefined => door.find((row) => row.name === name)
-      expect(names(door).sort()).toEqual(
-        ['brief.md', 'notes.md', 'plain.md', 'report.md', 'scope.html'].sort(),
-      )
-      expect(byName('brief.md')).toMatchObject({ title: 'The brief', role: 'input' })
-      expect(byName('scope.html')).toMatchObject({ title: 'Plan & scope', role: 'input' })
-      expect(byName('notes.md')).toMatchObject({ title: 'Notes', role: 'made' })
-      expect(byName('report.md')).toMatchObject({ title: 'Findings', role: 'made' })
-      expect(byName('plain.md')).toMatchObject({ title: 'plain.md', role: 'made' })
-    })
-
-    it('list_tasks made says a file’s title only when it differs from its name', async () => {
-      const ali = await personOpens('ali')
-      const label = rootOf(ali).label
-      const report = await keeps(ali, label, 'report.md', '# Findings\nbody\n')
-      const plain = await keeps(ali, label, 'plain.md', 'no heading\n')
-
-      const listed = await callFull(ali, 'list_tasks', { made: true })
-      expect(listed.structured, listed.text).toMatchObject({ outcome: 'ok', more: 0 })
-      // ⚑ The structure carries the stored title, the name for a file with no heading.
-      const made = listed.structured.made as { resource: string; title: string }[]
-      expect(made.find((one) => one.resource === report.id)?.title).toBe('Findings')
-      expect(made.find((one) => one.resource === plain.id)?.title).toBe('plain.md')
-      // ⚑ The words: the heading line says it, the heading-less line does not repeat the name.
-      expect(listed.text).toContain(`(report.md) · Findings — on ${label}`)
-      expect(listed.text).toContain(`(plain.md) — on ${label}`)
-      expect(listed.text).not.toContain('· plain.md')
-    })
-  })
-
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-  // §3 · the door a window lists by
-  // ───────────────────────────────────────────────────────────────────────────────────────────
-
-  describe('§3 · the door a window lists by', () => {
+  describe('§1 · the door a window lists by', () => {
     let f: Forest
 
     /**
@@ -1071,10 +775,10 @@ describe('D-026 · one door lists the kept files, and every door that keeps one 
   })
 
   // ───────────────────────────────────────────────────────────────────────────────────────────
-  // §4 · the push
+  // §2 · the push
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
-  describe('§4 · the push', () => {
+  describe('§2 · the push', () => {
     it('a reply’s files are pushed to every window once the reply is down, as the rows the door answers', async () => {
       const { worker, piece } = await aPair()
       await settle()

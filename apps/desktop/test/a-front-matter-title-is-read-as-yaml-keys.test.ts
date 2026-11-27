@@ -10,8 +10,10 @@ import { formOfName, type DocumentForm } from '../src/shared/documents'
  * read, through the one rule every kept file is titled by (`resourceTitle`), with no host:
  *
  *  - **§1 · the order** — a front matter `title:`, then the first `# ` heading outside a fence, then
- *    the name; and the front matter is a Markdown file's only (a page is not read for one).
- *  - **§2 · the value** — a quoted value decoded (`"…\"…"`, `'it''s'`); a ` #` comment ends a value
+ *    the name; with no title, a `# ` line inside the front matter is that heading, as the viewer
+ *    draws it; and the front matter is a Markdown file's only (a page is not read for one).
+ *  - **§2 · the value** — a quoted value decoded (`"…\"…"`, `'it''s'`), a ` #` inside its quotes
+ *    kept; a ` #` comment ends a value
  *    and a value that is only a comment is no title; a block scalar (`|`, `>`), `~` and `null` are no
  *    title; `title:foo` is not a key; an indented `title:` under another key is not read.
  *  - **§3 · what counts as front matter** — a first line `---` closed by `---` or `...`, every
@@ -79,6 +81,19 @@ describe('F046 · §1 · front matter first, then the first heading outside a fe
       titled(NAME, '---\nauthor: someone\n---\nno heading at all\n'),
       'front matter with no title and no heading: the name',
     ).toBe(NAME)
+  })
+
+  it('with no front matter title, a `# ` line inside the front matter is the first heading the viewer draws', () => {
+    // ⚑ D-026's ruling, to match the viewer: no front-matter skip when there is no title.
+    pair([
+      {
+        what: 'a `# ` line inside title-less front matter',
+        negative: '---\nauthor: y\n# a yaml comment\n---\n# Real\n',
+        notTitled: 'a yaml comment',
+        positive: '---\ntitle: x\n# a yaml comment\n---\n# Real\n',
+        isTitled: 'x',
+      },
+    ])
   })
 
   it('with no front matter title, a heading inside a fence is passed over and the one after it is the title', () => {
@@ -162,6 +177,20 @@ describe('F046 · §2 · the value of `title:`', () => {
         isTitled: 'y',
       },
     ])
+  })
+
+  it('a ` #` inside quotes is part of the value, and a quote an escape or a doubling makes does not close it', () => {
+    const fm = (value: string): string => titled(NAME, `---\ntitle: ${value}\n---\n# Real\n`)
+    expect(fm('a #b'), 'an unquoted title: " #" starts a comment').toBe('a')
+    expect(fm('"a #b"'), 'a double-quoted title with " #" inside').toBe('a #b')
+    expect(fm("'a #b'"), 'a single-quoted title with " #" inside').toBe('a #b')
+    expect(fm('"a #b" # a comment'), 'a comment after the closing quote').toBe('a #b')
+    expect(fm('"say \\"hi #1\\" \\\\ ok"'), 'escaped quotes and a backslash').toBe(
+      'say "hi #1" \\ ok',
+    )
+    expect(fm("'it''s #1'"), 'a doubled single quote').toBe("it's #1")
+    // ⚠️ A quote that never closes is read as an unquoted value.
+    expect(fm('"a #b'), 'a quote that never closes').toBe('"a')
   })
 
   it('a ` #` comment ends a value, quoted or not, and a `#` inside a word does not', () => {
