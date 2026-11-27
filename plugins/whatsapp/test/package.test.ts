@@ -59,14 +59,6 @@ async function boot(options: { read?: boolean; writable?: string[]; prefix?: boo
   }
   const text = async (name: string, args: Record<string, unknown> = {}) =>
     (await call(name, args)).content.find((one) => one.type === 'text')!.text!
-  const refusals = () =>
-    fs.existsSync(path.join(config.home, 'refusals.jsonl'))
-      ? fs
-          .readFileSync(path.join(config.home, 'refusals.jsonl'), 'utf8')
-          .trim()
-          .split('\n')
-          .map((line) => JSON.parse(line))
-      : []
   return {
     config,
     settings: server.settings,
@@ -75,7 +67,6 @@ async function boot(options: { read?: boolean; writable?: string[]; prefix?: boo
     request,
     call,
     text,
-    refusals,
     tools: async () => (await client.listTools()).tools,
     tick: (ms: number) => (clock += ms),
   }
@@ -268,8 +259,8 @@ describe('WhatsApp package', () => {
 })
 
 describe('reading', () => {
-  it('refuses every reading tool while reading is off, and logs the refusal without what was asked', async () => {
-    const { call, refusals, bridge } = await boot()
+  it('returns the fixed refusal for every reading tool while reading is off', async () => {
+    const { call, config, bridge } = await boot()
     for (const [name, args] of [
       ['list_chats', { query: 'rowing' }],
       ['read_messages', { chat: ROWING.jid }],
@@ -281,15 +272,21 @@ describe('reading', () => {
       expect(result.content).toEqual([{ type: 'text', text: refused(REFUSALS['read-off']) }])
     }
     expect(bridge.requests).toEqual([])
-    const logged = refusals()
-    expect(logged.map((one) => [one.tool, one.refused])).toEqual([
-      ['list_chats', 'read-off'],
-      ['read_messages', 'read-off'],
-      ['search_messages', 'read-off'],
-      ['search_contacts', 'read-off'],
-      ['get_media', 'read-off'],
-    ])
-    expect(JSON.stringify(logged)).not.toMatch(/secret plans|rowing|Ines/)
+    expect(fs.existsSync(path.join(config.home, 'refusals.jsonl'))).toBe(false)
+  })
+
+  it('leaves existing refusal logs untouched', async () => {
+    const { config, text } = await boot()
+    const active = path.join(config.home, 'refusals.jsonl')
+    const rotated = path.join(config.home, 'refusals.1.jsonl')
+    const entry = '{"tool":"list_chats","refused":"read-off"}\n'
+    const previous = entry.repeat(26_000)
+    fs.writeFileSync(active, previous)
+    fs.writeFileSync(rotated, entry)
+
+    expect(await text('list_chats')).toBe(refused(REFUSALS['read-off']))
+    expect(fs.readFileSync(active, 'utf8')).toBe(previous)
+    expect(fs.readFileSync(rotated, 'utf8')).toBe(entry)
   })
 
   it('reads chats and messages once the person allows it, naming what an agent sent', async () => {
@@ -418,7 +415,7 @@ describe('sending', () => {
   })
 
   it('sends only to a writable group, never to a person, with the 🤖 start', async () => {
-    const { call, bridge, refusals } = await boot({ writable: [ROWING.jid, ALTOS.jid] })
+    const { call, bridge } = await boot({ writable: [ROWING.jid, ALTOS.jid] })
     expect(
       (await call('send_to_group', { group: ROWING.name, text: 'Boats at seven' })).content[0].text,
     ).toBe(JSON.stringify({ sent: true, group: ROWING.name }))
@@ -428,7 +425,6 @@ describe('sending', () => {
         refused(REFUSALS['cannot-write']),
       )
     expect(bridge.sends()).toHaveLength(1)
-    expect(refusals().map((one) => one.refused)).toEqual(Array(4).fill('cannot-write'))
   })
 
   it('asks for the id when two writable groups share a name', async () => {
@@ -547,7 +543,7 @@ describe('sending', () => {
   it.each([ROWING.name, ROWING.jid])(
     'rechecks Can write after preparing a file for %s',
     async (group) => {
-      const { call, bridge, config, settings, refusals } = await boot({
+      const { call, bridge, config, settings } = await boot({
         writable: [ROWING.jid],
       })
       const file = path.join(config.files, 'minutes.pdf')
@@ -576,7 +572,6 @@ describe('sending', () => {
       expect(settings.get().writable).toEqual([])
       expect(bridge.sends()).toEqual([])
       expect(result.content[0].text).toBe(refused(REFUSALS['cannot-write']))
-      expect(refusals().map((one) => one.refused)).toEqual(['cannot-write'])
 
       settings.setWritable(ROWING.jid, true)
       expect((await call('send_to_group', { group, file })).content[0].text).toBe(
@@ -587,7 +582,7 @@ describe('sending', () => {
   )
 
   it('reports audio sent and the source caption error without retrying or releasing the send', async () => {
-    const { call, client, bridge, config, refusals } = await boot({ writable: [ROWING.jid] })
+    const { call, client, bridge, config } = await boot({ writable: [ROWING.jid] })
     const file = path.join(config.files, 'meeting.mp3')
     fs.writeFileSync(file, Buffer.from('ID3\u0004fictional audio'))
     const originalCall = bridge.call.bind(bridge)
@@ -618,7 +613,6 @@ describe('sending', () => {
       file: 'meeting.mp3',
     })
     expect(sendCalls).toBe(1)
-    expect(refusals()).toEqual([])
     const repeated = await call('send_to_group', { group: ROWING.jid, text: 'Meet at six', file })
     expect(repeated.content[0].text).toBe(refused(REFUSALS.duplicate))
     expect(sendCalls).toBe(1)
@@ -629,7 +623,7 @@ describe('sending', () => {
     ['search_contacts', 'Ines', 503, 'Connection closed'],
     ['send_to_group', 'x'.repeat(4001), 502, 'server returned error 413'],
   ] as const)('preserves bridge errors from %s', async (tool, text, status, detail) => {
-    const { client, bridge, refusals } = await boot({ read: true, writable: [ROWING.jid] })
+    const { client, bridge } = await boot({ read: true, writable: [ROWING.jid] })
     const reply = { status, body: { error: 'send_failed', detail } }
     vi.spyOn(bridge, 'call').mockResolvedValueOnce(reply)
     const args = tool === 'search_contacts' ? { query: text } : { group: ROWING.jid, text }
@@ -637,7 +631,6 @@ describe('sending', () => {
       isError: true,
       content: [{ type: 'text', text: `Error: ${JSON.stringify(reply)}` }],
     })
-    expect(refusals()).toEqual([])
   })
 
   it('refuses sending while no phone is linked', async () => {
