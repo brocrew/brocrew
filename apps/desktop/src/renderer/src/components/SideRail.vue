@@ -411,9 +411,6 @@ const platform = platformHere()
 
 <template>
   <aside class="rail" data-cy="side-rail" :data-collapsed="props.collapsed">
-    <!-- Brand. It names the app, and — since 249 — the button beside it opens a palette that
-         exists. ⛔ **`title` no longer says "not wired yet"**, which is the whole ticket: a control
-         that announces it does nothing is `106`, and this one had announced it for months. -->
     <div class="brand-row">
       <!-- The crew mark: three circles, the name beside it says what it is. -->
       <div class="brand-mark">
