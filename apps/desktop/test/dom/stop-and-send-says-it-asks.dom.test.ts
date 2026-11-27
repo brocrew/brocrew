@@ -181,7 +181,7 @@ describe('§1 · a running Codex conversation with a draft: Stop and send says t
     // ⚑ The premise, off the record the pane draws: running, a draft, so the pair is up.
     expect(visible(m.q('interrupt-send-prompt'))).toBe(true)
     expect(visible(m.q('queue-prompt'))).toBe(true)
-    expect(m.all('interrupt-session')).toEqual([])
+    expect(visible(m.q('interrupt-session'))).toBe(true)
     expect((m.q('prompt-input') as HTMLTextAreaElement).value).toBe(DRAFT)
 
     expect(stopAndSendTitle(m)).toBe(TITLE)
@@ -200,10 +200,11 @@ describe('§1 · a running Codex conversation with a draft: Stop and send says t
     expect(stopAndSendTitle(m)).toBe(`Stop and send — ${sent} (${INTERRUPT_KEY})`)
   })
 
-  it('⚑ THE CONTROL — the same conversation with NO draft: the plain Stop, titled as `737` left it, and no pair', async () => {
+  it('⚑ THE CONTROL — the same conversation with NO draft: plain Stop keeps its title and Queue waits for content', async () => {
     const m = await pane(conversation([started, asked, working]), { draft: '' })
     expect(m.all('interrupt-send-prompt')).toEqual([])
-    expect(m.all('queue-prompt')).toEqual([])
+    expect((m.q('queue-prompt') as HTMLButtonElement).disabled).toBe(true)
+    expect(m.q('queue-prompt').getAttribute('title')).toContain('Type a message')
     expect(m.q('interrupt-session').getAttribute('title')).toBe(PLAIN_STOP_TITLE)
     expect(text(m.q('composer-hint'))).not.toContain('Stop and send')
   })
