@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, realpathSync } from 'node:fs'
 import { basename, join, resolve, sep } from 'node:path'
-import { readCodexRolloutPath } from '../../database/codex-records'
+import { readCodexRolloutPath } from '../../database/sqlite/evidence/codex'
 import type { SessionRef } from '@brobot2/runtime'
 
 function codexRolloutPath(providerHome: string, threadId: string): string | null {

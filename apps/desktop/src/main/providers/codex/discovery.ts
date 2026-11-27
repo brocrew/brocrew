@@ -2,7 +2,7 @@ import { homedir } from 'node:os'
 import type { ProtectedPlaceKind } from '../../../shared/work-folders'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { readCodexDiscovery, type CodexThreadRow } from '../../database/codex-records'
+import { readCodexDiscovery, type CodexThreadRow } from '../../database/sqlite/evidence/codex'
 import { newestStateDatabase } from './native-record'
 import {
   EMPTY,

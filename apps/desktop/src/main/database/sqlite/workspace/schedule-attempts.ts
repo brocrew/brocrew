@@ -2,7 +2,7 @@ import { join } from 'node:path'
 import type { NotStartedBecause } from '@brobot2/runtime'
 import type { WakeAttempt } from '../../../../shared/schedule-wake-admission'
 import type { AppDatabase } from '../../../db/connection'
-import { importSideFile, objectIn } from '../../../db/side-file-import'
+import { importSideFile, objectIn } from './side-file-import'
 
 /**
  * What this app has already done about each stopped conversation's scheduled jobs, kept across a

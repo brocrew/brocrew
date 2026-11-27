@@ -33,7 +33,7 @@ import {
   knownMemorySource,
   memoryObservation,
 } from './memory-recovery'
-import { parseProvider } from './session-store-parts/model-choice-storage'
+import { parseProvider } from '../database/sqlite/agents/model-choice-storage'
 
 interface KnowledgeHistoryReceiver {
   identityOf(sessionId: string): { profileSlug: string } | null

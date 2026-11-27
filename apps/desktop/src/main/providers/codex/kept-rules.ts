@@ -8,7 +8,7 @@ import {
 } from '@brobot2/runtime/codex'
 import type { KeptRule, KeptRulesFile } from '../../../shared/runtime-ipc'
 import { NO_LONGER_KEPT, readSmall, rewrite } from '../kept-rule-io'
-import type { KeptRulePolicy } from '../kept-rule-policy'
+import type { KeptRulePolicy } from '@brobot2/runtime/provider-module'
 
 /** One line Codex writes for a kept command: its prefix, as a JSON list of words. */
 const PREFIX_RULE = /^prefix_rule\(pattern=(\[.*\]), decision="allow"\)$/

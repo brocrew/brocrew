@@ -1,7 +1,7 @@
 import { join } from 'node:path'
 import { SUPPORTED_PROVIDERS, type Provider } from '@brobot2/shared'
 import type { AppDatabase } from '../../../db/connection'
-import { importSideFile, objectIn } from '../../../db/side-file-import'
+import { importSideFile, objectIn } from './side-file-import'
 
 /** The file older builds kept these moments in, imported once into `sign_in_change`. */
 export const SIGN_IN_CHANGES_FILE = 'sign-in-changes.json'

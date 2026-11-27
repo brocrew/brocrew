@@ -422,7 +422,7 @@ import { type InstructionContext, type TheBuildRunning } from './factory-text'
 import { memoryNoteDir, noteNamesIn, notesThatAppeared } from './memory-notes'
 import { readWorkflowOutput } from '../workflow-output'
 import { readInstructionSource } from '../instruction-source'
-import type { ProviderSignIn } from '../providers/auth-types'
+import type { ProviderSignIn } from '@brobot2/runtime/provider-module'
 import type { ProviderAuthOps } from '../providers/auth-operations'
 import { aLoginRunsWithoutAKey } from './api-keys'
 import type { GivenFolder, ProtectedPlaceNotice } from '../../shared/work-folders'
@@ -491,7 +491,7 @@ import type {
 export type { GiveOutcome } from './spawn-rails'
 import { agentIdentityRowId, foldProfileName } from '../db/identity'
 import { createSqliteAgentNotes } from '../database/sqlite/agents/own-notes'
-import type { AgentNotes } from '../database'
+import type { AgentNotes } from '../database/agents'
 import { LinkAnswers, type ReadLinkAnswer } from './link-answers'
 import type {
   Exchange,

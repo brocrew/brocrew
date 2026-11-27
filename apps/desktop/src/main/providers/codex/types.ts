@@ -15,4 +15,4 @@ export interface CodexKeySeam {
   change(providerHome: string, change: CodexKeyChange): Promise<CodexKeyOutcome>
 }
 
-export type { ProviderSignIn as CodexSignIn } from '../auth-types'
+export type { ProviderSignIn as CodexSignIn } from '@brobot2/runtime/provider-module'

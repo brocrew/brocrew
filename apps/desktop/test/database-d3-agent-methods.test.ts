@@ -1,7 +1,7 @@
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import type { AgentMethods, MethodChangeIntent } from '../src/main/database'
+import type { AgentMethods, MethodChangeIntent } from '../src/main/database/methods'
 import { createSqliteAgentMethods } from '../src/main/database/sqlite/agents/methods'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'

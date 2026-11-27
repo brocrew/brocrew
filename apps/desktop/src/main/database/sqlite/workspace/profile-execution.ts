@@ -1,7 +1,7 @@
 import { join } from 'node:path'
 import { existsSync } from 'node:fs'
 import type Database from 'better-sqlite3'
-import { importSideFile, objectIn } from '../../../db/side-file-import'
+import { importSideFile, objectIn } from './side-file-import'
 
 /**
  * How each profile runs its work, kept across a restart: one `profile_execution` row per identity.

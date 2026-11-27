@@ -9,7 +9,7 @@ import {
 } from '../session-catalogue-read'
 import type { DigestRow, PersistedEvent } from '../ledger-row-types'
 import type { WorkLedgerRead, WorkRow } from '../work-ledger-read'
-import type { AncestryContext } from '../work-ancestry-reader'
+import type { AncestryContext } from '../../database/sqlite/ledger/ancestry-read'
 import { type RowsUnread } from '../rows-unread'
 import type {
   HolderReconciliationReceipt,
@@ -27,7 +27,7 @@ import type { TranscriptEvent } from '../../../shared/conversation-events'
 import type { MoveReceipt } from '../../../shared/move-contracts'
 import type { AgentModelChoice, ModelAndEffort } from '../../../shared/model-choice-contracts'
 import type { OwnInstructionsCommit } from '../agent-knowledge-history'
-import type { ThreadLeadRow } from '../thread-lead-reader'
+import type { ThreadLeadRow } from '../../database/sqlite/ledger/thread-lead-reader'
 import type {
   HumanAnswers,
   HumanFinalContext,
@@ -47,7 +47,7 @@ import {
   type ConversationTitledEvent,
 } from '../../../shared/conversation-title'
 import type { ScheduleLevel } from '../../../shared/agent-state-contracts'
-import { type OwnNotesStore } from '../own-notes'
+import { type OwnNotesStore } from '../../database/sqlite/agents/own-notes-store'
 import {
   type MethodChangeIntent,
   type MethodChangeRecord,

@@ -1,5 +1,5 @@
 import type { VerifyCopy } from './copy-check'
-import { prepareDatabaseSnapshot } from '../database/recovery'
+import { prepareDatabaseSnapshot } from '../database/sqlite/evidence/recovery'
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import type { OfferedCheckpoint, ProgressListener } from '../../shared/recovery'
