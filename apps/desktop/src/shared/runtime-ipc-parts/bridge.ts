@@ -24,6 +24,8 @@ import type {
   ConversationRenameResult,
   ConversationTitleHistory,
   ConversationTitleHistoryInput,
+  CurrentRulesInput,
+  CurrentRulesResult,
 } from '../conversation-title'
 import type {
   ResumableSessionInfo,
@@ -791,6 +793,7 @@ export interface RuntimeBridge {
     input: ConversationTitleHistoryInput,
   ): Promise<ConversationTitleHistory | null>
   renameConversation(input: ConversationRenameInput): Promise<ConversationRenameResult>
+  setCurrentRules(input: CurrentRulesInput): Promise<CurrentRulesResult>
   /**
    * Take back the piece a service is on, as a person (see {@link RuntimeCommandResults.takeBackWork}).
    */

@@ -24,6 +24,7 @@ export type ClientScreenApi = Pick<
   | 'readConversationTasks'
   | 'readConversationTitleHistory'
   | 'renameConversation'
+  | 'setCurrentRules'
   | 'searchWork'
   | 'takeBackWork'
   | 'teamProfileGraph'

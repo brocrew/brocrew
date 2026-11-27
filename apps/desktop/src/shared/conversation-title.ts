@@ -22,14 +22,36 @@ export interface ConversationTitledEvent {
   readonly author: ConversationTitleAuthor
 }
 
+/** The most characters a conversation's current rules may hold: a status line's bound. */
+export const CURRENT_RULES_CHARS = 1_280
+
 /**
- * A conversation's current rules, written by its own agent with `update_work`: a few short lines
- * every turn's footer prints. The newest record stands; empty text clears them.
+ * A conversation's current rules: a few short lines every turn's footer prints, written by its own
+ * agent with `update_work` or by a person from the window. The newest record stands; empty text
+ * clears them.
  */
 export interface CurrentRulesSetEvent {
   readonly type: 'current_rules_set'
   readonly text: string
+  /** Set by a person; absent when the conversation's own agent wrote them. */
+  readonly by?: 'person'
 }
+
+/** The current rules as they stand: the text, who changed them last and when. */
+export interface CurrentRules {
+  readonly text: string
+  readonly by: 'agent' | 'person'
+  readonly at: number
+}
+
+/** A person's new current rules for a conversation; empty text deletes them. */
+export interface CurrentRulesInput {
+  readonly conversation: string
+  readonly text: string
+}
+
+export type CurrentRulesResult =
+  { readonly ok: true } | { readonly ok: false; readonly reason: string }
 
 /** The rows a conversation keeps about itself in its own ledger: its title and current rules. */
 export type ConversationOwnRow = ConversationTitledEvent | CurrentRulesSetEvent

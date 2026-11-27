@@ -183,7 +183,7 @@ export function describeEvent(event: TranscriptEvent): string {
         event.author.kind === 'person' ? 'a person' : event.author.conversation
       } (ours)`
     case 'current_rules_set':
-      return `current rules set · ${event.text.length} chars (ours)`
+      return `current rules set by ${event.by === 'person' ? 'a person' : 'its agent'} · ${event.text.length} chars (ours)`
     // ⚑ **D-022 · R1 — and the held give it rides**, by the message's id, as `message_sent` prints
     // one: the give's `user_turn` then carries the newest brief, not the words its `message_queued`
     // holds.

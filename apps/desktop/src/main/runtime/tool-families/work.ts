@@ -20,6 +20,7 @@ import { sendOverflowSaid } from '../send-overflow'
 import { HELD_FORMS_WITH_EXTENSIONS_SAID } from '../../../shared/documents'
 import { PIECE_TITLE_CHARS } from '../../../shared/piece-called'
 import { REPLY_SUMMARY_LIMIT } from '../reply-rails'
+import { CURRENT_RULES_CHARS } from '../../../shared/conversation-title'
 import type { ToolName } from './catalog'
 import {
   WORK_SEARCH_WORDS,
@@ -376,7 +377,7 @@ export function createUpdateWorkTool(
         .string()
         .optional()
         .describe(
-          `Your conversation’s current rules or immediate goals, a few short lines such as “tonight keep the pace at 3 pieces an hour”, at most ${String(REPLY_SUMMARY_LIMIT)} characters. Every turn’s footer shows them until you change them. Send them whole each time; empty clears them. Needs no piece.`,
+          `Your conversation’s current rules or immediate goals, a few short lines such as “tonight keep the pace at 3 pieces an hour”, at most ${String(CURRENT_RULES_CHARS)} characters. Every turn’s footer shows them until you change them. Send them whole each time; empty clears them. Needs no piece.`,
         ),
     } satisfies Readonly<Record<keyof UpdateWorkArguments, z.ZodType>>,
     call: (args) =>
@@ -393,10 +394,10 @@ export function createUpdateWorkTool(
         const problems: string[] = []
         if (
           rules !== undefined &&
-          (typeof rules !== 'string' || rules.trim().length > REPLY_SUMMARY_LIMIT)
+          (typeof rules !== 'string' || rules.trim().length > CURRENT_RULES_CHARS)
         ) {
           problems.push(
-            `${UPDATE_RULES_ARGUMENT} must be text of at most ${String(REPLY_SUMMARY_LIMIT)} characters, or empty to clear them`,
+            `${UPDATE_RULES_ARGUMENT} must be text of at most ${String(CURRENT_RULES_CHARS)} characters, or empty to clear them`,
           )
         }
         if (piece !== undefined && (typeof piece !== 'string' || piece.length === 0)) {

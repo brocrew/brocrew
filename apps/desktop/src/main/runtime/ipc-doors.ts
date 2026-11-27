@@ -139,6 +139,7 @@ const DURING_A_QUIT: Record<RuntimeCommandKind, QuitRuling> = {
   readAllConversationTasks: 'refused',
   readConversationTitleHistory: 'refused',
   renameConversation: 'refused',
+  setCurrentRules: 'refused',
   // ⛔ Refused, with `retitleWork` as the precedent: a person acting on work, while the service that
   // would go on to its next piece is closing with the process.
   takeBackWork: 'refused',

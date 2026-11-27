@@ -558,6 +558,8 @@ const runtime: RuntimeBridge = Object.freeze({
     }),
   renameConversation: (input: { conversation: string; title: string }) =>
     command({ kind: 'renameConversation', ...input }),
+  setCurrentRules: (input: { conversation: string; text: string }) =>
+    command({ kind: 'setCurrentRules', ...input }),
   takeBackWork: (input: { piece: string }) => command({ kind: 'takeBackWork', ...input }),
   closeWork: (input: { piece: string }) => command({ kind: 'closeWork', ...input }),
   // 677 · ⚑ `{ kind, ...input }` and the payload is four primitives — a slug, a provider word or null,

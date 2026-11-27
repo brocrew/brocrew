@@ -253,6 +253,11 @@ export const runtimeCommandSchema = z.discriminatedUnion('kind', [
     conversation: z.string(),
     title: z.string(),
   }),
+  z.object({
+    kind: z.literal('setCurrentRules'),
+    conversation: z.string(),
+    text: z.string(),
+  }),
   // ⚑ A person takes back the piece a service is on, by its label or its id: `retitleWork`'s bound.
   z.object({
     kind: z.literal('takeBackWork'),

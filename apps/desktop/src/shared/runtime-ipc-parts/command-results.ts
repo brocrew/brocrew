@@ -11,6 +11,7 @@ import type {
   ConversationIdentity,
   ConversationRenameResult,
   ConversationTitleHistory,
+  CurrentRulesResult,
 } from '../conversation-title'
 import type {
   ResumableSessionInfo,
@@ -483,6 +484,7 @@ export interface RuntimeCommandResults {
   readAllConversationTasks: AllConversationTasksResult
   readConversationTitleHistory: ConversationTitleHistory | null
   renameConversation: ConversationRenameResult
+  setCurrentRules: CurrentRulesResult
   /** The piece a person took back, or the rail that refused it ({@link WorkTakenBackByAPerson}). */
   takeBackWork: WorkTakenBackByAPerson
   /** The piece a person closed, or the rail that refused it ({@link WorkClosedByAPerson}). */

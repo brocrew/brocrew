@@ -128,8 +128,11 @@ import type {
   ConversationTitleHistory,
   ConversationTitleHistoryInput,
   ConversationTitledEvent,
+  CurrentRulesInput,
+  CurrentRulesResult,
   CurrentRulesSetEvent,
 } from '../../shared/conversation-title'
+import { CURRENT_RULES_CHARS } from '../../shared/conversation-title'
 import {
   canonicalAddressOf,
   describeConversation,
@@ -14968,16 +14971,41 @@ export class RuntimeHost implements LiveHost {
     return renameConversation(input, author, {
       store: this.deps.store,
       itIsAService: (id) => this.itIsAService(id),
-      beforeWriting: async (conversation) => {
-        await this.settleBeforeUse(conversation)
-        const slot = this.slots.get(conversation)
-        if (slot?.session === null) await slot.arrived
-      },
+      beforeWriting: (conversation) => this.settledForAPersonsWrite(conversation),
       record: (conversation, titled) => {
         this.intoItsOwnLedger(conversation, titled, 'Could not record the conversation title.')
         this.theWorldMoved('work')
       },
     })
+  }
+
+  /** A conversation a person writes about from the window, once its start or reopen has settled. */
+  private async settledForAPersonsWrite(conversation: string): Promise<void> {
+    await this.settleBeforeUse(conversation)
+    const slot = this.slots.get(conversation)
+    if (slot?.session === null) await slot.arrived
+  }
+
+  /** A person's new current rules for a conversation, from the window; empty text deletes them. */
+  async setCurrentRulesForAPerson(input: CurrentRulesInput): Promise<CurrentRulesResult> {
+    const text = input.text.trim()
+    if (text.length > CURRENT_RULES_CHARS)
+      return {
+        ok: false,
+        reason: `Too long: ${CURRENT_RULES_CHARS.toLocaleString('en-US')} characters at most.`,
+      }
+    const gone: CurrentRulesResult = { ok: false, reason: 'Conversation not found.' }
+    const { store } = this.deps
+    if (store.conversationBinding(input.conversation) === null) return gone
+    await this.settledForAPersonsWrite(input.conversation)
+    if (store.conversationBinding(input.conversation) === null) return gone
+    this.intoItsOwnLedger(
+      input.conversation,
+      { type: 'current_rules_set', text, by: 'person' },
+      'Could not record the current rules.',
+    )
+    this.theWorldMoved('work')
+    return { ok: true }
   }
 
   /** A row this app writes about a conversation into that conversation's own ledger. */

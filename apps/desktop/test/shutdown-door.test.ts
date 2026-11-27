@@ -247,6 +247,7 @@ const SAMPLES: Record<RuntimeCommandKind, RuntimeCommand> = {
     conversation: 'W0',
     title: 'The fictional job',
   },
+  setCurrentRules: { kind: 'setCurrentRules', conversation: 'W0', text: 'A fictional rule.' },
   takeBackWork: { kind: 'takeBackWork', piece: 'W0.1' },
   closeWork: { kind: 'closeWork', piece: 'W0.1' },
   setAgentModelAndEffort: {

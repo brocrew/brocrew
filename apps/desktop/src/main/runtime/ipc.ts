@@ -820,6 +820,8 @@ export async function executeRuntimeCommand(
       return (await host.renameConversation(command, {
         kind: 'person',
       })) satisfies Answer<'renameConversation'>
+    case 'setCurrentRules':
+      return host.setCurrentRulesForAPerson(command) satisfies Answer<'setCurrentRules'>
     case 'takeBackWork':
       return (await host.takeBackForAPerson(command.piece, sink)) satisfies Answer<'takeBackWork'>
     case 'closeWork':

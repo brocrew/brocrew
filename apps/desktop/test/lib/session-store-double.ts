@@ -857,6 +857,7 @@ function fakeBridge() {
       code: 'unknown-conversation' as const,
       reason: 'No matching conversation.',
     }),
+    setCurrentRules: async () => ({ ok: false as const, reason: 'Conversation not found.' }),
     retitleWork: async () => ({
       ok: false as const,
       rail: 'no-piece-by-that-name' as const,
