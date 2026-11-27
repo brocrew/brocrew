@@ -265,6 +265,8 @@ export const TAB_OF_HOOK_PREFIX = {
   // effort presses and a refused Compact now.
   'cast-tile-label-': 'open',
   'cast-tile-on-purpose-': 'open',
+  'cast-tile-status-': 'open',
+  'cast-tile-started-': 'open',
   'cast-tile-telemetry-': 'open',
   'cast-tile-pick-': 'open',
   'cast-tile-compact-refused-': 'open',
