@@ -37,7 +37,7 @@ import {
 } from '../src/main/runtime/factory-text'
 import { BUNDLE_LEAF, publishProfileBundle } from '../src/main/runtime/profile-bundle'
 import { TOOL_NAMES } from '../src/main/runtime/agent-tools'
-import { REPLY_SUMMARY_LIMIT } from '../src/main/runtime/reply-rails'
+import { REPLY_SUMMARY_LIMIT } from '../src/shared/reply-summary-limit'
 import { theConversationCalled } from '../src/shared/piece-called'
 import {
   AGENTS_FILENAME,

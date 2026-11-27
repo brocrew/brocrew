@@ -23,9 +23,9 @@ import {
   remedyOf,
   type SpawnRail,
 } from '../src/main/runtime/spawn-rails'
+import { REPLY_SUMMARY_LIMIT } from '../src/shared/reply-summary-limit'
 import {
   REPLY_RAILS,
-  REPLY_SUMMARY_LIMIT,
   replyPermanenceOf,
   replyRemedyOf,
   refuseReply,

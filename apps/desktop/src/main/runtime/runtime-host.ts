@@ -742,10 +742,10 @@ import {
   aPersonsCompaction,
   mightBeAPersonsCommand,
 } from './a-command-goes-as-typed'
+import { REPLY_SUMMARY_LIMIT } from '../../shared/reply-summary-limit'
 import {
   AN_AGENT_THIS_APP_CANNOT_NAME,
   REPLY_LANDED,
-  REPLY_SUMMARY_LIMIT,
   admitReply,
   aNoticeALaterFactRetracted,
   aQuestionNoticeALaterFactRetracted,

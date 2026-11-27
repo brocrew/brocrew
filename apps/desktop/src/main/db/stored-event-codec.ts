@@ -35,7 +35,7 @@ import {
   MEMORY_NOTES_PER_EVENT,
   MEMORY_NOTE_TEXT_CAP,
 } from '../../shared/runtime-ipc'
-import { REPLY_SUMMARY_LIMIT } from '../runtime/reply-rails'
+import { REPLY_SUMMARY_LIMIT } from '../../shared/reply-summary-limit'
 import { isAWorkReport } from '../../shared/tasks'
 import { pieceNumbersOf } from '../../shared/piece-called'
 import { WORK_BRIEF_CHARS } from '../../shared/work-fields'

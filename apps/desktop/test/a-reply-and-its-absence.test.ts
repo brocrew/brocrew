@@ -25,10 +25,10 @@ import {
   agentCallerId,
   agentToolsFor,
 } from '../src/main/runtime/agent-tools'
+import { REPLY_SUMMARY_LIMIT } from '../src/shared/reply-summary-limit'
 import {
   REPLY_DELIVERIES,
   REPLY_RAILS,
-  REPLY_SUMMARY_LIMIT,
   refuseReply,
   replyPermanenceOf,
   replyRetryableOf,
@@ -1474,9 +1474,12 @@ describe('393 · a reply, and its absence', () => {
     it('⚠️ the summary bound is named in exactly one place, and the refusal reads it from there', () => {
       // 🔴 **`a-bound-written-as-the-constant-cannot-pin-it`, from the other side**: the CONSTANT
       // must not be duplicated, or the refusal and the check could disagree.
-      const rails = readFileSync(join(mainRoot, 'runtime', 'reply-rails.ts'), 'utf8')
-      const code = codeOnly(rails)
-      expect([...code.matchAll(/1_?280/g)]).toHaveLength(1)
+      const declared = codeOnly(
+        readFileSync(join(mainRoot, '..', 'shared', 'reply-summary-limit.ts'), 'utf8'),
+      )
+      expect([...declared.matchAll(/1_?280/g)]).toHaveLength(1)
+      const code = codeOnly(readFileSync(join(mainRoot, 'runtime', 'reply-rails.ts'), 'utf8'))
+      expect([...code.matchAll(/1_?280/g)]).toHaveLength(0)
       expect(code).toContain('REPLY_SUMMARY_LIMIT')
       // The numeric detail and the reason both state the shared limit.
       expect(refuseReply('summary-too-long', { limit: REPLY_SUMMARY_LIMIT }).detail.limit).toBe(

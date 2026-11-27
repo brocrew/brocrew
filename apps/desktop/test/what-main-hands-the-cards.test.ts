@@ -17,7 +17,7 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
 import { RuntimeHost } from './helpers/giver-notice-host'
 import type { ToolName } from '../src/main/runtime/agent-tools'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
-import { REPLY_SUMMARY_LIMIT } from '../src/main/runtime/reply-rails'
+import { REPLY_SUMMARY_LIMIT } from '../src/shared/reply-summary-limit'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import {
   DEFAULT_PROFILE_ID,

@@ -20,7 +20,7 @@ import {
   MAX_PATH_CHARS,
   isPathSegment,
 } from '../../shared/runtime-ipc'
-import { REPLY_SUMMARY_LIMIT } from './reply-rails'
+import { REPLY_SUMMARY_LIMIT } from '../../shared/reply-summary-limit'
 import {
   sessionId,
   requestId,
