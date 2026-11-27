@@ -1,5 +1,6 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { eventTrimWriter } from '../src/main/db/event-retention'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
 import type { RuntimeChangeMessage } from '../src/shared/runtime-ipc'
@@ -7,13 +8,15 @@ import type { RuntimeChangeMessage } from '../src/shared/runtime-ipc'
 /**
  * A window is told `persons` whenever what a person must answer may have moved — announced from
  * the commit record for the rows the person reads select, whichever door wrote them, and for the
- * live changes the conversations and roster announcements carry — and never for words streamed.
+ * live changes the conversations and roster announcements carry — and never for words streamed,
+ * nor for a history trim, which removes only rows no window composes from.
  */
 describe('a person is told when what they must answer moves', () => {
   let world: AServiceWorld
   let host: RuntimeHost
   let announced: RuntimeChangeMessage['what'][]
   let conversation: string
+  let statesMoved: ReturnType<typeof vi.fn>
   const loopTurns = async (n = 3) => {
     for (let i = 0; i < n; i++) await new Promise((resolve) => setImmediate(resolve))
   }
@@ -23,10 +26,15 @@ describe('a person is told when what they must answer moves', () => {
     world = aServiceWorld()
     world.anAgent('asker', 'normal')
     announced = []
-    host = world.aHost({ announce: (message) => announced.push(message.what) })
+    statesMoved = vi.fn()
+    host = world.aHost({
+      announce: (message) => announced.push(message.what),
+      statesMoved: statesMoved as never,
+    })
     conversation = await world.aPersonOpens(host, 'asker')
     await loopTurns()
     announced = []
+    statesMoved.mockClear()
   })
   afterEach(async () => world.cleanUp())
 
@@ -105,5 +113,35 @@ describe('a person is told when what they must answer moves', () => {
     await loopTurns()
     expect(announced).toContain('conversations')
     expect(told()).toBeGreaterThanOrEqual(1)
+  })
+
+  it('a history trim through the real trim writer announces nothing and publishes no state', async () => {
+    for (let i = 0; i < 3; i++) {
+      world.store.append(
+        conversation,
+        world.store.nextOrdinal(conversation),
+        { type: 'thinking', text: `fictional old thought ${i}` } as unknown as TranscriptEvent,
+        0,
+      )
+    }
+    const ids = (
+      world.db
+        .prepare("SELECT id FROM events WHERE session_id = ? AND type = 'thinking'")
+        .all(conversation) as { id: string }[]
+    ).map((row) => row.id)
+    const { active } = world.db
+      .prepare(
+        `SELECT coalesce(g.active, 0) AS active FROM provider_session s
+         LEFT JOIN derived_generation g ON g.session_id = s.id WHERE s.id = ?`,
+      )
+      .get(conversation) as { active: number }
+    await loopTurns()
+    announced = []
+    statesMoved.mockClear()
+    const trimmed = eventTrimWriter(world.db)({ session: conversation, active, ids, before: 1 })
+    expect(trimmed.changed).toBe(3)
+    await loopTurns()
+    expect(announced).toEqual([])
+    expect(statesMoved).not.toHaveBeenCalled()
   })
 })
