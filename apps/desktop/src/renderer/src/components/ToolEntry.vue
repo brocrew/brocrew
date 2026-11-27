@@ -456,17 +456,22 @@ const droppedNote = computed(() =>
             :text="item.result.summary"
             :paths="props.paths"
           />
-          <!-- The door to the whole answer (462), or the sentence that says there is none. -->
+          <!-- The door to the whole answer (462), or the sentence that says there is none. A call
+               that launched a workflow opens that workflow. -->
           <div class="answer-ask">
             <button
               v-if="props.canReadAnswer"
               class="ask-one"
               type="button"
               :data-cy="`tool-answer-open-${item.id}`"
-              title="Show everything this tool answered, not just the short form on this row."
+              :title="
+                item.workflow
+                  ? undefined
+                  : 'Show everything this tool answered, not just the short form on this row.'
+              "
               @click="emit('openAnswer', item.callId, item.name)"
             >
-              Show the whole answer
+              {{ item.workflow ? 'Open the workflow' : 'Show the whole answer' }}
             </button>
             <p v-else class="answer-gone" :data-cy="`tool-answer-gone-${item.id}`">
               {{ ANSWER_NOT_HELD }}
