@@ -12,7 +12,13 @@ import {
 import { printFailure, stepFailure } from '../gates/plugin-packaged/diagnostics.mjs'
 import { providerState, printProviderState } from '../gates/plugin-packaged/provider-state.mjs'
 import { unknownPluginState } from '../gates/plugin-packaged/plugin-state.mjs'
-import { startInstallTrace, printInstallTrace } from '../gates/plugin-packaged/install-trace.mjs'
+import {
+  startInstallTrace,
+  printInstallTrace,
+  readNoticeTable,
+  noticeInPage,
+  safeNoticeObservation,
+} from '../gates/plugin-packaged/install-trace.mjs'
 
 const source = fs.readFileSync(
   new URL('../gates/plugin-packaged/journey.mjs', import.meta.url),
@@ -110,6 +116,9 @@ function fixture(fail, { corrupt = false, snapshotFails = false, missingRoute = 
     },
     printPluginState: (state) => lines.push(JSON.stringify(state)),
     startInstallTrace,
+    readNoticeTable,
+    noticeInPage,
+    safeNoticeObservation,
     printInstallTrace: (trace) => printInstallTrace(trace, (line) => lines.push(line)),
     pageStateSnapshot: async () => {
       if (snapshotFails) throw new Error('HOME=/fictional')

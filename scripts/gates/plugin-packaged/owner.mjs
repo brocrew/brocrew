@@ -25,12 +25,7 @@ import { safeVariant, safeSelection, safeMatrixReceipt, requireSelection } from 
 import { closedFrames } from './diagnostics.mjs'
 import { pageStateFrames, printPageState } from './page-state.mjs'
 import { providerStateFrames, printProviderState } from './provider-state.mjs'
-import {
-  pluginStateFrames,
-  printPluginState,
-  installTraceFrames,
-  printInstallTrace,
-} from './plugin-state.mjs'
+import { pluginStateFrames, printPluginState, installFrames } from './plugin-state.mjs'
 import { registerChild, bestEffortDrain, runnerAdapter } from './runner-processes.mjs'
 function safeSummary(summary) {
   if (!safeReport(summary)) throw new Error('Unsafe summary')
@@ -158,12 +153,8 @@ function childRun(program, args, env, cwd, abort, maximum, phase) {
         innerPluginState ??= value
       }),
     )
-  // Diagnostic only: the closed install trace goes to the job log, never into the summary.
-  if (phase === 'journey')
-    child.stdout.on(
-      'data',
-      installTraceFrames((value) => printInstallTrace(value)),
-    )
+  // Diagnostic only: the closed install frames go to the job log, never into the summary.
+  if (phase === 'journey') for (const listen of installFrames()) child.stdout.on('data', listen)
   if (['gui-probe', 'probe-matrix', 'journey'].includes(phase))
     child.stdout.on(
       'data',

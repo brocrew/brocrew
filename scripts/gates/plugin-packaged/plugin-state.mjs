@@ -6,7 +6,7 @@ import { connectDiagnosticPage } from './page-state.mjs'
 import { bounded } from './processes.mjs'
 import { closedFrames } from './diagnostics.mjs'
 // Diagnostic only: re-exported so the owner's journey listeners share this module's names.
-export { installTraceFrames, printInstallTrace } from './install-trace.mjs'
+export { installFrames } from './install-trace.mjs'
 
 const states = [
   'available',
