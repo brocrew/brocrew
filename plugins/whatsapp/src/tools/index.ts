@@ -4,7 +4,7 @@ import type { Bridge, BridgeGroup } from '../bridge.js'
 import type { WhatsAppConfig } from '../config.js'
 import { LocalFileGuardError, openGuardedFile } from '../localFileGuard.js'
 import type { SendPolicy } from '../policy.js'
-import type { RefusalCode, Refusals } from '../refusals.js'
+import { createRefusal, type RefusalCode } from '../refusals.js'
 import type { SettingsStore } from '../settings.js'
 import { currentRequestSignal } from '../shared/requestSignal.js'
 import { PublicToolError, type ToolHandler, type ToolResult } from '../shared/toolServer.js'
@@ -122,14 +122,13 @@ export interface ToolDeps {
   bridge: Bridge
   settings: SettingsStore
   policy: SendPolicy
-  refusals: Refusals
 }
 
 export function createWhatsAppTools(deps: ToolDeps): ToolHandler[] {
-  const { bridge, settings, refusals, config } = deps
+  const { bridge, settings, config } = deps
+  const refuse = createRefusal(config.files)
 
   async function ask(
-    tool: string,
     route: string,
     body: unknown,
     timeoutMs: number,
@@ -141,11 +140,11 @@ export function createWhatsAppTools(deps: ToolDeps): ToolHandler[] {
     })
     if (reply.status === 200) return reply.body
     const { refusal } = refusalIn(known, reply.body)
-    if (refusal) throw refusals.refuse(tool, refusal)
+    if (refusal) throw refuse(refusal)
     throw new Error(JSON.stringify(reply))
   }
 
-  function access(tool: string, mode: 'read' | 'contacts' | 'write', chat?: string) {
+  function access(mode: 'read' | 'contacts' | 'write', chat?: string) {
     const { read, writable } = settings.get()
     if (
       mode !== 'write' &&
@@ -153,34 +152,34 @@ export function createWhatsAppTools(deps: ToolDeps): ToolHandler[] {
       (mode === 'contacts' ||
         (chat === undefined ? writable.length === 0 : !writable.includes(chat)))
     )
-      throw refusals.refuse(tool, 'read-off')
+      throw refuse('read-off')
     const state = bridge.status().state
-    if (state === 'unlinked' || state === 'pairing') throw refusals.refuse(tool, 'not-linked')
+    if (state === 'unlinked' || state === 'pairing') throw refuse('not-linked')
     return {
       groups: bridge.groups().filter((group) => writable.includes(group.jid)),
       ...(read ? {} : { chats: writable }),
     }
   }
 
-  function groupNamed(tool: string, asked: string): BridgeGroup {
-    const { groups } = access(tool, 'write')
+  function groupNamed(asked: string): BridgeGroup {
+    const { groups } = access('write')
     if (asked.endsWith('@g.us')) {
       const found = groups.find((group) => group.jid === asked)
-      if (!found) throw refusals.refuse(tool, 'cannot-write')
+      if (!found) throw refuse('cannot-write')
       return found
     }
     const matches = groups.filter((group) => fold(group.name) === fold(asked))
-    if (matches.length === 0) throw refusals.refuse(tool, 'cannot-write')
-    if (matches.length > 1) throw refusals.refuse(tool, 'two-groups')
+    if (matches.length === 0) throw refuse('cannot-write')
+    if (matches.length > 1) throw refuse('two-groups')
     return matches[0]
   }
 
-  async function attachment(tool: string, file: string) {
+  async function attachment(file: string) {
     let guarded
     try {
       guarded = openGuardedFile(file, { roots: [config.files], maxBytes: FILE_BYTES })
     } catch (error) {
-      if (error instanceof LocalFileGuardError) throw refusals.refuse(tool, 'file')
+      if (error instanceof LocalFileGuardError) throw refuse('file')
       throw error
     }
     try {
@@ -214,8 +213,8 @@ export function createWhatsAppTools(deps: ToolDeps): ToolHandler[] {
           },
         },
         async run(a) {
-          const { chats } = access('list_chats', 'read')
-          const body = (await ask('list_chats', '/chats', { ...a, chats }, 15_000)) as {
+          const { chats } = access('read')
+          const body = (await ask('/chats', { ...a, chats }, 15_000)) as {
             chats?: ChatRow[]
           }
           return json({
@@ -251,9 +250,8 @@ export function createWhatsAppTools(deps: ToolDeps): ToolHandler[] {
           required: ['chat'],
         },
         async run(a) {
-          access('read_messages', 'read', a.chat as string)
+          access('read', a.chat as string)
           const body = (await ask(
-            'read_messages',
             '/messages',
             {
               chat: a.chat,
@@ -285,8 +283,8 @@ export function createWhatsAppTools(deps: ToolDeps): ToolHandler[] {
           required: ['query'],
         },
         async run(a) {
-          const { chats } = access('search_messages', 'read', a.chat as string | undefined)
-          const body = (await ask('search_messages', '/messages', { ...a, chats }, 15_000)) as {
+          const { chats } = access('read', a.chat as string | undefined)
+          const body = (await ask('/messages', { ...a, chats }, 15_000)) as {
             messages?: MessageRow[]
           }
           return json({ messages: (body.messages ?? []).map(shownMessage) })
@@ -307,8 +305,8 @@ export function createWhatsAppTools(deps: ToolDeps): ToolHandler[] {
           required: ['query'],
         },
         async run(a) {
-          access('search_contacts', 'contacts')
-          const body = (await ask('search_contacts', '/contacts', { query: a.query }, 15_000)) as {
+          access('contacts')
+          const body = (await ask('/contacts', { query: a.query }, 15_000)) as {
             contacts?: Array<{ jid: string; name: string }>
           }
           return json({
@@ -333,13 +331,12 @@ export function createWhatsAppTools(deps: ToolDeps): ToolHandler[] {
           required: ['chat', 'message'],
         },
         async run(a) {
-          access('get_media', 'read', a.chat as string)
+          access('read', a.chat as string)
           const out = path.join(
             config.downloads,
             `${randomBytes(8).toString('hex')}_${a.message as string}.jpg`,
           )
           const body = (await ask(
-            'get_media',
             '/media',
             { id: a.message, chat: a.chat, out },
             70_000,
@@ -377,7 +374,7 @@ export function createWhatsAppTools(deps: ToolDeps): ToolHandler[] {
           props: {},
         },
         async run() {
-          const { groups } = access('list_groups', 'write')
+          const { groups } = access('write')
           return json({ groups: groups.map((group) => ({ id: group.jid, name: group.name })) })
         },
       },
@@ -406,17 +403,16 @@ export function createWhatsAppTools(deps: ToolDeps): ToolHandler[] {
           required: ['group'],
         },
         async run(a) {
-          const tool = 'send_to_group'
           const text = (a.text as string | undefined) ?? ''
           const file = a.file as string | undefined
           if (file === undefined && text.trim() === '')
             throw new PublicToolError('invalid arguments: "text" is required')
-          const group = groupNamed(tool, a.group as string)
-          const attached = file === undefined ? undefined : await attachment(tool, file)
+          const group = groupNamed(a.group as string)
+          const attached = file === undefined ? undefined : await attachment(file)
           // File preparation can outlast a change to the selected group's permission.
-          groupNamed(tool, group.jid)
+          groupNamed(group.jid)
           const reservation = deps.policy.reserve(group.jid, text, attached?.sha256)
-          if (!reservation.ok) throw refusals.refuse(tool, reservation.why)
+          if (!reservation.ok) throw refuse(reservation.why)
           const sent = settings.get().prefix
             ? text.trim() === ''
               ? MARK
@@ -455,7 +451,7 @@ export function createWhatsAppTools(deps: ToolDeps): ToolHandler[] {
           }
           // A send that failed on the way may still have gone out, so it keeps counting.
           if (code !== 'send_failed') reservation.release()
-          if (refusal) throw refusals.refuse(tool, refusal)
+          if (refusal) throw refuse(refusal)
           throw new Error(JSON.stringify(reply))
         },
       },

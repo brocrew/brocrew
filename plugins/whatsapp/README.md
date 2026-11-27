@@ -8,7 +8,7 @@ A one-time port of the WhatsApp bridge and server from whatsapp-mcp (MIT, Copyri
 - **Reading** (`list_chats`, `read_messages`, `search_messages`, `search_contacts`, `get_media`) can read every chat while "Read conversations" is on. It is off at first. Groups whose "Can write" is on stay readable, including their messages and media, while global reading is off. Contact search needs global reading. These choices apply to all agents.
 - **Sending** (`send_to_group`) goes only to groups whose "Can write" the person turned on; never to a person. Send text or one file with a caption; WhatsApp handles its own message-length limits. Five messages per group in ten minutes, twenty an hour in all, and the same message to the same group once an hour. `list_groups` names the groups that can be written to.
 - **Files to send** must be in the plugin's `files` folder (an absolute path, shown in the tool's description), up to 100 MB. The bridge checks the file's type from its bytes.
-- **Every refusal** gives the agent a fixed line and is written to `refusals.jsonl` in the plugin's private folder: when, which tool and which rule, never what was asked.
+- **Every refusal** gives the agent a fixed line.
 
 ## Parts
 
