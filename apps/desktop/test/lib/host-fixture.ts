@@ -9,14 +9,16 @@ import { applyMigrations } from '../../src/main/db/migrate'
 import { resourcesRoot } from '../../src/main/resources/resources'
 import { resolveSessionCwd } from '../../src/main/runtime/scratch-cwd'
 import {
-  FakeRuntime,
-  type FakeSessionHandle,
   type AgentToolset,
-  type FakeProviderSessions,
   type StartOptions,
   type SessionRef,
   type ResumeOptions,
 } from '@brobot2/runtime'
+import {
+  FakeRuntime,
+  type FakeSessionHandle,
+  type FakeProviderSessions,
+} from '@brobot2/runtime/testing'
 import { mkdirSync, rmSync, mkdtempSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Provider } from '@brobot2/shared'

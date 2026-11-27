@@ -1,7 +1,7 @@
 import { personOpener } from './helpers/person-opens-session'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
+import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime/testing'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase } from '../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'

@@ -11,7 +11,7 @@ import {
   waitFor,
 } from './lib/host-fixture'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FakeProviderSessions } from '@brobot2/runtime'
+import { FakeProviderSessions } from '@brobot2/runtime/testing'
 import type { AgentToolset } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import type { AppDatabase } from '../src/main/db/connection'

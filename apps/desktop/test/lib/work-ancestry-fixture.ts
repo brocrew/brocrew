@@ -1,10 +1,5 @@
-import {
-  FakeRuntime,
-  type FakeSessionHandle,
-  type ResumeOptions,
-  type RuntimeEvent,
-  type SessionRef,
-} from '@brobot2/runtime'
+import { type ResumeOptions, type RuntimeEvent, type SessionRef } from '@brobot2/runtime'
+import { FakeRuntime, type FakeSessionHandle } from '@brobot2/runtime/testing'
 import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import type { RuntimeEventMessage } from '../../src/shared/runtime-ipc'
 import { NO_DISCOVERY } from '../../src/main/adopt/discover-sessions'

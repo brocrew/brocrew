@@ -6,10 +6,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   AuthUnavailableError,
   DidNotAnswerInTime,
-  FakeRuntime,
   type ModelChoice,
   type ProviderRuntimeContext,
 } from '@brobot2/runtime'
+import { FakeRuntime } from '@brobot2/runtime/testing'
 import type { Provider } from '@brobot2/shared'
 import { NULL_SESSION_STORE } from '../src/main/db/session-store'
 import { judgeAnAgentsChoice, refuseModel } from '../src/main/connections/model-rails'

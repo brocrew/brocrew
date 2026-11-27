@@ -4,14 +4,8 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import {
-  FakeProviderSessions,
-  FakeRuntime,
-  type FakeSessionHandle,
-  type ResumeOptions,
-  type SessionRef,
-  type StartOptions,
-} from '@brobot2/runtime'
+import { type ResumeOptions, type SessionRef, type StartOptions } from '@brobot2/runtime'
+import { FakeProviderSessions, FakeRuntime, type FakeSessionHandle } from '@brobot2/runtime/testing'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'

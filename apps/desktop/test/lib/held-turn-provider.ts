@@ -1,5 +1,6 @@
 import { rmSync } from 'node:fs'
-import { FakeProviderSessions, type FakeSessionHandle, type RuntimeEvent } from '@brobot2/runtime'
+import { type RuntimeEvent } from '@brobot2/runtime'
+import { FakeProviderSessions, type FakeSessionHandle } from '@brobot2/runtime/testing'
 import type { Provider } from '@brobot2/shared'
 import { createSessionStore } from '../../src/main/db/session-store'
 import { RuntimeHost } from '../helpers/giver-notice-host'

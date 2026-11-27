@@ -19,7 +19,7 @@ import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FakeProviderSessions, FakeRuntime, type FakeSessionHandle } from '@brobot2/runtime'
+import { FakeProviderSessions, FakeRuntime, type FakeSessionHandle } from '@brobot2/runtime/testing'
 import type {
   AgentToolset,
   ModelChoice,

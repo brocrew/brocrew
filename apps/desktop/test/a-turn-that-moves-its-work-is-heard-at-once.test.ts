@@ -7,14 +7,10 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { FakeProviderSessions, FakeRuntime, SessionMachine } from '@brobot2/runtime'
-import type {
-  FakeSessionHandle,
-  ResumeOptions,
-  RuntimeEvent,
-  SessionRef,
-  StartOptions,
-} from '@brobot2/runtime'
+import { SessionMachine } from '@brobot2/runtime'
+import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime/testing'
+import type { ResumeOptions, RuntimeEvent, SessionRef, StartOptions } from '@brobot2/runtime'
+import type { FakeSessionHandle } from '@brobot2/runtime/testing'
 import { AsyncQueue } from '../../../packages/runtime/src/internal/async-queue'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'

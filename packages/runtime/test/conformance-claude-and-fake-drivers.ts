@@ -4,11 +4,11 @@ import { fileURLToPath } from 'node:url'
 import type { CanUseTool, Options, SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import {
   type AgentRuntime,
-  FakeRuntime,
   type PermissionOutcome,
   type RuntimeEvent,
   type SessionHandle,
 } from '../src/index'
+import { FakeRuntime } from './fake-runtime'
 import { ClaudeRuntime } from '../src/claude'
 import { AsyncQueue } from '../src/internal/async-queue'
 import { TheCliAnswersInOrder } from './the-cli-answers-in-order'
@@ -595,7 +595,7 @@ async function ensureClaudeInit(ctx: Ctx, ctl: ClaudeCtl): Promise<void> {
 // --- Fake ---
 
 interface FakeCtl {
-  handle: import('../src/index').FakeSessionHandle
+  handle: import('./fake-runtime').FakeSessionHandle
 }
 
 const fakeDriver: Driver = {

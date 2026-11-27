@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { FakeRuntime } from '@brobot2/runtime'
+import { FakeRuntime } from '@brobot2/runtime/testing'
 import { claudeProjectDirName } from '@brobot2/runtime/claude'
 import type { Discovery } from '../src/main/adopt/discover-sessions'
 import { nativeTranscriptPath, readLines } from '../src/main/archive/native-file'

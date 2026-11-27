@@ -3,14 +3,8 @@ import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import {
-  FakeProviderSessions,
-  FakeRuntime,
-  type FakeSessionHandle,
-  type ResumeOptions,
-  type SessionRef,
-  type StartOptions,
-} from '@brobot2/runtime'
+import { type ResumeOptions, type SessionRef, type StartOptions } from '@brobot2/runtime'
+import { FakeProviderSessions, FakeRuntime, type FakeSessionHandle } from '@brobot2/runtime/testing'
 import type { Provider } from '@brobot2/shared'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { waitFor } from './lib/f093-host'

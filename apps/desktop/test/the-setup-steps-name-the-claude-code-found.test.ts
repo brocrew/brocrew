@@ -4,11 +4,8 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import {
-  AuthUnavailableError,
-  FakeProviderSessions,
-  type FakeSessionHandle,
-} from '@brobot2/runtime'
+import { AuthUnavailableError } from '@brobot2/runtime'
+import { FakeProviderSessions, type FakeSessionHandle } from '@brobot2/runtime/testing'
 import { claudeCommandIn, type ClaudeLoginRenewal } from '@brobot2/runtime/claude'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
