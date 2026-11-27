@@ -229,15 +229,22 @@ const answerable = computed(() => props.canAnswer && props.card.listed && !props
   gap: var(--space-3) var(--space-6);
 }
 
-/* A to-do's files read as chips on one row, beside "Show more". */
+/* A to-do's files read as chips on one row, beside "Show more". A chip narrower than its name
+   ends the name with "…" rather than widening the card. */
 .todo-fold :deep(.file-rows) {
+  min-width: 0;
   flex-direction: row;
   flex-wrap: wrap;
   margin: 0;
 }
 
+.todo-fold :deep(.file-rows > li) {
+  min-width: 0;
+}
+
 .todo-fold :deep(.file-row) {
   width: auto;
+  max-width: 100%;
 }
 
 .todo-more {
@@ -368,10 +375,16 @@ const answerable = computed(() => props.canAnswer && props.card.listed && !props
   height: var(--icon-sm);
 }
 
-/* In a narrow corner the door keeps its line by dropping its words to one. */
+/* In a narrow card the buttons take more lines, and a door narrower than its words wraps them, as
+   the answered line's door does. */
 @container todo (max-width: 470px) {
   .todo-controls {
     flex-wrap: wrap;
+  }
+
+  .todo-controls > .todo-door {
+    min-width: 0;
+    flex-shrink: 1;
   }
 }
 
@@ -425,6 +438,7 @@ const answerable = computed(() => props.canAnswer && props.card.listed && !props
     white-space: normal;
   }
 
+  .todo-answered > .todo-said,
   .todo-answered > .todo-door {
     min-width: 0;
     flex-shrink: 1;
