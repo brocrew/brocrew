@@ -104,6 +104,62 @@ describe('395 · telling a Claude interruption from a Claude fault', () => {
  * background work it had no way to see, detach or stop.
  */
 describe('detaching and stopping background work (247)', () => {
+  it.each([
+    { platform: 'win32', reason: 'app-quit', expected: ['stopTask:live'] },
+    { platform: 'win32', reason: undefined, expected: [] },
+    { platform: 'darwin', reason: 'app-quit', expected: [] },
+  ] as const)(
+    'stops the owned background command before $platform $reason teardown',
+    async ({ platform, reason, expected }) => {
+      const { fq, handle, events, consumer } = await startFake()
+      fq.emit(init('sess_1', '/tmp/x'))
+      fq.emit({
+        type: 'system',
+        subtype: 'background_tasks_changed',
+        tasks: [
+          { task_id: 'live', task_type: 'local_bash', description: 'A running command' },
+          { task_id: 'done', task_type: 'local_bash', description: 'A finished command' },
+          { task_id: 'agent', task_type: 'local_agent', description: 'An agent task' },
+        ],
+        session_id: 'sess_1',
+      } as unknown as SDKMessage)
+      fq.emit({
+        type: 'system',
+        subtype: 'task_updated',
+        task_id: 'done',
+        patch: { status: 'completed' },
+        session_id: 'sess_1',
+      } as unknown as SDKMessage)
+      await vi.waitFor(
+        has(events, (event) => event.type === 'background_work' && event.ended?.id === 'done'),
+      )
+      expect(fq.calls).toEqual([])
+      const stop = fq.stopTask.bind(fq)
+      const close = fq.close.bind(fq)
+      const order: string[] = []
+      vi.spyOn(fq, 'stopTask').mockImplementation(async (id) => {
+        await stop(id)
+        order.push(`stopTask:${id}`)
+      })
+      vi.spyOn(fq, 'close').mockImplementation(() => {
+        order.push('close')
+        close()
+      })
+      const original = Object.getOwnPropertyDescriptor(process, 'platform')!
+      let closed: Promise<void>
+      try {
+        Object.defineProperty(process, 'platform', { ...original, value: platform })
+        closed = handle.close(reason)
+      } finally {
+        Object.defineProperty(process, 'platform', original)
+      }
+      await closed
+      await consumer
+      expect(fq.calls).toEqual(expected)
+      expect(order).toEqual([...expected, 'close'])
+    },
+  )
+
   it('⛔ passes the tool-use id straight through, and returns the provider’s own answer', async () => {
     const { fq, handle, events, consumer } = await startFake()
     fq.emit(init('sess_1', '/tmp/x'))

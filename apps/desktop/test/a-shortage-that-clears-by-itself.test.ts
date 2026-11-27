@@ -317,7 +317,10 @@ describe('705 · R39 — a shortage that clears by itself', () => {
       issued.forgetAll()
       const address = store.workById(piece)?.label
       expect(address).toMatch(/^W/)
-      const before = store.recorded().map(({ sessionId }) => sessionId)
+      const before = store
+        .recorded()
+        .map(({ sessionId }) => sessionId)
+        .sort()
       recordedMessageWakeFailure(
         store,
         worker,
@@ -325,7 +328,12 @@ describe('705 · R39 — a shortage that clears by itself', () => {
         'provider-file-missing',
         /session file is missing/,
       )
-      expect(store.recorded().map(({ sessionId }) => sessionId)).toEqual(before)
+      expect(
+        store
+          .recorded()
+          .map(({ sessionId }) => sessionId)
+          .sort(),
+      ).toEqual(before)
       expect(store.replacements()).toEqual([])
     })
 
