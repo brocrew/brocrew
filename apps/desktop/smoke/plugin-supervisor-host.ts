@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, writeFile, copyFile, rm, readdir } from 'node:fs/promises'
 import { join } from 'node:path'
+import { pluginSocketPath } from '../src/main/plugins/socket-path'
 import Database from 'better-sqlite3'
 import { PluginFence } from '../src/main/plugins/state/fence'
 import { PluginSupervisor } from '../src/main/plugins/supervisor/owner'
@@ -145,7 +146,7 @@ export async function proof(config: { root: string; resources: string; archive: 
     servicePid = service.pid
     assert.notEqual(servicePid, process.pid)
     client = await connectPluginSettings({
-      path: join(global, 'person-control/person.sock'),
+      path: pluginSocketPath(global, 'person-control', 'person.sock'),
       personKey,
       root: global,
       target: { os: process.platform as 'darwin' | 'linux', cpu: process.arch as 'arm64' | 'x64' },
