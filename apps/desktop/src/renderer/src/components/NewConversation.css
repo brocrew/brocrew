@@ -1,0 +1,325 @@
+.first-approval-buttons {
+  display: flex;
+  gap: var(--space-4);
+}
+.conversation-pane {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.empty-stage {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: var(--space-12) var(--space-12) var(--space-10);
+  overflow: auto;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+  scrollbar-width: thin;
+}
+
+.launcher {
+  width: 100%;
+  min-width: 0;
+}
+
+.es-head {
+  text-align: center;
+}
+
+.empty-mark {
+  display: grid;
+  width: 46px;
+  height: 46px;
+  margin: 0 auto var(--space-7);
+  border: var(--border-width) solid var(--accent-border);
+  border-radius: var(--radius-card);
+  background: var(--brand-mark-bg);
+  color: var(--accent-text);
+  place-items: center;
+}
+
+.empty-mark .icon {
+  width: 20px;
+  height: 20px;
+}
+
+h2 {
+  margin: 0;
+  color: var(--text);
+
+  letter-spacing: var(--tracking-tight);
+}
+
+.es-head > p {
+  max-width: 420px;
+  margin: var(--space-4) auto 0;
+  color: var(--muted);
+  font-size: var(--type-body);
+  line-height: var(--leading-relaxed);
+}
+
+.said {
+  margin-top: var(--space-11);
+  padding-top: var(--space-9);
+  border-top: var(--border-width) solid var(--line);
+  text-align: left;
+}
+
+.choices {
+  display: flex;
+  margin-top: var(--space-7);
+  flex-wrap: wrap;
+  gap: var(--space-4) var(--space-6);
+}
+
+.choice {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  color: var(--faint);
+  font-size: var(--type-caption);
+  gap: var(--space-3);
+}
+
+.note {
+  display: flex;
+  margin: var(--space-4) 0 0;
+  font-size: var(--type-caption);
+  gap: var(--space-3);
+  line-height: var(--leading-normal);
+  white-space: pre-line;
+}
+
+.note::before {
+  width: 5px;
+  height: 5px;
+  flex: 0 0 auto;
+  margin-top: 5px;
+  border-radius: var(--radius-pill);
+  content: '';
+}
+
+.note.advice {
+  color: var(--muted);
+}
+
+.note.advice::before {
+  background: var(--faint);
+}
+
+.note.warn {
+  color: var(--text-soft);
+}
+
+.note.warn::before {
+  background: var(--waiting);
+}
+
+.why {
+  display: flex;
+  width: fit-content;
+  padding: 0;
+  border: 0;
+  margin-top: var(--space-4);
+  align-items: center;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: var(--type-caption);
+  gap: var(--space-3);
+  line-height: var(--leading-normal);
+  text-align: left;
+}
+
+.why:hover {
+  color: var(--text-soft);
+}
+
+.why.consequence .chev {
+  color: var(--waiting);
+}
+
+.why + .note {
+  margin-top: var(--space-3);
+}
+
+.setting {
+  margin-top: var(--space-8);
+}
+
+.governs {
+  margin: 0 0 var(--space-3);
+  color: var(--muted);
+  font-size: var(--type-caption);
+  font-weight: var(--fw-bold);
+  letter-spacing: var(--tracking-label);
+  line-height: var(--leading-normal);
+  text-transform: uppercase;
+}
+
+.glance {
+  color: var(--text-soft);
+}
+
+.why.consequence .glance {
+  color: var(--waiting);
+}
+
+.approval {
+  display: flex;
+  width: 100%;
+  align-items: flex-start;
+  padding: var(--space-6);
+  background: var(--panel);
+  color: var(--muted);
+  cursor: pointer;
+  flex-direction: column;
+  font: inherit;
+  font-size: var(--type-caption);
+  gap: var(--space-2);
+  line-height: var(--leading-normal);
+  text-align: left;
+}
+
+.approval:hover:not(:disabled) {
+  border-color: var(--line-strong);
+  background: var(--wash-5);
+  color: var(--text-soft);
+}
+
+.approval strong {
+  color: var(--text);
+  font-weight: var(--fw-semibold);
+}
+
+.approval.auto {
+  border-color: var(--waiting-pill-border);
+  background: var(--waiting-bg);
+}
+
+.approval.auto strong {
+  color: var(--waiting);
+}
+
+.approval.unread {
+  border-color: var(--line);
+  border-style: dashed;
+  background: none;
+  color: var(--faint);
+  cursor: default;
+}
+
+.approval.unread strong {
+  color: var(--faint);
+  font-weight: inherit;
+}
+
+/* ------------------------------------------- the program this conversation would start on */
+
+.program-notice {
+  margin-top: var(--space-7);
+  padding: var(--space-4) var(--space-5);
+  border: var(--border-width) solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  text-align: left;
+}
+
+.program-notice .p-body {
+  margin: 0;
+  color: var(--waiting);
+  font-size: var(--type-caption);
+  line-height: var(--leading-normal);
+  overflow-wrap: anywhere;
+}
+
+.program-notice .p-help {
+  display: inline-block;
+  margin-top: var(--space-2);
+  color: var(--accent-text);
+  font-size: var(--type-caption);
+  text-decoration: none;
+}
+
+.blockers {
+  display: flex;
+  margin-top: var(--space-7);
+  flex-direction: column;
+  gap: var(--space-5);
+}
+
+.front-door {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(260px, 1fr);
+  align-items: start;
+  width: min(1100px, 100%);
+  gap: var(--space-12);
+}
+.empty-stage {
+  container-type: inline-size;
+}
+.launcher :deep(.composer-wrap) {
+  padding: var(--space-8) 0;
+  border-top: 0;
+  background: transparent;
+}
+.recent-conversations {
+  min-width: 0;
+}
+.recent-intro,
+.recent-empty {
+  color: var(--muted);
+  font-size: var(--type-small);
+  line-height: var(--leading-relaxed);
+}
+.recent-intro {
+  margin: var(--space-4) 0 var(--space-8);
+}
+.recent-grid {
+  display: grid;
+  gap: var(--space-5);
+}
+.recent-card {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-4);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  overflow-wrap: anywhere;
+}
+.recent-card:hover {
+  border-color: var(--accent-border);
+  background: var(--accent-fill);
+}
+.recent-card strong {
+  font-size: var(--type-body);
+  font-weight: var(--fw-medium);
+}
+.recent-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  color: var(--muted);
+  font-size: var(--type-caption);
+}
+.recent-state {
+  color: var(--text-soft);
+  font-size: var(--type-caption);
+  line-height: var(--leading-normal);
+}
+@container (max-width: 760px) {
+  .front-door {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

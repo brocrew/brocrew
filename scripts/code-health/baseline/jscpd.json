@@ -25,7 +25,7 @@
   "css|apps/desktop/src/renderer/src/components/KeptRules.vue|apps/desktop/src/renderer/src/components/ThemesSection.vue",
   "css|apps/desktop/src/renderer/src/components/MemoryLoadedEntry.vue|apps/desktop/src/renderer/src/components/MemoryNoteEntry.vue",
   "css|apps/desktop/src/renderer/src/components/NewAgent.vue|apps/desktop/src/renderer/src/components/StartAsAgent.vue",
-  "css|apps/desktop/src/renderer/src/components/NewConversation.vue|apps/desktop/src/renderer/src/components/StartAsAgent.vue",
+  "css|apps/desktop/src/renderer/src/components/NewConversation.css|apps/desktop/src/renderer/src/components/StartAsAgent.vue",
   "css|apps/desktop/src/renderer/src/components/OutgoingEntry.vue|apps/desktop/src/renderer/src/components/QueuedMessage.vue",
   "css|apps/desktop/src/renderer/src/components/OutgoingEntry.vue|apps/desktop/src/renderer/src/components/RelayedEntry.vue",
   "css|apps/desktop/src/renderer/src/components/OutgoingEntry.vue|apps/desktop/src/renderer/src/components/WorkReportEntry.vue",
