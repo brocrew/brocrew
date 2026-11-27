@@ -22,8 +22,8 @@ export interface ConversationTitledEvent {
   readonly author: ConversationTitleAuthor
 }
 
-/** The most characters a conversation's current rules may hold: a status line's bound. */
-export const CURRENT_RULES_CHARS = 1_280
+/** The most characters a conversation's current rules may hold: a few short lines. */
+export const CURRENT_RULES_CHARS = 320
 
 /**
  * A conversation's current rules: a few short lines every turn's footer prints, written by its own

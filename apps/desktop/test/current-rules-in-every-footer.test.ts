@@ -6,6 +6,7 @@ import { callOn } from './helpers/call-tool'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { TURN_BLOCK_WORDS } from '../src/main/runtime/what-this-app-adds-to-a-turn'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
+import { CURRENT_RULES_CHARS } from '../src/shared/conversation-title'
 
 // Every turn here runs within a minute of the rules being set.
 const HEADING = TURN_BLOCK_WORDS.currentRules('agent', 'just now')
@@ -22,6 +23,10 @@ function rulesIn(words: string): string {
 }
 
 const wordsOf = (text: string): number => text.split(/\s+/).filter(Boolean).length
+
+/** One real-sized rule, as an agent writes them: 280 characters. */
+const PACE =
+  "Every turn: look at who's working and the pace (agents running, Claude and Codex points per hour). Targets: Claude 43 an hour, Codex 63. If few agents are working, or Claude is under 43, start real work now; if Codex is over 63, add no more Codex work (never stop running agents)."
 
 const THREE = [
   'Tonight keep the pace at three pieces an hour.',
@@ -155,8 +160,8 @@ describe.each(['claude', 'codex'] as const)('current rules on %s', (provider: Pr
 
     // Too long is refused and changes nothing; an unknown conversation is said so.
     expect(
-      await host.setCurrentRulesForAPerson({ conversation: me, text: 'x'.repeat(1281) }),
-    ).toEqual({ ok: false, reason: 'Too long: 1,280 characters at most.' })
+      await host.setCurrentRulesForAPerson({ conversation: me, text: 'x'.repeat(321) }),
+    ).toEqual({ ok: false, reason: 'Too long: 320 characters at most.' })
     expect(
       await host.setCurrentRulesForAPerson({ conversation: 'no-such-conversation', text: 'x' }),
     ).toEqual({ ok: false, reason: 'Conversation not found.' })
@@ -194,12 +199,33 @@ describe.each(['claude', 'codex'] as const)('current rules on %s', (provider: Pr
       expect(withoutWhatThisAppAdds(sent)).not.toContain(THREE[1])
   })
 
-  it('says what is wrong with text over the status line’s bound, and keeps the old lines', async () => {
+  it('holds them to a few lines: over the bound is refused, and older long rules are cut', async () => {
+    expect(CURRENT_RULES_CHARS).toBe(320)
     const me = await world.open(host, provider, 'lark')
     await turn(me, 'Hello.')
+    // A full rule at the bound is accepted and costs 76 words a turn with its heading and sentence.
+    expect(PACE.length).toBeLessThanOrEqual(320)
+    await update(me, { current_rules: PACE })
+    expect(wordsOf(rulesIn(await turn(me, 'At the bound.')))).toBe(76)
+
     await update(me, { current_rules: THREE[2] })
-    const refused = await update(me, { current_rules: 'x'.repeat(1281) })
-    expect(JSON.stringify(refused)).toContain('current_rules must be text of at most 1280')
+    const refused = await update(me, { current_rules: 'x'.repeat(321) })
+    expect(JSON.stringify(refused)).toContain('current_rules must be text of at most 320')
     expect(rulesIn(await turn(me, 'Next.'))).toContain(THREE[2])
+
+    // Rules stored before the bound came down, here four pace paragraphs (1,123 characters and
+    // 235 words a turn), are printed cut to the bound until they are written again.
+    host.setCurrentRules([PACE, PACE, PACE, PACE].join('\n'), { ownerId: `agent:${me}` })
+    const cut = rulesIn(await turn(me, 'With older rules.'))
+    expect(cut).toBe(
+      [HEADING, `- ${PACE}`, `- ${PACE.slice(0, 320 - PACE.length - 1).trimEnd()}…`, SENTENCE].join(
+        '\n',
+      ),
+    )
+    expect(wordsOf(cut)).toBe(85)
+    // The panel keeps the whole text, so the person can see it is over and shorten it.
+    expect(host.readConversationTasks({ sessionId: me })).toMatchObject({
+      currentRules: { text: [PACE, PACE, PACE, PACE].join('\n') },
+    })
   })
 })

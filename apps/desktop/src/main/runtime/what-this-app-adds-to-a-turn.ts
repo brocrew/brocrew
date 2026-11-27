@@ -1,5 +1,5 @@
 import { MAX_INSTANT, clockTimeFrom } from '../../shared/clock'
-import type { CurrentRules } from '../../shared/conversation-title'
+import { CURRENT_RULES_CHARS, type CurrentRules } from '../../shared/conversation-title'
 import { localFields, localFormat } from '../../shared/local-time'
 import type { PieceRow } from '../../shared/task-contracts'
 import { WORK_BRIEF_CHARS } from '../../shared/work-fields'
@@ -156,10 +156,19 @@ export interface ExtraTurnFacts {
 
 /**
  * Current rules as the footer lists them: who set them last and when, one item per non-blank line,
- * then what to do with them.
+ * then what to do with them. Rules stored before the bound was lowered are cut to it, marked with
+ * an ellipsis, until they are written again.
  */
 function currentRulesLines(current: CurrentRules | null | undefined, now: number): string[] {
-  const rules = (current?.text ?? '')
+  const text = (current?.text ?? '').trim()
+  const kept =
+    text.length <= CURRENT_RULES_CHARS
+      ? text
+      : `${text
+          .slice(0, CURRENT_RULES_CHARS)
+          .replace(/[\uD800-\uDBFF]$/u, '')
+          .trimEnd()}…`
+  const rules = kept
     .split(/\r\n|\r|\n/)
     .map((line) => line.trim().replace(/^[-*•]\s+/, ''))
     .filter((line) => line !== '')

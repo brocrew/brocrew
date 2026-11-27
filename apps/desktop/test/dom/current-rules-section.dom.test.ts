@@ -23,7 +23,7 @@ describe('the current rules on the agent card', () => {
   it('says they go with every turn, their size against the bound, and who set them', async () => {
     const view = shown({ text: RULES, by: 'agent', at: Date.now() - 2 * 3_600_000 })
     expect(view.q('card-rules').textContent).toContain(
-      `Current rules · sent with every turn (${RULES.length}/1,280)`,
+      `Current rules · sent with every turn (${RULES.length}/320)`,
     )
     expect(view.q('card-rules-changed').textContent).toBe('Set by the agent · 2h ago')
     // Nothing to press where the window cannot write them.
@@ -41,7 +41,7 @@ describe('the current rules on the agent card', () => {
     expect(input.value).toBe(RULES)
     input.value = 'Keep the pace at two an hour.'
     input.dispatchEvent(new Event('input', { bubbles: true }))
-    await vi.waitFor(() => expect(view.q('card-rules-size').textContent).toContain('(29/1,280)'))
+    await vi.waitFor(() => expect(view.q('card-rules-size').textContent).toContain('(29/320)'))
     await page.screenshot({ element: view.host, path: '__screenshots__/current-rules-editing.png' })
     // The panel re-reads on any work in the app: the same rules read again keep the edit open.
     view.rules.value = { ...view.rules.value }
