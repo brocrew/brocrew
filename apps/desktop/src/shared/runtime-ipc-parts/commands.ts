@@ -3,6 +3,7 @@ import type { RulesBaseline } from '../agent-rules'
 import type {
   ConversationIdentityBatchInput,
   ConversationTitleHistoryInput,
+  CurrentRulesInput,
 } from '../conversation-title'
 import type {
   AllConversationTasksInput,
@@ -634,6 +635,8 @@ export type RuntimeCommand =
   | ({ kind: 'readAllConversationTasks' } & AllConversationTasksInput)
   | ({ kind: 'readConversationTitleHistory' } & ConversationTitleHistoryInput)
   | { kind: 'renameConversation'; conversation: string; title: string }
+  /** A person sets a conversation's current rules from the window; empty text deletes them. */
+  | ({ kind: 'setCurrentRules' } & CurrentRulesInput)
   /**
    * A person takes back the piece a service is on, by its label or its id: the service is told to
    * stop working on it and its turn on it is asked to stop, the conversation that gave it is told

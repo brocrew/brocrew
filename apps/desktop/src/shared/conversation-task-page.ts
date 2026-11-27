@@ -1,3 +1,4 @@
+import type { CurrentRules } from './conversation-title'
 import type { TaskState } from './task-contracts'
 import type { WorkThatNamesIt } from './piece-called'
 import type { WorkEdge } from './who-called-whom'
@@ -59,7 +60,7 @@ export type ConversationTaskPageResult =
       readonly next: string | null
       readonly rowsUnread: number
       readonly ledgersSkipped: number
-      /** The conversation's current rules as its agent last wrote them; absent when it has none. */
-      readonly currentRules?: string
+      /** The conversation's current rules, who changed them last and when; absent when it has none. */
+      readonly currentRules?: CurrentRules
     }
   | { readonly ok: false; readonly reason: 'unknown-conversation' | 'invalid-cursor' }
