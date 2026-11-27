@@ -258,39 +258,43 @@ watch(
 )
 
 /**
- * Where each card of the open list sits: oldest first across every kind, as the person found the
- * list. Anything newer waits behind the "new" pill and then joins the end, so arrivals never move
- * the cards they are reading. Opening a list again sorts it whole.
+ * Keep the open list still while the person reads it. Opening a list or changing its order sorts
+ * it whole. Arrivals wait behind the "new" pill.
  */
-const oldestFirst = (cards: readonly Aged[]): Aged[] =>
-  [...cards].sort((a, b) => (a.at ?? Infinity) - (b.at ?? Infinity) || 0)
+const sort = ref<'oldest' | 'newest'>('oldest')
+const inDateOrder = (cards: readonly Aged[], previous?: ReadonlyMap<string, number>): Aged[] => {
+  const direction = sort.value === 'oldest' ? 1 : -1
+  const rank = ({ at }: Aged) => (at === null ? Infinity : direction * at)
+  const previousRank = ({ key }: Aged) => previous?.get(key) ?? Infinity
+  return [...cards].sort((a, b) => rank(a) - rank(b) || previousRank(a) - previousRank(b) || 0)
+}
 const order = ref<ReadonlyMap<string, number> | null>(null)
-function look(whole: boolean): void {
+function look(previous?: ReadonlyMap<string, number>): void {
   if (loading.value) {
     order.value = null
     return
   }
-  const next = new Map(whole ? [] : (order.value ?? []))
-  for (const { key } of oldestFirst(aged.value[shown.value]))
+  const next = new Map<string, number>()
+  for (const { key } of inDateOrder(aged.value[shown.value], previous))
     if (!next.has(key)) next.set(key, next.size)
   order.value = next
 }
-watch(shown, () => look(true))
+watch(shown, () => look())
 watch(
   loading,
   (still) => {
-    if (!still && order.value === null) look(true)
+    if (!still && order.value === null) look()
   },
   { immediate: true },
 )
 /**
  * Each list's cards in the order they are drawn, and so read and tabbed through: the open list as
- * the person found it, every other list oldest first. Every list stays drawn, so nothing typed in
- * one is lost when another opens.
+ * the person found it, every other list in the selected order. Every list stays drawn, so nothing
+ * typed in one is lost when another opens.
  */
 const drawn = computed<Readonly<Record<Pill, readonly Aged[]>>>(() => {
   const found = order.value
-  const lists = Object.fromEntries(PILLS.map((pill) => [pill.id, oldestFirst(aged.value[pill.id])]))
+  const lists = Object.fromEntries(PILLS.map((pill) => [pill.id, inDateOrder(aged.value[pill.id])]))
   if (found !== null)
     lists[shown.value] = aged.value[shown.value]
       .filter(({ key }) => found.has(key))
@@ -301,19 +305,28 @@ const held = computed(() => aged.value[shown.value].length - drawn.value[shown.v
 
 /** Over a list with nothing drawn, arrivals move nothing, so they are drawn at once. */
 watch(held, (count) => {
-  if (count > 0 && count === aged.value[shown.value].length) look(false)
+  if (count > 0 && count === aged.value[shown.value].length) look()
 })
 
 const list = ref<HTMLElement | null>(null)
+watch(sort, () => {
+  look()
+  list.value?.scrollTo({ top: 0 })
+})
 function pick(pill: Pill): void {
   picked.value = pill
-  look(true)
+  look()
   list.value?.scrollTo({ top: 0 })
 }
 async function showNew(): Promise<void> {
-  look(false)
+  const pill = shown.value
+  const previous = order.value ?? undefined
+  look(previous)
+  const firstNew = drawn.value[pill].findIndex(({ key }) => !previous?.has(key))
   await nextTick()
-  list.value?.scrollTo({ top: list.value.scrollHeight, behavior: 'smooth' })
+  list.value
+    ?.querySelector(`[data-cy="waiting-list-${pill}"]`)
+    ?.children[firstNew]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
 }
 
 /** Answered to-dos stay where they were, as one line, until the person clears them. */
@@ -420,6 +433,15 @@ const drawsNothing = computed(
           Couldn't read all of this list. Trying again…
         </p>
         <span class="bar-spacer"></span>
+        <select
+          v-model="sort"
+          class="bb-input waiting-sort"
+          aria-label="Sort by date"
+          data-cy="waiting-sort"
+        >
+          <option value="oldest">Oldest first</option>
+          <option value="newest">Newest first</option>
+        </select>
         <button
           v-if="shown === 'todo' && answered.length > 0"
           type="button"
@@ -436,7 +458,6 @@ const drawsNothing = computed(
           data-cy="waiting-show-new"
           @click="showNew"
         >
-          <svg class="icon" aria-hidden="true"><use href="#i-arrow" /></svg>
           {{ held }} new
         </button>
       </div>
@@ -681,6 +702,10 @@ const drawsNothing = computed(
   flex: 1;
 }
 
+.waiting-sort {
+  width: auto;
+}
+
 .short {
   margin: 0;
   color: var(--waiting-text-label);
@@ -703,7 +728,7 @@ const drawsNothing = computed(
   display: inline-flex;
   min-height: var(--control-h);
   align-items: center;
-  padding: 0 var(--space-7) 0 var(--space-6);
+  padding: 0 var(--space-7);
   border: 0;
   border-radius: var(--radius-pill);
   background: var(--accent-2);
@@ -711,13 +736,6 @@ const drawsNothing = computed(
   font-size: var(--type-body);
   font-weight: var(--fw-semibold);
   box-shadow: var(--shadow-card);
-  gap: var(--space-3);
-}
-
-.new .icon {
-  width: var(--icon-sm);
-  height: var(--icon-sm);
-  transform: rotate(90deg);
 }
 
 .none {
