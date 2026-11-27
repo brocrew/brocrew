@@ -14,6 +14,9 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createSqliteMemoryAmendmentJournal } from '../src/main/database/sqlite/agents/knowledge'
 import { codexAdHocNotesDir } from '@brobot2/runtime/codex'
+import { createAppLifetime } from '../src/main/app-lifetime'
+import { closeStartedHostAfterFailedStart } from '../src/main/failed-start-cleanup'
+import { createMemoryJournalLifetime } from '../src/main/memory-journal-lifetime'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import {
@@ -23,7 +26,6 @@ import {
 } from '../src/main/db/session-store'
 import {
   createMemoryService,
-  type CloseMemoryJournal,
   type MemoryService,
   type MemoryServiceInputs,
 } from '../src/main/runtime/agent-memory'
@@ -519,20 +521,17 @@ describe('memory writes retain their intent under one profile lock until honest 
     expect(readFileSync(entry(), 'utf8')).toBe(original)
     expect(store.memoryAmendmentsOf('lark')[0]?.outcome).toBe('pending')
   })
-  it.each([
-    'pending',
-    'begin',
-    'settle',
-    'readback',
-    'readback-rejected',
-    'candidate',
-    'startup',
-  ] as const)(
-    'joins the held %s journal acknowledgement before closing its database',
-    async (edge) => {
+  it.each(
+    ['pending', 'begin', 'settle', 'readback', 'readback-rejected', 'candidate', 'startup'].flatMap(
+      (edge) => (['quit', 'failed-start'] as const).map((route) => [edge, route] as const),
+    ),
+  )(
+    'joins the held %s journal acknowledgement on %s before closing its database',
+    async (edge, route) => {
       const accepted = deferred()
       const acknowledgement = deferred()
-      let closeJournal: CloseMemoryJournal | undefined
+      const journalCloseStarted = deferred()
+      const journalLifetime = createMemoryJournalLifetime(() => db)
       const changed = vi.fn()
       const inputsOf = vi.fn((slug: string) => ({
         profileId: slug,
@@ -596,7 +595,7 @@ describe('memory writes retain their intent under one profile lock until honest 
       )
       const ready = create({
         acquired: (close) => {
-          closeJournal = close
+          journalLifetime.acquire(db, () => close(0))
         },
         journal: {
           ...journal,
@@ -629,50 +628,105 @@ describe('memory writes retain their intent under one profile lock until honest 
       expect(existsSync(entry())).toBe(!fileEffectHasRun)
       if (edge === 'settle') expect(readback).not.toHaveBeenCalled()
 
-      expect(closeJournal).toBeDefined()
-
-      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
-      try {
-        // The database owner closes the service, then joins its journal, then closes the database.
-        const closed = (async () => {
-          await service?.close(0)
-          await closeJournal?.(0)
-          db.close()
-        })()
+      const lateCalls = [changed, inputsOf, readback, list, pending]
+      /** The held call is released only after shutdown has begun; the handle stays open until it settles. */
+      const releaseAfterShutdownBegan = async (
+        closed: Promise<unknown> | null,
+        stillHeld: () => void,
+      ) => {
+        expect(() => journalLifetime.acquire(db, vi.fn())).toThrow()
+        expect(() => journalLifetime.assertStarting(db)).toThrow()
         await vi.runOnlyPendingTimersAsync()
+        stillHeld()
         expect(db.open).toBe(true)
-        changed.mockClear()
-        inputsOf.mockClear()
-        readback.mockClear()
-        list.mockClear()
-        pending.mockClear()
-
+        for (const call of lateCalls) call.mockClear()
         acknowledgement.resolve()
         if (edit !== undefined) expect(await edit).toMatchObject({ reason: 'closing' })
         await ready
         await closed
-        expect(db.open).toBe(false)
-        expect(changed).not.toHaveBeenCalled()
-        expect(readback).not.toHaveBeenCalled()
-        expect(list).not.toHaveBeenCalled()
-        expect(inputsOf).not.toHaveBeenCalled()
-        expect(pending).not.toHaveBeenCalled()
-
-        expect(existsSync(entry())).toBe(!fileEffectHasRun)
-        if (!fileEffectHasRun) expect(readFileSync(entry(), 'utf8')).toBe(original)
-        db = openDatabase(join(root, 'app.sqlite'))
-        const rows = createSessionStore(db, () => clock++).memoryAmendmentsOf('lark')
-        const [row] = rows
-        if (edge === 'pending') expect(row).toBeUndefined()
-        else if (edge === 'candidate') expect(rows).toStrictEqual([source])
-        else if (edge === 'begin') expect(row).toMatchObject({ outcome: 'pending' })
-        else if (fileEffectHasRun) {
-          expect(row).toMatchObject({ outcome: 'done', settlement: { by: person } })
-        } else {
-          expect(row).toMatchObject({ outcome: 'unchanged', settlement: { by: app } })
+        for (const call of lateCalls) expect(call).not.toHaveBeenCalled()
+      }
+      if (route === 'failed-start') {
+        // The failed start's existing cleanup closes the Host, then the journal joins.
+        let startStopped = false
+        const stopTheStart = journalLifetime
+          .stop(() =>
+            closeStartedHostAfterFailedStart(
+              {
+                stopSweeping: vi.fn(),
+                closeAll: async () => {
+                  await service?.close(0)
+                },
+                drainArchiveWork: async () => {},
+              },
+              vi.fn(),
+            ),
+          )
+          .then(() => {
+            startStopped = true
+          })
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+        try {
+          await releaseAfterShutdownBegan(stopTheStart, () => expect(startStopped).toBe(false))
+          db.close()
+        } finally {
+          vi.useRealTimers()
         }
-      } finally {
-        vi.useRealTimers()
+      } else {
+        const recordingOpen = deferred()
+        const allowQuitToContinue = deferred()
+        const lifetime = createAppLifetime({
+          announceClosing: journalLifetime.stopAdmission,
+          recordOpenSessions: () => {
+            recordingOpen.resolve()
+            return allowQuitToContinue.promise
+          },
+          closeAllSessions: () => service?.close(0) ?? Promise.resolve(),
+          stopArchiveWork: vi.fn(),
+          drainArchiveWork: () => {
+            journalCloseStarted.resolve()
+            return journalLifetime.stop(async () => {})
+          },
+          closeDatabase: () => db.close(),
+          quit: vi.fn(),
+          exit: vi.fn(),
+          armLastResort: vi.fn(),
+          log: vi.fn(),
+          now: () => clock++,
+        })
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+        try {
+          lifetime.beforeQuit({ preventDefault: vi.fn() })
+          await recordingOpen.promise
+          // Resume while quit still owns its first step, before the Host or journal drain.
+          await expect(
+            Promise.resolve().then(() => journalLifetime.assertStarting(db)),
+          ).rejects.toThrow()
+          expect(() => journalLifetime.acquire(db, vi.fn())).toThrow()
+          expect(db.open).toBe(true)
+          allowQuitToContinue.resolve()
+          await vi.advanceTimersByTimeAsync(0)
+          await journalCloseStarted.promise
+          await releaseAfterShutdownBegan(lifetime.shuttingDown, () => {})
+          expect(db.open).toBe(false)
+        } finally {
+          allowQuitToContinue.resolve()
+          vi.useRealTimers()
+        }
+      }
+
+      expect(existsSync(entry())).toBe(!fileEffectHasRun)
+      if (!fileEffectHasRun) expect(readFileSync(entry(), 'utf8')).toBe(original)
+      db = openDatabase(join(root, 'app.sqlite'))
+      const rows = createSessionStore(db, () => clock++).memoryAmendmentsOf('lark')
+      const [row] = rows
+      if (edge === 'pending') expect(row).toBeUndefined()
+      else if (edge === 'candidate') expect(rows).toStrictEqual([source])
+      else if (edge === 'begin') expect(row).toMatchObject({ outcome: 'pending' })
+      else if (fileEffectHasRun) {
+        expect(row).toMatchObject({ outcome: 'done', settlement: { by: person } })
+      } else {
+        expect(row).toMatchObject({ outcome: 'unchanged', settlement: { by: app } })
       }
     },
   )
