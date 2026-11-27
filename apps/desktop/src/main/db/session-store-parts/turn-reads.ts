@@ -192,11 +192,10 @@ export function createTurnReadsPart(deps: TurnReadsPartDeps) {
                THEN json_extract(payload, '$.state') IN ('ended', 'errored')
                ELSE 1 END
           ELSE 1 END`
+  // Card 397: the sort keeps each row's id, not its payload. A sort of a long conversation's
+  // payloads outgrew SQLite's cache and was written to a temp file, 69 MB at startup on the seed.
   const selectRoutedRequestEvents = db.prepare(
-    `SELECT ordinal,
-            CASE WHEN json_valid(payload) THEN json_remove(payload, '$.sent', '$.given')
-                 ELSE payload END AS payload,
-            created_at FROM events
+    `SELECT rowid AS row, ordinal FROM events
         INDEXED BY events_kind_owner_idx
       WHERE ${FOLD_TERM} AND session_id = @session AND generation = @generation
         AND type IN (${ROUTED_REQUEST_EVENT_TYPES.map((type) => `'${type}'`).join(', ')})
@@ -217,6 +216,11 @@ export function createTurnReadsPart(deps: TurnReadsPartDeps) {
                                                 AND generation = @generation
                                                 AND type IN ('request_routed', 'question_asked'))))
       ORDER BY ordinal`,
+  )
+  const selectRoutedRequestPayload = db.prepare(
+    `SELECT CASE WHEN json_valid(payload) THEN json_remove(payload, '$.sent', '$.given')
+                 ELSE payload END AS payload,
+            created_at FROM events WHERE rowid = ?`,
   )
   // The rows of those types written after a kept fold of them, to carry it forward.
   const selectRoutedRequestEventsAfter = db.prepare(
@@ -515,11 +519,18 @@ export function createTurnReadsPart(deps: TurnReadsPartDeps) {
       // A read-only snapshot keeps the answer, not provider/question bodies for append replay.
       let actedOn: PersistedEvent[] | null = oneSnapshot ? null : []
       function* entries() {
-        const rows = selectRoutedRequestEvents.iterate({
+        const keys = selectRoutedRequestEvents.iterate({
           session: sessionId,
           generation,
-        }) as Iterable<EventRow>
-        for (const entry of persistedEventsFrom(rows, noteSkip)) {
+        }) as Iterable<{ readonly row: number; readonly ordinal: number }>
+        function* rows(): Generator<EventRow> {
+          for (const { row, ordinal } of keys) {
+            const read = selectRoutedRequestPayload.get(row) as
+              Pick<EventRow, 'payload' | 'created_at'> | undefined
+            if (read !== undefined) yield { ordinal, ...read }
+          }
+        }
+        for (const entry of persistedEventsFrom(rows(), noteSkip)) {
           if (entry.event.type === 'request_routed' || entry.event.type === 'question_asked')
             floor = floor === null ? entry.ordinal : Math.min(floor, entry.ordinal)
           if (actedOn !== null && aWaitIsReadFrom(entry.event)) {
