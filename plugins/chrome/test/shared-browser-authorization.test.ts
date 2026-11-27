@@ -550,11 +550,21 @@ function realSharedFixture() {
 it.each(['off-on', 'permission'] as const)(
   'rereads a real shared registry after external %s while queued',
   async (change) => {
+    const startedAt = process.hrtime.bigint()
+    const trace = (stage: string, status?: number | null) => {
+      const elapsed = Number(process.hrtime.bigint() - startedAt) / 1e6
+      const exit = status === undefined ? '' : ' status=' + String(status)
+      console.info('[registry-off-on] ' + stage + ' ms=' + elapsed.toFixed(3) + exit)
+    }
+    trace('setup-start')
     const f = realSharedFixture()
+    trace('setup-end')
     const blocker = deferred()
     const blocking = f.deps.serializer.runExclusive(f.tab.id, () => blocker.promise)
+    trace('admission-start')
     const call = f.call('fill', { tabId: f.tab.id, ref: 'e1', text: 'fictional', submit: true })
     // The queued operation is admitted; an independent process changes only the fictional registry.
+    trace('writer-start')
     const child = spawnSync(
       process.execPath,
       [
@@ -584,14 +594,21 @@ it.each(['off-on', 'permission'] as const)(
       ],
       { encoding: 'utf8', windowsHide: true },
     )
+    trace('writer-return', child.status)
     expect(child.status, child.stderr).toBe(0)
+    trace('blocker-release')
     blocker.resolve()
     await blocking
+    trace('blocker-settled')
     await until(() => vi.mocked(f.deps.browser.usePage).mock.calls.length > 0)
+    trace('usePage-observed')
     await f.filling.promise
+    trace('fill-entered')
+    trace('fill-release')
     f.filled.resolve()
     await expect(call).resolves.toBeDefined()
     expect(f.press).toHaveBeenCalledOnce()
+    trace('assertions-complete')
   },
 )
 it('launches against the real facade without treating lease or helper bookkeeping as revocation', async () => {
