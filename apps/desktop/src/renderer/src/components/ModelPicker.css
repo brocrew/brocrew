@@ -1,0 +1,248 @@
+.provider-choices {
+  border: 0;
+  border-bottom: var(--border-width) solid var(--line);
+  margin: 0 0 var(--space-3);
+  padding: 0 0 var(--space-3);
+  display: flex;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+.provider-choices legend {
+  font-size: var(--type-caption);
+  color: var(--muted);
+  margin-bottom: var(--space-2);
+}
+.provider-choice {
+  display: grid;
+  gap: var(--space-1);
+}
+.provider-choice .add-open {
+  margin-left: var(--space-5);
+}
+.model-picker {
+  display: inline-flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2) var(--space-3);
+}
+
+/* ⚑ **The host's own register** — `font: inherit`, so the face reads at the row's role size. ⛔ No
+   ellipsis anywhere: an id wraps rather than being cut, which keeps this out of the clipped-text
+   ledger's category. */
+.face {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  padding: var(--space-1) var(--space-3);
+  border: var(--border-width) solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--wash-1);
+  color: var(--text-soft);
+  cursor: pointer;
+  font: inherit;
+  gap: var(--space-2);
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+
+.face.fixed {
+  border-color: transparent;
+  background: none;
+  cursor: default;
+}
+
+.chev {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 auto;
+  transform: rotate(90deg);
+}
+
+.reported {
+  min-width: 0;
+  color: var(--faint);
+  font-size: var(--role-meta);
+  overflow-wrap: anywhere;
+}
+
+/* ⚑ **Placed by its face, in the top layer** — anchor positioning, flipping above or inward where
+   there is no room. ⚠️ The browser's own `[popover]` rules centre it (`inset: 0; margin: auto`) and
+   hide it when closed (`display: none`), so this sets no `display` of its own. */
+.panel {
+  position: fixed;
+  width: min(24rem, calc(100vw - 2rem));
+  max-height: min(70vh, 32rem);
+  padding: 0;
+  border: var(--border-width) solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  margin: 0;
+  background: var(--panel-3);
+  box-shadow: var(--shadow);
+  color: var(--text-soft);
+  font-size: var(--type-caption);
+  inset: auto;
+  overflow-y: auto;
+  position-area: block-end span-inline-end;
+  position-try-fallbacks: flip-block, flip-inline;
+}
+
+.inside {
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-4) var(--space-4) 0;
+  gap: var(--space-4);
+}
+
+.provider {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+h4 {
+  margin: 0;
+  color: var(--faint);
+  font-size: var(--type-caption);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.pick {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  cursor: pointer;
+  gap: var(--space-3);
+}
+
+.words {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-1) var(--space-3);
+}
+
+.label {
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.to,
+.tag {
+  color: var(--muted);
+  font-size: var(--type-caption);
+  overflow-wrap: anywhere;
+}
+
+.description {
+  width: 100%;
+  color: var(--faint);
+  font-size: var(--type-caption);
+}
+
+.warn {
+  color: var(--waiting);
+}
+
+.delete,
+.add-open {
+  padding: 0 var(--space-2);
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+}
+
+.add-open {
+  align-self: flex-start;
+  padding: 0;
+  color: var(--accent-text);
+}
+
+.delete .icon {
+  width: 10px;
+  height: 10px;
+}
+
+.adding {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.adding input {
+  min-width: 0;
+  flex: 1 1 10rem;
+  padding: var(--space-1) var(--space-2);
+  border: var(--border-width) solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--wash-1);
+  color: var(--text-soft);
+  font: inherit;
+}
+
+.efforts {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  padding: var(--space-3) 0 0;
+  border: none;
+  border-top: var(--border-width) solid var(--line);
+  margin: 0;
+  gap: var(--space-2) var(--space-5);
+}
+
+legend {
+  float: left;
+  width: 100%;
+  margin: 0 0 var(--space-2);
+  color: var(--faint);
+  font-size: var(--type-caption);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.said {
+  width: 100%;
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--type-caption);
+  line-height: 1.5;
+}
+
+.said.refused {
+  color: var(--danger);
+}
+
+/* ⚑ **The take row stays at the panel's foot**, so a long list scrolls inside the panel and never
+   takes the button off the window. */
+.foot {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-3) 0 var(--space-4);
+  border-top: var(--border-width) solid var(--line);
+  background: var(--panel-3);
+  gap: var(--space-2);
+}
+
+.buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}
+
+.take {
+  color: var(--accent-text);
+}
