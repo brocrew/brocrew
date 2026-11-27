@@ -12,7 +12,6 @@
   "apps/desktop/src/main/runtime/question-rails.ts": 1160,
   "apps/desktop/src/main/runtime/reply-rails.ts": 1433,
   "apps/desktop/src/main/runtime/runtime-host.ts": 44304,
-  "apps/desktop/src/main/runtime/spawn-rails.ts": 1331,
   "apps/desktop/src/main/runtime/what-this-agent-was-given.ts": 1552,
   "apps/desktop/src/preload/index.ts": 1137,
   "apps/desktop/src/renderer/src/components/AgentCard.vue": 1814,
