@@ -81,37 +81,6 @@
   box-shadow: inset var(--border-width) var(--border-width) 0 0 var(--surface-edge);
 }
 
-.not-built {
-  display: flex;
-  max-width: 46ch;
-  height: 100%;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  margin: 0 auto;
-  color: var(--faint);
-  gap: var(--space-5);
-  text-align: center;
-}
-
-.not-built .big {
-  width: 28px;
-  height: 28px;
-}
-
-.not-built h1 {
-  margin: 0;
-  color: var(--text-soft);
-  font-size: var(--type-heading);
-  font-weight: var(--fw-semibold);
-}
-
-.not-built p {
-  margin: 0;
-  font-size: var(--type-small);
-  line-height: var(--leading-relaxed);
-}
-
 .toast {
   position: absolute;
   bottom: var(--space-8);
