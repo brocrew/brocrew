@@ -11,9 +11,8 @@ import {
   deliveryEvidence,
   assertBehavior,
   lifecycleEvidence,
-  RELOAD_DEADLINE_MS,
-  RELOAD_DEADLINE_TOLERANCE_MS,
-  RELOAD_RETIRING_WAIT_MS,
+  RELOAD_HELD_MS,
+  RELOAD_JOURNEY_WAIT_MS,
 } from './reload-source/contract.mjs'
 
 test('reload lifecycle requires one initial launch and one ordered launch for every resume', () => {
@@ -43,17 +42,20 @@ test('reload lifecycle requires one initial launch and one ordered launch for ev
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..')
 const input = JSON.parse(fs.readFileSync(new URL('./reload-inputs.json', import.meta.url)))
-test('reload observation follows the product deadline without accepting the old timeout', () => {
-  const runtime = ['claude-runtime.ts', 'claude-session-handle.ts', 'permission-offers.ts']
+test('reload observation follows the product: no reload clock, held past the removed limit', () => {
+  const runtime = fs
+    .readdirSync(path.join(repo, 'packages/runtime/src/claude'))
+    .filter((leaf) => leaf.endsWith('.ts'))
     .map((leaf) => fs.readFileSync(path.join(repo, 'packages/runtime/src/claude', leaf), 'utf8'))
     .join('\n')
-  const matches = [...runtime.matchAll(/withDeadline\(reload,\s*([\d_]+),\s*'reloadPlugins'\)/g)]
-  assert.equal(matches.length, 1)
-  assert.equal(RELOAD_DEADLINE_MS, Number(matches[0][1].replaceAll('_', '')))
-  assert.equal(RELOAD_DEADLINE_TOLERANCE_MS, 2500)
-  assert.equal(RELOAD_RETIRING_WAIT_MS, RELOAD_DEADLINE_MS + 20000)
+  // Card 197: the reload is awaited with no clock; only the CLI's exit or an answer ends it.
+  assert.equal([...runtime.matchAll(/await this\.query\.reloadPlugins\(\)/g)].length, 1)
+  assert.equal([...runtime.matchAll(/'reloadPlugins'/g)].length, 0)
+  assert.ok(RELOAD_HELD_MS > 60_000)
+  assert.equal(RELOAD_JOURNEY_WAIT_MS, RELOAD_HELD_MS + 20000)
   const journey = fs.readFileSync(new URL('./reload-journey.mjs', import.meta.url), 'utf8')
-  assert.match(journey, /}, RELOAD_RETIRING_WAIT_MS\)/)
+  assert.match(journey, /}, RELOAD_JOURNEY_WAIT_MS\)/)
+  assert.match(journey, /control\('exitCli'\)/)
 })
 
 test('actual embedded reload authorizer runs only known gate operations', () => {
@@ -198,25 +200,22 @@ test('reload delivery requires all messages exactly once in order across batchin
 test('reload receipt binds actual prompt, UUID, reload and completed-turn counts without losing strict message evidence', () => {
   const words = ['reload original fern', 'reload queued birch', 'reload queued cedar']
   const value = {
-    schema: 'brocrew.reload-behavior.v1',
+    schema: 'brocrew.reload-behavior.v2',
     mode: 'controlled-queryFactory-and-child-witness',
     sourceSha: '8f1b63ef1d22a9c8603ab2da6be18b6e48a4dd3c',
     sourceTree: '17d79356fe29ec5b462185ca4828c7519bb7f1e7',
     sdkDeclaredVersion: '0.3.287',
     adapter: {
-      timeoutMs: RELOAD_DEADLINE_MS + 1,
+      heldMs: RELOAD_HELD_MS + 1,
+      heldWithoutFailure: true,
       failedTerminals: 1,
       failedByApp: true,
+      exitRejected: true,
       oldPushes: 0,
       oldReloads: 1,
-      oldCloses: 1,
-      oldReturns: 1,
-      retiringAtTimeout: true,
       oldSendRefusals: 2,
-      lateReloadReleased: true,
-      lateResultAttempted: true,
       lateAddedTerminals: 0,
-      retirementEnded: true,
+      exitObserved: true,
       freshQueries: 1,
       freshResumeMatches: true,
       freshPushes: 1,
@@ -224,17 +223,14 @@ test('reload receipt binds actual prompt, UUID, reload and completed-turn counts
       freshCompleted: 1,
     },
     hostQueue: {
-      timeoutMs: RELOAD_DEADLINE_MS + 1,
+      heldMs: RELOAD_HELD_MS + 1,
+      heldWithoutFailure: true,
       failedTerminals: 1,
       failedByApp: true,
       oldPushes: 0,
       oldReloads: 1,
-      oldCloses: 1,
-      oldReturns: 1,
-      failedAtTimeout: 1,
-      queuedBeforeExit: 2,
+      queuedWhileHeld: 2,
       freshBeforeReturn: 0,
-      freshBeforeExit: 0,
       starts: 1,
       resumes: 1,
       freshQueries: 1,
@@ -269,20 +265,21 @@ test('reload receipt binds actual prompt, UUID, reload and completed-turn counts
     },
   }
   assert.equal(assertBehavior(value), value)
-  for (const timeoutMs of [
-    10001,
-    RELOAD_DEADLINE_MS - 1,
-    RELOAD_DEADLINE_MS + RELOAD_DEADLINE_TOLERANCE_MS + 1,
-  ]) {
-    assert.throws(() => assertBehavior({ ...value, adapter: { ...value.adapter, timeoutMs } }))
-    assert.throws(() => assertBehavior({ ...value, hostQueue: { ...value.hostQueue, timeoutMs } }))
+  // A reload that ended before the removed limit had passed proves nothing about the clock.
+  for (const heldMs of [10001, RELOAD_HELD_MS - 1]) {
+    assert.throws(() => assertBehavior({ ...value, adapter: { ...value.adapter, heldMs } }))
+    assert.throws(() => assertBehavior({ ...value, hostQueue: { ...value.hostQueue, heldMs } }))
   }
+  for (const key of ['heldWithoutFailure', 'exitRejected', 'exitObserved'])
+    assert.throws(() => assertBehavior({ ...value, adapter: { ...value.adapter, [key]: false } }))
 
   for (const [key, bad] of [
     ['starts', 0],
     ['starts', 2],
     ['resumes', 0],
     ['resumes', 2],
+    ['queuedWhileHeld', 1],
+    ['freshBeforeReturn', 1],
     ['freshCompleted', 1],
     ['freshCompleted', 3],
     ['uniqueUserUuids', 1],
@@ -293,6 +290,7 @@ test('reload receipt binds actual prompt, UUID, reload and completed-turn counts
     ['lateAddedTerminals', 1],
     ['deliveredMessages', words.slice(1)],
     ['deliveredMessages', [...words, words[0]]],
+    ['deliveredMessages', [words[1], words[2], words[0]]],
     ['ledgerMessages', [...words].reverse()],
   ]) {
     assert.throws(() => assertBehavior({ ...value, hostQueue: { ...value.hostQueue, [key]: bad } }))

@@ -2,7 +2,7 @@ import path from 'node:path'
 import { demand, readFile } from './contract.mjs'
 import { startApp, quit, bounded } from './processes.mjs'
 import { waitFor } from '../plugin-packaged/cdp.mjs'
-import { assertMainAppBehavior, RELOAD_RETIRING_WAIT_MS } from './reload-source/contract.mjs'
+import { assertMainAppBehavior, RELOAD_JOURNEY_WAIT_MS } from './reload-source/contract.mjs'
 
 export async function reloadJourney({ root, app, records }) {
   const token = readFile(path.join(root, 'gate-token'), 64).toString()
@@ -15,7 +15,7 @@ export async function reloadJourney({ root, app, records }) {
       records,
       workspace,
       global: path.join(root, 'reload-global'),
-      evaluateMs: RELOAD_RETIRING_WAIT_MS,
+      evaluateMs: RELOAD_JOURNEY_WAIT_MS,
     })
     const control = (op) =>
       run.cdp.evaluate(
@@ -43,51 +43,40 @@ export async function reloadJourney({ root, app, records }) {
     s.promises.push(actual.then(()=>{s.settled[i]='resolved'},()=>{s.settled[i]='rejected'}));return true;`),
       )
     }
-    const pending = async (count) =>
-      demand(
-        await run.cdp.evaluate(
-          `const s=window.__reloadDriverState;return s.promises.length===${count}&&s.settled.every(v=>v==='pending')`,
-        ),
-      )
+    const settled = () => run.cdp.evaluate(`return window.__reloadDriverState.settled`)
     await send('reload original fern')
     let status
     await waitFor(async () => {
       status = await control('status')
-      return status.phase === 'retiring-held'
-    }, RELOAD_RETIRING_WAIT_MS)
+      return status.phase === 'reload-held'
+    }, RELOAD_JOURNEY_WAIT_MS)
     demand(
       status.queryCount === 1 &&
         status.oldReloads === 1 &&
-        status.oldCloses === 1 &&
-        status.oldReturns === 1 &&
         status.oldPushes === 0 &&
-        status.failedTerminals === 1 &&
-        status.retiring === true,
+        status.failedTerminals === 0,
     )
-    await pending(1)
+    demand(JSON.stringify(await settled()) === '["pending"]')
+    // The person keeps writing while the reload is held; the app queues both.
     await send('reload queued birch')
     await waitFor(async () => {
       status = await control('status')
-      return status.arrivalTailChanges === 1
+      return status.queuedWhileHeld === 1
     }, 5000)
-    await pending(2)
     await send('reload queued cedar')
     await waitFor(async () => {
       status = await control('status')
-      return status.arrivalTailChanges === 2
+      return status.queuedWhileHeld === 2
     }, 5000)
-    await pending(3)
-    status = await control('releaseReload')
+    const held = await settled()
+    demand(held.length === 3 && held[0] === 'pending' && held.every((v) => v !== 'rejected'))
+    status = await control('exitCli')
     demand(
-      status.phase === 'reload-released' &&
+      status.phase === 'cli-exited' &&
         status.oldPushes === 0 &&
-        status.queryCount === 1 &&
         status.failedTerminals === 1 &&
-        status.completedTerminals === 0,
+        status.queuedWhileHeld === 2,
     )
-    await pending(3)
-    status = await control('releaseRetirement')
-    demand(status.phase === 'retirement-released')
     demand(
       await bounded(
         run.cdp.evaluate(
@@ -99,7 +88,7 @@ export async function reloadJourney({ root, app, records }) {
     console.error('Reload status before receipt:', JSON.stringify(await control('status')))
     let behavior
     try {
-      behavior = assertMainAppBehavior(await bounded(control('receipt'), RELOAD_RETIRING_WAIT_MS))
+      behavior = assertMainAppBehavior(await bounded(control('receipt'), RELOAD_JOURNEY_WAIT_MS))
     } catch (error) {
       try {
         console.error(
@@ -140,8 +129,8 @@ export async function reloadJourney({ root, app, records }) {
       nativeIpc: {
         createdViaNormalPreload: true,
         threeRealSends: true,
-        sampledDistinctActualArrivals: true,
-        threePendingBeforeExit: true,
+        originalPendingWhileHeld: true,
+        twoQueuedWhileHeld: true,
         threeResolvedAfterExit: true,
         unknownOperationRefused: true,
       },

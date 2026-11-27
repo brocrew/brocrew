@@ -14,14 +14,15 @@ import { openDatabase } from '../../../apps/desktop/src/main/db/connection.ts'
 import { applyMigrations } from '../../../apps/desktop/src/main/db/migrate.ts'
 import { createSessionStore } from '../../../apps/desktop/src/main/db/session-store.ts'
 import { NO_DISCOVERY } from '../../../apps/desktop/src/main/adopt/discover-sessions.ts'
-import { SOURCE, TREE, MODE, SDK_VERSION, RELOAD_DEADLINE_MS, RELOAD_DEADLINE_TOLERANCE_MS, assertBehavior, DELIVERY_WORDS, deliveryMessages, deliveryEvidence, lifecycleEvidence } from './contract.mjs'
+import { SOURCE, TREE, MODE, SDK_VERSION, RELOAD_HELD_MS, assertBehavior, DELIVERY_WORDS, deliveryMessages, deliveryEvidence, lifecycleEvidence } from './contract.mjs'
 
 export const WORDS = DELIVERY_WORDS
 export const delay = ms => new Promise(resolve => setTimeout(resolve, ms))
 function deferred() {
-  let release
-  const promise = new Promise(resolve => { release = resolve })
-  return { promise, release }
+  let release, fail
+  const promise = new Promise((resolve, reject) => { release = resolve; fail = reject })
+  promise.catch(() => {})
+  return { promise, release, fail }
 }
 export async function until(predicate, label, maxMs = 2500) {
   const end = performance.now() + maxMs
@@ -76,12 +77,12 @@ class LogicalChild extends EventEmitter {
   killed = false
   exited = false
   kill() { throw new Error('Reload fixture refuses OS process signalling') }
-  finish() {
+  finish(code = 0) {
     if (this.exited) return
     this.exited = true
-    this.exitCode = 0
-    this.emit('exit', 0, null)
-    this.emit('close', 0, null)
+    this.exitCode = code
+    this.emit('exit', code, null)
+    this.emit('close', code, null)
     for (const pipe of [this.stdin, this.stdout, this.stderr]) pipe.destroy()
   }
 }
@@ -127,6 +128,14 @@ class ControlledQuery {
   emit(message) { this.messages.push(message) }
   lateResult() {
     this.emit({ type: 'result', subtype: 'success', is_error: false, user_message_uuid: null })
+  }
+  // The CLI dies. As the SDK does, its exit ends the message stream with the exit error and
+  // rejects the pending reload; card 197 put no clock on that reload.
+  exitCli(code = 1) {
+    const exit = new Error(`Claude Code process exited with code ${code}`)
+    this.child.finish(code)
+    this.messages.fail(exit)
+    this.reloadGate.fail(exit)
   }
   listen(prompt) {
     this.promptDrain = (async () => {
@@ -232,9 +241,9 @@ export function makeRuntime(home, skills, sessionId, { mainApp = false } = {}) {
     cleanupFacts() {
       return {
         handles: handles.length,
-        endedHandles: handles.filter(h => h.status() === 'ended' && h.isRetiring?.() === false).length,
+        endedHandles: handles.filter(h => ['ended', 'errored'].includes(h.status()) && h.isRetiring?.() === false).length,
         queries: queries.length,
-        closedQueries: queries.filter(q => q.closeCalls === 1).length,
+        closedQueries: queries.filter(q => q.closeCalls >= 1).length,
         returnedQueries: queries.filter(q => q.returnCalls === 1).length,
         settledReturns: queries.filter(q => q.returnSettled).length,
         drainedPromptReaders: queries.filter(q => q.promptDrained && !q.promptError).length,
@@ -244,10 +253,16 @@ export function makeRuntime(home, skills, sessionId, { mainApp = false } = {}) {
     },
   }
 }
-function timing(query, at) {
-  const ms = at - query.reloadAt
-  assert(query.reloadAt > 0 && ms >= RELOAD_DEADLINE_MS && ms <= RELOAD_DEADLINE_MS + RELOAD_DEADLINE_TOLERANCE_MS, `Real ${RELOAD_DEADLINE_MS}ms reload deadline missing`)
-  return Math.round(ms)
+// The reload outlasts the removed 60 s limit with nothing failed, sent or closed (card 197).
+async function holdReload(query, failures, label) {
+  await until(() => query.reloadCalls === 1, `${label} reload requested`)
+  await delay(Math.max(0, RELOAD_HELD_MS - (performance.now() - query.reloadAt)))
+  const heldMs = Math.round(performance.now() - query.reloadAt)
+  assert(heldMs >= RELOAD_HELD_MS)
+  assert.equal(failures(), 0, `${label} reload failed before the CLI exited`)
+  assert.equal(query.pushes.length, 0)
+  assert.equal(query.closeCalls, 0, `${label} query closed while its reload was held`)
+  return heldMs
 }
 
 export async function adapterCase(home, skills) {
@@ -258,38 +273,27 @@ export async function adapterCase(home, skills) {
     kit.collect(handle)
     await until(() => handle.ref !== null, 'adapter init')
     const old = kit.queries[0]
-    const sending = handle.send(WORDS[0])
-    const outcome = sending.then(() => 'unexpected-sent', error => error.message)
-    assert.equal(await bounded(outcome, 'real adapter reload timeout', RELOAD_DEADLINE_MS + RELOAD_DEADLINE_TOLERANCE_MS),
-      `reloadPlugins did not answer within ${RELOAD_DEADLINE_MS}ms`)
-    const timeoutMs = timing(old, performance.now())
-    await until(() => old.returnCalls === 1 && failed(kit.events).length === 1, 'adapter retirement')
-    assert.equal(old.pushes.length, 0)
-    assert.equal(handle.isRetiring?.(), true)
-    assert.equal(handle.status(), 'idle') // cached status alone must not admit sends
-    const retiringAtTimeout = handle.isRetiring?.() === true
-    await assert.rejects(handle.send('reload refused while retiring'))
+    let settled = false
+    const outcome = handle.send(WORDS[0]).then(() => 'unexpected-sent', error => error.message)
+    void outcome.then(() => { settled = true })
+    const heldMs = await holdReload(old, () => failed(kit.events).length, 'adapter')
+    assert.equal(settled, false)
+    await assert.rejects(handle.send('reload refused while held'))
+    assert.equal(turns(kit.events).length, 0)
+    old.exitCli(1)
+    const exitRejected = await bounded(outcome, 'adapter reload ended by the CLI exit') === 'Claude Code process exited with code 1'
+    await until(() => failed(kit.events).length === 1, 'adapter failed terminal')
+    const appFailure = failed(kit.events)[0]
+    await assert.rejects(handle.send('reload refused after the exit'))
     const beforeLate = turns(kit.events).length
-    old.reloadGate.release()
     old.lateResult()
     await delay(30)
-    await assert.rejects(handle.send('reload refused after late answer'))
     assert.equal(old.reloadCalls, 1)
     assert.equal(old.pushes.length, 0)
-    assert.equal(turns(kit.events).length, beforeLate)
-    const appFailure = failed(kit.events)[0]
-    assert.equal(appFailure.wordOf, 'this-app')
+    await bounded(handle.awaitProcessExit(), 'controlled child witness')
     old.returnGate.release()
     await bounded(handle.close(), 'adapter delayed return')
-    // Query.return alone is not the separate witness receipt.
-    let exited = false
-    void handle.awaitProcessExit().then(() => { exited = true })
-    await delay(20)
-    assert.equal(exited, false)
-    old.child.finish()
-    await bounded(handle.awaitProcessExit(), 'controlled child witness')
-    assert.equal(handle.isRetiring?.(), false)
-    assert.equal(handle.status(), 'ended')
+    const exitObserved = old.child.exited && ['ended', 'errored'].includes(handle.status())
     const freshHandle = await kit.runtime.resume(handle.ref, kit.context)
     kit.collect(freshHandle)
     await until(() => freshHandle.ref !== null, 'adapter fresh init')
@@ -298,12 +302,10 @@ export async function adapterCase(home, skills) {
     const fresh = kit.queries[1]
     assert.equal(fresh.resume, handle.ref.sessionId)
     result = {
-      timeoutMs, failedTerminals: failed(kit.events).length,
-      failedByApp: appFailure.wordOf === 'this-app', oldPushes: old.pushes.length,
-      oldReloads: old.reloadCalls, oldCloses: old.closeCalls, oldReturns: old.returnCalls,
-      retiringAtTimeout, oldSendRefusals: 2, lateReloadReleased: true,
-      lateResultAttempted: true, lateAddedTerminals: turns(kit.events).length - beforeLate - 1,
-      retirementEnded: handle.status() === 'ended' && handle.isRetiring?.() === false,
+      heldMs, heldWithoutFailure: true, failedTerminals: failed(kit.events).length,
+      failedByApp: appFailure.wordOf === 'this-app', exitRejected,
+      oldPushes: old.pushes.length, oldReloads: old.reloadCalls, oldSendRefusals: 2,
+      lateAddedTerminals: turns(kit.events).length - beforeLate - 1, exitObserved,
       freshQueries: kit.queries.length - 1, freshResumeMatches: fresh.resume === handle.ref.sessionId,
       freshPushes: fresh.pushes.length, freshReloads: fresh.reloadCalls,
       freshCompleted: completed(kit.events).length,
@@ -325,12 +327,8 @@ async function hostQueueCase(home, skills, migrationsPath, mainBinding = null) {
     if (db) applyMigrations(db, migrationsPath)
     const store = mainBinding?.store ?? createSessionStore(db)
     kit = mainBinding?.kit ?? makeRuntime(home, skills, 'sess_controlled_reload_host')
-    let failureAt = 0
     const sink = { ownerId: 'controlled-reload-owner', aPersonIsBehindIt: true, alive: true,
-      send(value) {
-        recordInto(events, value.event)
-        if (value.event.type === 'turn' && value.event.state === 'failed') failureAt ||= performance.now()
-      }, sendLiveness() {} }
+      send(value) { recordInto(events, value.event) }, sendLiveness() {} }
     host = mainBinding?.host ?? new RuntimeHost({
       store, discoverSessions: NO_DISCOVERY, nativeTranscriptPath: () => null,
       exportDirectory: () => path.join(home, 'exports'),
@@ -351,36 +349,22 @@ async function hostQueueCase(home, skills, migrationsPath, mainBinding = null) {
     const expectedResume = kit.handles[0].ref.sessionId
     const original = host.send(created.sessionId, WORDS[0], sink)
     pending.push(original); original.catch(() => {})
-    await until(() => failureAt > 0 && old.returnCalls === 1, 'host real reload deadline', RELOAD_DEADLINE_MS + RELOAD_DEADLINE_TOLERANCE_MS)
-    const timeoutMs = timing(old, failureAt)
-    const failedAtTimeout = failed(events).length
-    const firstFailure = failed(events)[0]
-    oldTerminalIdentity = JSON.stringify(firstFailure)
-    assert.equal(failedAtTimeout, 1)
-    assert.equal(failed(events)[0].wordOf, 'this-app')
-    let secondSettled = false, thirdSettled = false
+    const heldMs = await holdReload(old, () => failed(events).length, 'host')
+    // The person keeps writing while the reload is held: both are queued behind the original.
     const second = host.send(created.sessionId, WORDS[1], sink)
     const third = host.send(created.sessionId, WORDS[2], sink)
     pending.push(second, third)
-    void second.then(() => { secondSettled = true }, () => { secondSettled = true })
-    void third.then(() => { thirdSettled = true }, () => { thirdSettled = true })
-    await delay(30)
-    assert.equal(secondSettled, false); assert.equal(thirdSettled, false)
-    const queuedBeforeExit = Number(!secondSettled) + Number(!thirdSettled)
+    await until(() => store.events(created.sessionId).filter(r => r.event.type === 'message_queued').length === 2, 'two queued while held')
+    const queuedWhileHeld = store.events(created.sessionId).filter(r => r.event.type === 'message_queued').length
     assert.equal(kit.queries.length, 1); assert.equal(old.pushes.length, 0)
-    const freshBeforeReturn = kit.queries.length - 1
-    // Late reload answer and result must not unseal the retiring query.
-    old.reloadGate.release(); old.lateResult()
-    await delay(30)
-    assert.equal(kit.queries.length, 1); assert.equal(old.pushes.length, 0)
-    assert.equal(failed(events).length, 1)
-    old.returnGate.release()
+    old.exitCli(1)
+    await until(() => failed(events).length === 1, 'host failed terminal')
+    const firstFailure = failed(events)[0]
+    oldTerminalIdentity = JSON.stringify(firstFailure)
+    // The host resumes only once the old query has returned.
     await delay(50)
-    const freshBeforeExit = kit.queries.length - 1
-    assert.equal(freshBeforeExit, 0)
-    assert.equal(secondSettled, false); assert.equal(thirdSettled, false)
-    // Only the controlled child-exit event releases the REAL host's termination registry.
-    old.child.finish()
+    const freshBeforeReturn = kit.queries.length - 1
+    old.returnGate.release()
     await bounded(Promise.all(pending), 'host redelivery and queued sends', 5000)
     await until(() => kit.queries.length === 2 && deliveryMessages(kit.queries[1].pushes).length === WORDS.length &&
       completed(events).length === kit.queries[1].pushes.length && !host.arrivals.has(created.sessionId),
@@ -388,7 +372,7 @@ async function hostQueueCase(home, skills, migrationsPath, mainBinding = null) {
     const fresh = kit.queries[1]
     assert.equal(fresh.resume, expectedResume)
     const beforePushes = fresh.pushes.length, beforeTerminals = turns(events).length
-    old.reloadGate.release(); old.lateResult()
+    old.lateResult()
     await delay(30)
     assert.equal(failed(events).length, 1, 'Failure added after handover or late result')
     assert.equal(JSON.stringify(failed(events)[0]), oldTerminalIdentity, 'Old failed terminal changed')
@@ -397,12 +381,10 @@ async function hostQueueCase(home, skills, migrationsPath, mainBinding = null) {
     const contents = fresh.pushes.map(m => m.message.content)
     const once = word => contents.filter(text => typeof text === 'string' && text.split(/\r?\n/).some(line => line.trim() === word)).length === 1
     result = {
-      timeoutMs, failedTerminals: failed(events).length, failedByApp: failed(events)[0].wordOf === 'this-app',
-      oldPushes: old.pushes.length, oldReloads: old.reloadCalls,
-      oldCloses: old.closeCalls, oldReturns: old.returnCalls,
-      failedAtTimeout,
-      queuedBeforeExit,
-      freshBeforeReturn, freshBeforeExit, ...lifecycleEvidence(ledger), freshQueries: kit.queries.length - 1,
+      heldMs, heldWithoutFailure: true, failedTerminals: failed(events).length,
+      failedByApp: firstFailure.wordOf === 'this-app',
+      oldPushes: old.pushes.length, oldReloads: old.reloadCalls, queuedWhileHeld, freshBeforeReturn,
+      ...lifecycleEvidence(ledger), freshQueries: kit.queries.length - 1,
       freshResumeMatches: fresh.resume === expectedResume, freshReloads: fresh.reloadCalls,
       freshPushes: fresh.pushes.length, uniqueUserUuids: new Set(fresh.pushes.map(m => m.uuid)).size,
       originalOnce: once(WORDS[0]), secondOnce: once(WORDS[1]), thirdOnce: once(WORDS[2]),
@@ -426,7 +408,7 @@ async function hostQueueCase(home, skills, migrationsPath, mainBinding = null) {
     if (db) { db.close(); databaseClosed = true }
   }
   result.failedTerminals = failed(events).length
-  assert.equal(result.failedTerminals, result.failedAtTimeout, 'Failure added after timeout/cleanup')
+  assert.equal(result.failedTerminals, 1, 'Failure added after the exit or cleanup')
   assert.equal(JSON.stringify(failed(events)[0]), oldTerminalIdentity)
   assert.equal(turns(events).length, result.freshPushes + 1, 'Host terminal added during cleanup')
   assert.equal(kit.queries[1].pushes.length, result.freshPushes, 'Prompt added during cleanup')
