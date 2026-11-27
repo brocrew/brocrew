@@ -1,12 +1,7 @@
 import { expect, it, vi } from 'vitest'
 import { F093World, waitFor } from './lib/f093-host'
 import { createSessionStore } from '../src/renderer/src/lib/session-store'
-import {
-  recordFacets,
-  stateHere,
-  stateForRecord,
-  standingOf,
-} from '../src/renderer/src/lib/agent-state'
+import { recordFacets, stateForRecord, standingOf } from '../src/renderer/src/lib/agent-state'
 import { createSessionRecord } from '../src/renderer/src/lib/session-record'
 import type { AgentState } from '../src/shared/agent-state-contracts'
 import type { RuntimeEventMessage, RuntimeStatesMessage } from '../src/shared/runtime-ipc'
@@ -60,11 +55,7 @@ it('carries the actual host state through the live store, including an equal-sta
     handle.simulateBackgroundWork({ running: [{ id: 'fern-job', description: 'Fictional job' }] })
     await waitFor(() => record.agentState?.is === 'in-the-background', 'background state')
     expect(messages.slice(beforeMessages).some((row) => row.agentState === null)).toBe(true)
-    expect(
-      stateForRecord(record, () => {
-        throw new Error('client state must not run')
-      }),
-    ).toEqual({ is: 'in-the-background', what: 'Fictional job' })
+    expect(stateForRecord(record)).toEqual({ is: 'in-the-background', what: 'Fictional job' })
 
     // A conflicting local activity/status cannot promote the core's background state to active.
     record.control.status = 'working'
@@ -130,9 +121,7 @@ it.each<AgentState>([
   record.control.status = 'working'
   record.control.pending = { permissions: 2, questions: 1 }
   record.agentState = state
-  const legacy = vi.fn((): AgentState => ({ is: 'needs-you' }))
-  expect(stateForRecord(record, legacy)).toBe(state)
-  expect(legacy).not.toHaveBeenCalled()
+  expect(stateForRecord(record)).toBe(state)
   const expected =
     state.is === 'active'
       ? 'working'
@@ -150,14 +139,15 @@ it.each<AgentState>([
   expect(standingOf(recordFacets(record))).toBe(expected)
 })
 
-it('leaves older optional envelopes and an un-fed partial history on their existing path', () => {
-  const record = createSessionRecord('legacy')
+it('501 · a record the host has not spoken for yet is unknown: nothing in the window stands in', () => {
+  const record = createSessionRecord('unfed')
   record.window.hasOlder = true
+  record.control.status = 'working'
   record.control.schedule = { jobs: [{ id: 'later', nominalAt: 1 }], dropped: 0, left: [] }
-  const legacy = vi.fn(() => stateHere(record, { doing: 'idle' }, null, []))
-  expect(stateForRecord(record, legacy)).toEqual({ is: 'scheduled', dueAt: null })
-  expect(legacy).toHaveBeenCalledOnce()
   expect(record).not.toHaveProperty('agentState')
+  expect(stateForRecord(record)).toBeUndefined()
+  record.agentState = null
+  expect(stateForRecord(record)).toBeUndefined()
 })
 
 function deferred<T>() {
@@ -456,7 +446,7 @@ it('keeps content while the epoch is unconfirmed, and disposes a delayed handsha
   receive(event)
   const record = client.get('fern')!
   expect(record.agentState).toBeNull()
-  expect(stateForRecord(record, () => ({ is: 'idle' }))).toBeUndefined()
+  expect(stateForRecord(record)).toBeUndefined()
   expect(standingOf(recordFacets(record))).toBe('unknown')
   expect(record.earlyEvents).toContainEqual(event)
   client.dispose()
@@ -507,13 +497,11 @@ it('rejects older publications and old runs after the reconnect handshake', asyn
     receive({ ...row, agentState: { is: 'active' }, published: { epoch, seq: 5 } })
     const record = client.get('fern')!
     expect(record.agentState).toEqual({ is: 'active' })
-    const legacy = vi.fn((): AgentState => ({ is: 'needs-you' }))
     const acceptedState = record.agentState
     const acceptedPublication = record.agentStatePublication
     receive({ ...row, ordinal: 1 })
-    expect(stateForRecord(record, legacy)).toBe(acceptedState)
+    expect(stateForRecord(record)).toBe(acceptedState)
     expect(record.agentStatePublication).toBe(acceptedPublication)
-    expect(legacy).not.toHaveBeenCalled()
     expect(record.earlyEvents.some((message) => message.ordinal === 1)).toBe(true)
     receive({ ...row, ordinal: 1, agentState: { is: 'idle' }, published: { epoch, seq: 4 } })
     expect(record.agentState).toEqual({ is: 'active' })
@@ -540,10 +528,9 @@ it('rejects older publications and old runs after the reconnect handshake', asyn
     receive({ ...row, ordinal: 5, agentState: null, published: { epoch, seq: 2 } })
     const pendingPublication = reconnected.agentStatePublication
     receive({ ...row, ordinal: 6 })
-    expect(stateForRecord(reconnected, legacy)).toBeUndefined()
+    expect(stateForRecord(reconnected)).toBeUndefined()
     expect(reconnected.agentState).toBeNull()
     expect(reconnected.agentStatePublication).toBe(pendingPublication)
-    expect(legacy).not.toHaveBeenCalled()
     expect(reconnected.earlyEvents.some((message) => message.ordinal === 6)).toBe(true)
   } finally {
     client.dispose()

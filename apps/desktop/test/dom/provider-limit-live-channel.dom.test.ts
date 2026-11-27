@@ -72,6 +72,8 @@ describe('The real store receives current provider facts on its liveness channel
     expect(await store.attachOpen()).toEqual([META.sessionId])
     const record = store.get(META.sessionId)!
     expect(record).not.toBeNull()
+    // 501 · this bridge has no epoch or listing: stand in for the host's seed of a quiet conversation.
+    Object.assign(record, { agentState: { is: 'idle' } })
     expect(wire.receive).toBeTypeOf('function')
     const m = mount(ConversationPane, paneProps({ record, cwd: META.cwd, drawerOpen: true }), {
       width: 1200,

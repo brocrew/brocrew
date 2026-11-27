@@ -102,7 +102,7 @@ const props = defineProps<{
   panel: SessionPanelView
   state: TranscriptState
   /**
-   * ⚑ **D-017 · R11 — this agent's ONE state** (`stateHere`), for the word under its plate — the
+   * ⚑ **D-017 · R11 — this agent's ONE state** (the host's), for the word under its plate — the
    * rail row's own, and `list_agents'`. Absent, the plate says the arm's plain word.
    */
   agentState?: OneState

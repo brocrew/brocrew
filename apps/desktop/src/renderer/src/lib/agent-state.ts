@@ -1,10 +1,5 @@
-import { scheduleHere } from './record-state'
 import type { ConversationWait, HeldWork } from '../../../shared/task-contracts'
-import type {
-  AgentState,
-  AgentStateArmFacts,
-  StoppedPiece,
-} from '../../../shared/agent-state-contracts'
+import type { AgentState, AgentStateArmFacts } from '../../../shared/agent-state-contracts'
 import {
   type LivenessState,
   type SessionStatus,
@@ -14,7 +9,6 @@ import {
 import {
   SCHEDULED,
   agentStateArm,
-  agentStateOf,
   agentStateWords,
   scheduleHeld,
   somethingRunning,
@@ -921,7 +915,7 @@ export function standingOf(facets: AgentFacets): Standing {
 
 /**
  * ⚑ **D-017 · R11 — the facets as the one order's questions** ({@link agentStateArm}), asked by
- * {@link standingOf} and {@link stateHere} alike so the word and the state cannot rank one
+ * {@link standingOf} in the host's own order, so the word and the host's state cannot rank one
  * conversation's facts two ways.
  *
  *  - **needs you** — a live card here that a person answers ({@link summonsAttention}),
@@ -931,13 +925,13 @@ export function standingOf(facets: AgentFacets): Standing {
  *    ⚠️ A card routed to another conversation is not a person's (R19): the needing handed in here has
  *    already left it out ({@link forAPerson}).
  *  - **active** — a DOING that is a kind of working; `unknown` is not one.
- *  - **waiting on an answer** — the wait the host says another conversation owes (R19), which it
- *    names (`whoseAnswerIn`).
+ *  - **waiting on an answer** — the wait the host says another conversation owes (R19), whose
+ *    state names it.
  *  - **owes an answer** — F036 · another conversation waits on this one's answer, as the host's
  *    state says it ({@link AgentFacets.owes}).
  *  - **the background and the schedule** — the two facets the registries feed.
  *  - **waiting on a worker** — the wait the host says holds work this one gave out (D-036), whose
- *    holders it names (`whoseWorkIn`).
+ *    state names its holders.
  */
 function armFactsOf(facets: AgentFacets): AgentStateArmFacts {
   return {
@@ -968,56 +962,6 @@ export function workLeftBehind(
     waitingOnAWorker: false,
   })
   return arm === 'in-the-background' ? 'background' : arm === 'scheduled' ? 'scheduled' : null
-}
-
-/**
- * ⚑ **D-017 · R11 — this conversation's ONE state, off what this window holds of it**
- * ({@link agentStateOf}) — the state `list_agents` reports, with its details: what it left running,
- * when it next wakes, whose answer it waits on, and who holds the work it gave out. ⚑ The rail row,
- * the plate and the palette word the arms that carry a detail from it ({@link standingWord}), so
- * none of them derives a detail of its own.
- *
- * @param answerFrom what the HOST calls the conversation a question it asked went to (R19,
- *   `whoseAnswerIn` over the same reading the wait came from), or `null` — the state then says only
- *   what the other facets do.
- * @param workWith ⚑ D-036 · what the HOST calls each conversation holding open work this one gave
- *   (`whoseWorkIn`, over the same reading), or none — the state then says only what the other
- *   facets do.
- * @param since when each wait began, as the HOST read it (`whenItsWaitsBeganIn`, and
- *   `whenItOwedIn` off its listed state); a wait whose start is not given carries none.
- * @param stopped the pieces it gave whose holder stopped with them open (`stoppedWorkIn`, over the
- *   same reading), or none.
- */
-export function stateHere(
-  record: Pick<SessionRecord, 'control' | 'transcript' | 'window'>,
-  facets: AgentFacets,
-  answerFrom: string | null,
-  workWith: readonly string[],
-  since: {
-    readonly answer?: number | null
-    readonly owes?: number | null
-    readonly work?: number | null
-  } = {},
-  stopped: readonly StoppedPiece[] = [],
-): AgentState {
-  const { needsYou, active, waitingOnAnAnswer, waitingOnAWorker } = armFactsOf(facets)
-  return agentStateOf(
-    {
-      needsYou,
-      active,
-      waitingOnTheAnswerOf: waitingOnAnAnswer ? answerFrom : null,
-      waitingOnTheAnswerSince: waitingOnAnAnswer ? since.answer : null,
-      // ⚑ **F036** — who waits on its answer, as the host's state names them.
-      owesAnAnswerTo: facets.owes ?? [],
-      owesAnAnswerSince: since.owes,
-      background: record.control.background,
-      scheduled: scheduleHere(record),
-      waitingOnTheWorkOf: waitingOnAWorker ? workWith : [],
-      waitingOnTheWorkSince: waitingOnAWorker ? since.work : null,
-      stoppedWork: waitingOnAWorker ? stopped : [],
-    },
-    Date.now(),
-  )
 }
 
 /** Activity artwork may refine an active state, but cannot choose a different state family. */
@@ -1244,7 +1188,7 @@ export function standingWord(facets: AgentFacets, state?: AgentState): string {
   // ⚑ **F023 · one state everywhere the agent appears, with the detail a person needs** — the
   // background command, and the time it next wakes (BroBot's findings: the rail said *scheduled*
   // while the plate said *idle*, and neither said what or when). ⚑ **D-017 · R11 — the one state's
-  // own words** ({@link agentStateWords} of {@link stateHere}), the ones an agent reads about this
+  // own words** ({@link agentStateWords} of the host's state), the ones an agent reads about this
   // conversation, with its details; ⚠️ a caller that holds no state gets the arm's plain word.
   if (standing === 'background')
     return agentStateWords(

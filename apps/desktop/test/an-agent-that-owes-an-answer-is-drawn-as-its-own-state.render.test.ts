@@ -13,7 +13,6 @@ import {
   recordFacets,
   standingOf,
   standingWord,
-  stateHere,
   STANDING_LABEL,
   STANDING_TONE,
   type AgentFacets,
@@ -27,7 +26,6 @@ import type { CreatedSession, SessionLiveness } from '../src/shared/runtime-ipc'
 
 const ADA = 'Ada (the owner of W1.2 · Build the pages)'
 const ALI = 'Ali (the owner of W1.3 · Wire the routes)'
-const BROBOT = 'BroBot (the owner of W1)'
 const OWES_ADA = `owes an answer to ${ADA}`
 
 const OWES_ONE: AgentState = { is: 'owes-an-answer', to: [ADA] }
@@ -76,24 +74,6 @@ describe('§2 · `owes` ranks where the one order ranks it', () => {
     expect(standingOf({ ...owing, waiting: 'waiting-on-an-answer' })).toBe('elsewhere')
     expect(standingOf({ ...owing, waiting: 'waiting-on-a-person' })).toBe('waiting')
     expect(standingOf({ ...owing, needing: 'permission' })).toBe('waiting')
-  })
-
-  it('stateHere carries the askers into the one state, and the order decides as it does', () => {
-    const record = createSessionRecord('sess_owes')
-    expect(stateHere(record, owing, null, [])).toEqual(OWES_ONE)
-    expect(stateHere(record, { doing: 'idle', owes: [ADA, ALI] }, null, [])).toEqual(OWES_TWO)
-    // Above the worker wait: the holders are not what it says.
-    expect(stateHere(record, { ...owing, waiting: 'waiting-on-a-worker' }, null, [ALI])).toEqual(
-      OWES_ONE,
-    )
-    // Below its own question, and below a turn.
-    expect(stateHere(record, { ...owing, waiting: 'waiting-on-an-answer' }, BROBOT, [])).toEqual({
-      is: 'waiting-on-an-answer',
-      from: BROBOT,
-    })
-    expect(stateHere(record, { ...owing, doing: 'working' }, null, [])).toEqual({ is: 'active' })
-    // no askers, no arm.
-    expect(stateHere(record, { doing: 'idle' }, null, [])).toEqual({ is: 'idle' })
   })
 })
 

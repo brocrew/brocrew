@@ -59,6 +59,11 @@ function pane(events: TranscriptEvent[] = [], over = {}, at?: number) {
   )
   return { m, one }
 }
+/** 501 · what the host pushes for a conversation that has done nothing yet, as the store holds it. */
+function hostSaysIdle<T extends { one: { agentState?: AgentState | null } }>(opened: T): T {
+  opened.one.agentState = { is: 'idle' }
+  return opened
+}
 function liveness(over: Partial<SessionLiveness>): SessionLiveness {
   return { state: 'ended', since: NOW, ...over }
 }
@@ -69,7 +74,7 @@ describe('Current provider stop in the real conversation header and panel', () =
   it.each(['claude', 'codex'] as const)(
     '%s: current known reset reaches both surfaces and exact detail',
     async (provider) => {
-      const { m, one } = pane()
+      const { m, one } = hostSaysIdle(pane())
       one.meta = {
         ...one.meta!,
         provider,
@@ -93,7 +98,7 @@ describe('Current provider stop in the real conversation header and panel', () =
     },
   )
   it('unknown and passed resets say stopped, never resumed by the clock', async () => {
-    const { m, one } = pane()
+    const { m, one } = hostSaysIdle(pane())
     for (const resetsAt of [null, NOW - 1000]) {
       acceptLiveness(one, liveness({ ...CURRENT, providerBlock: { provider: 'claude', resetsAt } }))
       await nextTick()
@@ -103,7 +108,8 @@ describe('Current provider stop in the real conversation header and panel', () =
     }
   })
   it('unchanged ordinary state gets clear, unavailable and omission pushes without rereading', async () => {
-    const { m, one } = pane()
+    const { m, one } = hostSaysIdle(pane())
+    await nextTick()
     expect(read(m.q('session-status'))).toContain('Stopped: Claude')
     acceptLiveness(one, liveness({}))
     await nextTick()
@@ -149,7 +155,7 @@ describe('The minute clock changes only the relative reset words', () => {
   it('crosses a reported reset while keeping the stopped reason and passed detail', async () => {
     vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] })
     vi.setSystemTime(NOW)
-    const { m, one } = pane()
+    const { m, one } = hostSaysIdle(pane())
     acceptLiveness(
       one,
       liveness({ ...CURRENT, providerBlock: { provider: 'claude', resetsAt: NOW + 10000 } }),
@@ -766,6 +772,7 @@ describe('An open rail record follows the latest folded channel fact', () => {
         moved: [{ conversation: one.sessionId, state: { is: 'idle' }, ...facts }],
         kept: [],
       })
+      one.agentState = { is: 'idle' }
       acceptProviderBlock(one, facts)
       authority.accept(one.sessionId, facts)
       await nextTick()
