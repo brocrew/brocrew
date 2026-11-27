@@ -17,7 +17,7 @@ import {
 } from '../src/main/db/window-read-protocol'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { executeRuntimeCommand, runtimeCommandSchema } from '../src/main/runtime/ipc'
-import { recentActivity } from '../src/main/runtime/recent-activity'
+import { recentActivity } from '../src/main/db/recent-activity'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { RECENT_ACTIVITY_LINES } from '../src/shared/recent-activity'
 import { MAX_DIGEST_SPAN_MS } from '../src/shared/digest'
