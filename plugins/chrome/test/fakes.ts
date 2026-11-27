@@ -10,6 +10,7 @@ import type { Page, Download } from 'playwright-core'
 import type { ProfileBrowser } from '../src/browser/profileBrowser.js'
 import { ProfileInUseError } from '../src/browser/profileBrowser.js'
 import type { KeyedSerializer } from '../src/shared/browser/browser-lease.js'
+import { createKeyedSerializer } from '../src/shared/browser/browser-lease.js'
 import { createProfileStore } from '../src/profiles/store.js'
 import type { ProfileStore } from '../src/profiles/store.js'
 import { TabRegistry } from '../src/tabs.js'
@@ -539,6 +540,25 @@ export function harness(): Harness {
       throw new Error('expected a refusal')
     },
   }
+}
+const withTabs: Harness[] = []
+/** A harness with one open tab in profile p, using the real per-tab serializer. */
+export async function harnessWithTab() {
+  const h = harness()
+  withTabs.push(h)
+  h.deps.serializer = createKeyedSerializer()
+  h.profile('p')
+  const { tabId } = (await h.call('open_tab', { profile: 'p', url: 'about:blank' })).json as {
+    tabId: string
+  }
+  const page = h.browser.pages.get('p')![0]!
+  const tab = h.tabs.resolve(tabId, () => 1)
+  return { h, tabId, page, tab }
+}
+export function removeHarnessesWithTab(): void {
+  for (const h of withTabs.splice(0))
+    for (const dir of [h.home, path.dirname(h.downloads), h.uploadRoot])
+      fs.rmSync(dir, { recursive: true, force: true })
 }
 export function asPage(p: FakePage): Page {
   return p as unknown as Page

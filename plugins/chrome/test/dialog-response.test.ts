@@ -1,29 +1,12 @@
-import fs from 'node:fs'
-import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { FakeLocator, harness } from './fakes.js'
-import { createKeyedSerializer } from '../src/shared/browser/browser-lease.js'
+import { FakeLocator, harnessWithTab, removeHarnessesWithTab } from './fakes.js'
 
 describe('dialogs require an explicit answer', () => {
-  const made: ReturnType<typeof harness>[] = []
   afterEach(() => {
     vi.useRealTimers()
-    for (const h of made.splice(0))
-      for (const dir of [h.home, path.dirname(h.downloads), h.uploadRoot])
-        fs.rmSync(dir, { recursive: true, force: true })
+    removeHarnessesWithTab()
   })
-  async function setup() {
-    const h = harness()
-    made.push(h)
-    h.deps.serializer = createKeyedSerializer()
-    h.profile('p')
-    const { tabId } = (await h.call('open_tab', { profile: 'p', url: 'about:blank' })).json as {
-      tabId: string
-    }
-    const page = h.browser.pages.get('p')![0]
-    const tab = h.tabs.resolve(tabId, () => 1)
-    return { h, tabId, page, tab }
-  }
+  const setup = harnessWithTab
   function dialog(type = 'confirm', message = 'Continue?') {
     return {
       type: () => type,
