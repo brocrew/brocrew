@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { FakeRuntime } from '@brobot2/runtime'
+import { FakeRuntime, type FakeSessionHandle } from '@brobot2/runtime'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { NULL_SESSION_STORE } from '../src/main/db/session-store'
 import { LimitsReaderLifetime, type LimitsReader } from '../src/main/db/limits-reader-lifetime'
@@ -100,16 +100,20 @@ function fixture(runtime = new FakeRuntime('claude')) {
 }
 
 describe('the window display door is independent of current and admission facts', () => {
-  it('captures the known account life for the production worker without reading the writer', async () => {
+  it('captures the known account life and each reading’s account for the production worker without reading the writer', async () => {
     const runtime = new FakeRuntime('codex')
     const start = runtime.start.bind(runtime)
+    let started: FakeSessionHandle | undefined
     vi.spyOn(runtime, 'start').mockImplementation(async (options) => {
       const handle = await start(options)
       Object.defineProperty(handle, 'signInTag', { value: () => 'fern-account' })
+      started = handle
       return handle
     })
     const { host, reader, sink, canonical } = fixture(runtime)
     const { sessionId } = await host.createSession({ provider: 'codex' }, sink)
+    started!.simulateProviderUsage([{ window: 'a 7-day window', usedPercent: 11, resetsAt: null }])
+    await drain()
     const answer = host.readLimitsDisplay()
     await drain()
     expect(reader.calls.at(-1)?.accountLives).toContainEqual({
@@ -117,6 +121,13 @@ describe('the window display door is independent of current and admission facts'
       since: expect.any(Number),
       account: 'codex:sign-in:fern-account',
     })
+    expect(reader.calls.at(-1)?.usage.codex).toEqual([
+      expect.objectContaining({
+        window: 'a 7-day window',
+        usedPercent: 11,
+        account: 'fern-account',
+      }),
+    ])
     reader.finish()
     expect(await answer).toMatchObject({ is: 'read' })
     expect(canonical).not.toHaveBeenCalled()

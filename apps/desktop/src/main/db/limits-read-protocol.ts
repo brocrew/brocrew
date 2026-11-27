@@ -17,6 +17,8 @@ const usage = z
     usedPercent: instant.nullable(),
     resetsAt: instant.nullable(),
     at: instant,
+    account: z.string().max(1024).optional(),
+    unconfirmed: z.literal(true).optional(),
   })
   .strict()
 

@@ -483,12 +483,16 @@ export function wallsFromUsage(
   return usageWarnings(usage, walls, now, windowForWarning).map((one) => one.wall)
 }
 
-/** Keep each selected warning with the reading that supplied it. */
+/**
+ * Keep each selected warning with the reading that supplied it. `nearsAt` is the figure a reading
+ * is selected from; below {@link USAGE_NEARS_ITS_LIMIT_AT} it selects readings that warn of nothing.
+ */
 export function usageWarnings<Reading extends UsageNearItsLimit>(
   usage: Readonly<Partial<Record<Provider, readonly Reading[]>>>,
   walls: readonly ProviderLimitSeen[],
   now: number,
   windowForWarning?: (provider: Provider, window: string) => string,
+  nearsAt = USAGE_NEARS_ITS_LIMIT_AT,
 ): readonly { readonly reading: Reading; readonly wall: ProviderLimitSeen }[] {
   const stopped = new Set(
     walls.filter((one) => one.standing === 'stopped').map((one) => one.provider),
@@ -503,7 +507,7 @@ export function usageWarnings<Reading extends UsageNearItsLimit>(
     if (stopped.has(provider)) continue
     for (const reading of usage[provider] ?? []) {
       const used = reading.usedPercent
-      if (used === null || used < USAGE_NEARS_ITS_LIMIT_AT) continue
+      if (used === null || used < nearsAt) continue
       if (
         reading.resetsAt !== null &&
         (reading.resetsAt <= now || reading.resetsAt > MAX_INSTANT)

@@ -931,12 +931,9 @@ import { listedInOrder, readTheForestFirst, type ForestFirstRead } from '../db/f
 import type { ForestListingAsked } from '../db/forest-listing'
 import type { ActedBy } from '../../shared/who-did-it'
 // ⚑ **533** — this host hands the store's rows straight on, so the recogniser and its fold stay
-// where the store is; ⚑ F096 adds only the walls a usage reading near its limit makes
-// ({@link wallsFromUsage}), folded with the store's by the same fold.
+// where the store is; what a person is told is the account in use's ({@link limitsOfTheAccountInUse}).
 import {
-  foldProviderLimits,
   PROVIDER_WALL_LOOKBACK_MS,
-  wallsFromUsage,
   type ProviderLimitAccountLife,
   type ProviderLimitSeen,
 } from '../../shared/provider-limit'
@@ -963,8 +960,14 @@ import {
 } from '../../shared/persons-published'
 import type { KeptReading, KeptUsage } from '../provider-usage-file'
 import { usageForDisplay } from '../providers/usage-display'
-import { warningWindow } from '../providers/usage-period'
 import { limitsForDisplay } from '../providers/limit-meaning'
+import {
+  accountInUse,
+  limitIdentity,
+  limitsOfTheAccountInUse,
+  readingsOfTheAccountInUse,
+  type ReadingInUse,
+} from '../providers/limits-in-use'
 import type { KnownAccount } from '../provider-accounts-file'
 import { LEADS_OPEN_WITH, leadRowsFrom, theLeadOwed, whatTheThreadHolds } from './codex-lead'
 import { identityUse, whatHoldsIt } from '../../shared/agent-roster'
@@ -4234,9 +4237,9 @@ export class RuntimeHost implements LiveHost {
     if (fact == null) return null
     if (fact.kind === 'account') {
       const known = this.accountRecordFor(fact.account)
-      return known === null ? null : `${provider}:account:${known.id}`
+      return known === null ? null : limitIdentity(provider, 'account', known.id)
     }
-    return `${provider}:sign-in:${fact.tag}`
+    return limitIdentity(provider, 'sign-in', fact.tag)
   }
 
   /** An exact recorded account, absent, or ambiguous; never infer it from the latest launch. */
@@ -12051,13 +12054,9 @@ export class RuntimeHost implements LiveHost {
     }
     this.prepareProviderLimitFacts(walk, now, epoch)
     // 🔴 **F096 — and a window the provider's own figure puts near its limit** (80%), folded in
-    // beside the walls it reported, so the band and the Providers card say it ({@link wallsFromUsage}).
-    const near = wallsFromUsage(this.usageThatCounts(), walk.rows, now, warningWindow)
-    return limitsForDisplay(
-      near.length === 0
-        ? walk
-        : { ...walk, rows: foldProviderLimits([...walk.rows, ...near], [], now) },
-    )
+    // beside the walls it reported, so the band and the Providers card say it; all of it about the
+    // account in use ({@link limitsOfTheAccountInUse}).
+    return limitsForDisplay(limitsOfTheAccountInUse(walk, this.usageInUse(), now))
   }
 
   /** The legacy window contract also reads through the canonical limits worker. */
@@ -12071,19 +12070,11 @@ export class RuntimeHost implements LiveHost {
   private async readWorkerLimits(): Promise<LimitsReadResult> {
     const reader = this.deps.limitsReader
     if (reader === undefined || this.launches.closed) throw new WindowReadUnavailable()
-    const usage = this.usageThatCounts()
-    const capturedUsage = (provider: Provider) =>
-      usage[provider].map(({ window, usedPercent, resetsAt, at }) => ({
-        window,
-        usedPercent,
-        resetsAt,
-        at,
-      }))
     return reader.read({
       capturedAt: this.now(),
       signInChangedAt: Object.fromEntries(this.signInChangedAt),
       accountLives: this.limitAccountSnapshot(),
-      usage: providerRecord(capturedUsage),
+      usage: this.usageInUse(),
     })
   }
 
@@ -25965,14 +25956,20 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
    * runs on changes ({@link providerLoginChanged}, {@link aSignInChanged}). ⚠️ A reading whose
    * `resetsAt` has passed was taken before that reset. ⚑ Readings a run before this one kept are
    * marked `unconfirmed` until a conversation of this run reports on the same sign-in, and raise
-   * no warning meanwhile ({@link usageThatCounts}).
+   * no warning meanwhile ({@link usageInUse}). ⚑ Only the account in use's readings are told, the
+   * same ones the limit notices read ({@link readingsOfTheAccountInUse}).
    */
   providerUsage(): Readonly<Record<Provider, readonly ProviderUsageReading[]>> {
     const held = this.usageAsHeld()
     const now = this.now()
     // ⛔ Without the account a reading was read on: it is told to no window and no agent.
     const shown = (provider: Provider): readonly ProviderUsageReading[] =>
-      usageForDisplay(provider, held[provider], this.usageUnconfirmed.has(provider), now)
+      usageForDisplay(
+        provider,
+        readingsOfTheAccountInUse(provider, held[provider]),
+        this.usageUnconfirmed.has(provider),
+        now,
+      )
     return providerRecord(shown)
   }
 
@@ -25981,10 +25978,23 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
     return providerRecord((provider) => [...(this.usage.get(provider)?.values() ?? [])])
   }
 
-  /** The readings that may warn: every provider's but those not yet shown to be this sign-in's. */
-  private usageThatCounts(): Record<Provider, readonly ProviderUsageReading[]> {
+  /**
+   * Each provider's readings as the limits a person reads use them: with the account each was read
+   * on, and those not yet shown to be this sign-in's marked, so they name the account and warn of
+   * nothing ({@link limitsOfTheAccountInUse}).
+   */
+  private usageInUse(): Record<Provider, ReadingInUse[]> {
     const held = this.usageAsHeld()
-    return providerRecord((provider) => (this.usageUnconfirmed.has(provider) ? [] : held[provider]))
+    return providerRecord((provider) =>
+      held[provider].map(({ window, usedPercent, resetsAt, at, account }) => ({
+        window,
+        usedPercent,
+        resetsAt,
+        at,
+        ...(account === undefined ? {} : { account }),
+        ...(this.usageUnconfirmed.has(provider) ? { unconfirmed: true as const } : {}),
+      })),
+    )
   }
 
   /**
@@ -26067,6 +26077,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
     }
     const at = this.now()
     let moved = false
+    const inUseBefore = accountInUse(provider, [...(this.usage.get(provider)?.values() ?? [])])
     const heldOn = this.usageReadOn.get(provider)
     // ⚑ The account decides when it is known for this reading and for what is held; otherwise the
     // sign-in does.
@@ -26137,8 +26148,11 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
       })
     }
     this.usage.set(provider, held)
-    // ⚑ **F096 — kept when a number moved**: a frame that says the same again writes nothing, so
-    // the file is written as often as the provider's figures change, not as often as it speaks.
+    // A reading that changes the account in use changes what is shown, though no number moved.
+    if (accountInUse(provider, [...held.values()]) !== inUseBefore) moved = true
+    // ⚑ **F096 — kept when a number or the account in use moved**: a frame that says the same again
+    // on the same account in use writes nothing, so the file is written as often as those change,
+    // not as often as the provider speaks.
     // Claude's sign-in moving is kept too, so the file never names an older one; Codex's moves
     // between its profiles' sign-ins, and is kept with the next number or at the quit.
     if (moved || (tagMoved && !providerDescriptor(provider).signIn.profileScoped))
@@ -26195,7 +26209,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
     if (fact === null) return null
     if (fact.kind === 'tag') return { id: fact.tag }
     const frozen = this.identityKnown.get(session)
-    const prefix = `${session.provider}:account:`
+    const prefix = limitIdentity(session.provider, 'account', '')
     if (frozen?.startsWith(prefix)) return { id: frozen.slice(prefix.length) }
     const said = fact.account
     const known = this.recordedAccountFor(said)
