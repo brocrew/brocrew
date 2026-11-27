@@ -3,7 +3,8 @@
  * A to-do an agent asked of a person: who asks, the one thing to do, then every button on one line.
  * Longer words fold behind "Show more", and the note box opens only when asked for. Once answered,
  * the card shrinks to one line where it was. The same card on Waiting on you, in the corner and in
- * the conversation that asked.
+ * the conversation that asked. `whole` draws an answered card's whole words instead, for a frame
+ * that folds it itself.
  */
 import { computed, ref } from 'vue'
 import { usePersonsQueue, type TodoCard } from '../lib/persons-queue'
@@ -19,8 +20,9 @@ const props = withDefaults(
     cy: string
     canAnswer?: boolean
     openConversation?: boolean
+    whole?: boolean
   }>(),
-  { canAnswer: true, openConversation: false },
+  { canAnswer: true, openConversation: false, whole: false },
 )
 const emit = defineEmits<{ open: [] }>()
 const queue = usePersonsQueue()
@@ -30,9 +32,11 @@ const open = ref(false)
 const text = computed(() => legacyQuestionFiles(props.card.row.text, props.card.row.files).text)
 const words = computed(() => cardLead(text.value))
 /** Words longer than two short lines fold, so every card reads in a glance. */
-const foldable = computed(() => words.value.rest.length > 160 || words.value.rest.includes('\n'))
+const foldable = computed(
+  () => !props.whole && (words.value.rest.length > 160 || words.value.rest.includes('\n')),
+)
 /** An answered card is one line; the corner keeps its own way to put it away. */
-const answeredLine = computed(() => props.card.taken && !props.card.pending)
+const answeredLine = computed(() => props.card.taken && !props.card.pending && !props.whole)
 const answerable = computed(() => props.canAnswer && props.card.listed && !props.card.taken)
 </script>
 
@@ -79,7 +83,9 @@ const answerable = computed(() => props.canAnswer && props.card.listed && !props
       </button>
     </div>
     <template v-else>
-      <p class="todo-head" :data-cy="`${cy}-todo-head-${card.row.key}`">{{ card.row.head }}</p>
+      <p v-if="!whole" class="todo-head" :data-cy="`${cy}-todo-head-${card.row.key}`">
+        {{ card.row.head }}
+      </p>
       <MarkdownWords
         v-if="words.lead"
         class="todo-lead"
@@ -120,7 +126,7 @@ const answerable = computed(() => props.canAnswer && props.card.listed && !props
         :data-cy="`${cy}-todo-note-${card.row.key}`"
       ></textarea>
       <p
-        v-if="card.said !== null"
+        v-if="card.said !== null && !whole"
         class="todo-said-line"
         role="status"
         :data-cy="`${cy}-todo-said-${card.row.key}`"

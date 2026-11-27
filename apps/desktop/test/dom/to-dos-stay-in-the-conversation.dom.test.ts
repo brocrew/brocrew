@@ -111,7 +111,7 @@ describe('to-dos in the conversation', () => {
     expect((m.q('inline-todo-done-req_report') as HTMLButtonElement).disabled).toBe(true)
     finish(null)
     await settle()
-    expect(m.q('inline-todo-said-req_report').textContent).toContain('Done.')
+    expect(m.q('exchange-state').textContent).toContain('Done.')
     expect(m.all('inline-todo-done-req_report')).toHaveLength(0)
     const waiting = mount(WorkWaits, { part: 'todos' })
     expect(waiting.q('waiting-todo-said-req_report').textContent).toContain('Done.')
@@ -170,12 +170,46 @@ describe('to-dos in the conversation', () => {
     ]
     for (const [endings, said] of replays) {
       const m = mount(ConversationPane, paneProps({ record: record([...events, ...endings]) }))
-      expect(m.q('inline-todo-lead-req_report').textContent?.trim()).toBe(TEXT)
-      expect(m.q('inline-todo-said-req_report').textContent?.trim()).toBe(said)
+      expect(m.q('exchange-preview').textContent?.trim()).toBe(TEXT)
+      expect(m.q('exchange-state').textContent?.trim()).toBe(said)
       expect(m.all('inline-todo-done-req_report')).toHaveLength(0)
       expect(m.all('inline-todo-cant-req_report')).toHaveLength(0)
       m.unmount()
     }
+  })
+  it('an answered to-do opens to its whole words from its folded line', async () => {
+    const rest = 'It is private, not published.\nOpen the sample, then read its last page.'
+    const long = events.map((event) =>
+      event.type === 'question_asked'
+        ? ({ ...event, prompt: `${TEXT} ${rest}` } as TranscriptEvent)
+        : event,
+    )
+    const answered: TranscriptEvent = {
+      type: 'user_decision',
+      requestId: 'req_report',
+      outcome: 'answered',
+      by: { who: 'a-person' },
+    }
+    const m = mount(ConversationPane, paneProps({ record: record([...long, answered]) }))
+    expect(m.q('exchange-state').textContent?.trim()).toBe('An answer was sent.')
+    expect(m.all('inline-todo-text-req_report')).toHaveLength(0)
+    const toggle = m.q('exchange-toggle') as HTMLButtonElement
+    toggle.focus()
+    toggle.click()
+    await nextTick()
+    expect(toggle.getAttribute('aria-expanded')).toBe('true')
+    expect(document.activeElement).toBe(toggle)
+    expect(m.q('inline-todo-lead-req_report').textContent?.trim()).toBe(TEXT)
+    const whole = m.q('inline-todo-text-req_report')
+    expect(whole.textContent).toContain('read its last page.')
+    expect(whole.classList.contains('folded')).toBe(false)
+    expect(m.all('inline-todo-more-req_report')).toHaveLength(0)
+    expect(m.all('inline-todo-done-req_report')).toHaveLength(0)
+    toggle.click()
+    await nextTick()
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    expect(document.activeElement).toBe(toggle)
+    expect(whole.checkVisibility()).toBe(false)
   })
   it('updates the inline controls when the recorded request is answered elsewhere', async () => {
     const r = reactive(record(events))
@@ -188,7 +222,7 @@ describe('to-dos in the conversation', () => {
     } as TranscriptEvent)
     await nextTick()
     expect(m.all('inline-todo-done-req_report')).toHaveLength(0)
-    expect(m.q('inline-todo-said-req_report').textContent).not.toContain('Done.')
+    expect(m.q('exchange-state').textContent).not.toContain('Done.')
   })
   it.each(['work_closed', 'work_taken_back', 'work_replied'] as const)(
     'removes live answer controls when its piece receives %s',
@@ -210,7 +244,7 @@ describe('to-dos in the conversation', () => {
     markRequestFailed(r.transcript, 'req_report', 'This to-do was already answered.')
     await nextTick()
     expect(m.all('inline-todo-done-req_report')).toHaveLength(0)
-    expect(m.q('inline-todo-said-req_report').textContent).toBe('This to-do was already answered.')
+    expect(m.q('exchange-state').textContent).toBe('This to-do was already answered.')
   })
   it('renaming the work leaves its to-do actionable', async () => {
     const m = mount(

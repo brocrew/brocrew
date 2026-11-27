@@ -162,6 +162,7 @@ const todo = computed(() => {
     asked.answered !== undefined || asked.closed !== undefined || asked.note !== undefined
   return {
     row,
+    label: asked.label ?? null,
     listed: !ended,
     pending: shared?.pending ?? false,
     taken: ended || (shared?.taken ?? false),
@@ -176,6 +177,10 @@ const todo = computed(() => {
               : (shared?.said ?? null))),
   }
 })
+
+/** An answered or ended to-do folds like a settled question, and opens to its whole words. */
+const todoFolds = computed(() => todo.value !== null && todo.value.taken && !todo.value.pending)
+const TODO_WORD = 'to-do'
 
 const agentQuestion = computed(
   () =>
@@ -347,8 +352,26 @@ async function takeItBack(piece: string): Promise<void> {
     :shifted="false"
     data-cy="outgoing"
     data-tool="request_action"
+    :exchange="
+      todoFolds
+        ? {
+            from: props.ownAgent ?? THIS_CONVERSATION_FIRST,
+            to: A_PERSON_ADDRESSED,
+            kind: TODO_WORD,
+            label: todo.label,
+            text: todo.row.text,
+            at: item.at,
+            state: todo.said,
+          }
+        : undefined
+    "
   >
-    <TodoCard :card="todo" cy="inline" :can-answer="props.canAnswer && !!props.sessionId" />
+    <TodoCard
+      :card="todo"
+      cy="inline"
+      :can-answer="props.canAnswer && !!props.sessionId"
+      :whole="todoFolds"
+    />
   </OutsideCard>
   <OutsideCard
     v-else-if="question"
