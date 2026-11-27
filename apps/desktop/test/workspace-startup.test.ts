@@ -13,6 +13,10 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { pinTheDataFolder, workspaceStartup, type PinnableApp } from '../src/main/data-folder'
 import { workspaceLaunchMessage } from '../src/main/workspace-routing'
 import { ExistingWorkspace, WorkspaceUnavailable } from '../src/main/workspace-startup'
+import {
+  openWorkspaceDatabase,
+  type WorkspaceDatabaseOpening,
+} from '../src/main/db/open-workspace-database'
 import { createRecoveryService, inspect } from '../src/main/recovery/coordinator'
 import { nodeFs as recoveryFiles } from '../src/main/recovery/files'
 import { openDatabase } from '../src/main/db/connection'
@@ -354,16 +358,13 @@ it('main passes the must-exist option into SQLite when the database disappears a
     workspaceStartup,
     join,
     resolveMigrationsFolder: () => migrations,
-    openDatabase: (file: string, options?: { fileMustExist: boolean }) => {
-      rmSync(file)
-      const db = openDatabase(file, options)
+    openWorkspaceDatabase: (opening: WorkspaceDatabaseOpening) => {
+      rmSync(opening.file)
+      const db = openWorkspaceDatabase({ ...opening, migrate: () => {} })
       connections.push(db)
       return db
     },
-    openOrRefuse: () => {},
     theBuildsMigrations: () => [],
-    applyMigrations: () => {},
-    mainThreadWork: { timed: <T>(_what: string, work: () => T): T => work() },
     db: null,
     presentation: { hidden: false },
   }
