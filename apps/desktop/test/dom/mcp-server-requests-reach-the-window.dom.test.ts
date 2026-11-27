@@ -1,71 +1,19 @@
-import { combinedPersonsQueue } from '../helpers/combined-persons-queue'
-import { readingOf } from './forest-fixture'
-import type { ForestScope } from '../../src/shared/the-whole-forest'
-import { createModelLists } from '../lib/provider-launch-fixture'
+import {
+  installRuntimeScreenFixture,
+  disposeRuntimeScreenFixture,
+  runtime,
+  walk,
+} from './runtime-screen-fixture'
 import type { McpServerRequestForAPerson } from '../../src/shared/conversation-events'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { nextTick } from 'vue'
 import { usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
 import type { WaitingOnWhoWrote } from '../../src/shared/waiting-on-who-wrote'
-import RuntimeScreen from '../../src/renderer/src/components/RuntimeScreen.vue'
-import { createSessionStore, type SessionStore } from '../../src/renderer/src/lib/session-store'
-import { createAgentStore } from '../../src/renderer/src/lib/agent-store'
+import { mount } from './harness'
 
-import { useOverlays } from '../../src/renderer/src/lib/overlay-store'
-import type { AgentIdentities, RuntimeBridge } from '../../src/shared/runtime-ipc'
-import { applyTheme } from '../../src/renderer/src/lib/apply-theme'
-import { mount, unmountAll } from './harness'
+const { default: RuntimeScreen } =
+  await import('../../src/renderer/src/components/RuntimeScreen.vue')
 
-// Provider setup has its own tests; this screen fixture never enters sign-in.
-vi.mock('../../src/renderer/src/components/ProviderSetupAtLaunch.vue', () => ({
-  default: { render: () => null },
-}))
-
-let sessions: SessionStore
-let agentStore: ReturnType<typeof createAgentStore>
-vi.mock('../../src/renderer/src/composables/useSessionStore', () => ({
-  useSessionStore: () => sessions,
-}))
-vi.mock('../../src/renderer/src/composables/useAgentStore', () => ({
-  useAgentStore: () => agentStore,
-}))
-vi.mock('../../src/renderer/src/composables/useModelLists', () => ({
-  useModelLists: () => createModelLists(() => window.api.runtime),
-}))
-
-const agents: AgentIdentities = {
-  identities: [
-    {
-      id: 'agent:editor',
-      slug: 'editor',
-      displayName: 'Editor',
-      createdAt: 1,
-      createdBy: null,
-      provider: 'codex',
-      externalMcpServerIds: [],
-    },
-  ],
-  use: [
-    {
-      slug: 'editor',
-      conversations: 0,
-      thisAppMintsIt: false,
-      isLaunching: false,
-      isStarting: false,
-      runsOn: { provider: 'codex', from: 'saved' },
-    },
-  ],
-  foldersWithoutARow: [],
-  defaultApprovalMode: 'ask',
-  externalMcpServers: [],
-}
-const walk = () => ({
-  rows: [],
-  walk: 'every-conversation-that-routed' as const,
-  ledgers: 0,
-  rowsUnread: 0,
-})
-const forestWalk = () => ({ ...walk(), walk: 'every-conversation-this-app-placed' as const })
 let owed: WaitingOnWhoWrote[] = []
 let requests: McpServerRequestForAPerson[] = []
 const request = (n: number): McpServerRequestForAPerson => ({
@@ -82,75 +30,31 @@ const request = (n: number): McpServerRequestForAPerson => ({
     requestedBy: 'editor',
   },
 })
-const runtime = {
-  personsQueue: vi.fn<RuntimeBridge['personsQueue']>((): ReturnType<typeof combinedPersonsQueue> =>
-    combinedPersonsQueue(runtime),
-  ),
-  onEvent: vi.fn(() => () => {}),
-  onLiveness: vi.fn(() => () => {}),
-  onChanged: vi.fn(() => () => {}),
-  onStates: vi.fn(() => () => {}),
-  onLimitsDisplayChanged: vi.fn(() => () => {}),
-  attachOpen: vi.fn(async () => []),
-  listResumable: vi.fn(async () => []),
-  listUnresumable: vi.fn(async () => []),
-  agentIdentities: vi.fn(async () => agents),
-  profiles: vi.fn(async () => []),
-  capabilities: vi.fn(async () => ({})),
-  providerVersions: vi.fn(async () => []),
-  questionsForAPerson: vi.fn(async () => walk()),
-  decisionsForAPerson: vi.fn(async () => walk()),
-  stalledWorkForAPerson: vi.fn(async () => walk()),
-  stoppedWorkForAPerson: vi.fn(async () => walk()),
-  workIncidentsForAPerson: vi.fn(async () => walk()),
-  waitingOnWhoWroteForAPerson: vi.fn(async () => ({
-    ...walk(),
-    walk: 'every-conversation-that-was-given-work' as const,
-    rows: owed,
-  })),
-  instructionAsksForAPerson: vi.fn(async () => []),
-  mcpServerRequestsForAPerson: vi.fn(async () => requests),
-  decideMcpServerRequest: vi.fn(async ({ requestId }: { requestId: string; approve: boolean }) => {
+const decideMcpServerRequest = vi.fn(
+  async ({ requestId }: { requestId: string; approve: boolean }) => {
     requests = requests.filter((one) => one.requested.requestId !== requestId)
     return { outcome: 'taken' as const, reason: 'Registered. It offers: read_notes.' }
-  }),
-  readLimitsDisplay: vi.fn(async () => null),
-  readWorkspace: vi.fn(async () => null),
-  whatEachConversationIsWaitingOn: vi.fn(async () => null),
-  whatIsBeingDone: vi.fn(async () => ({ readAt: 1, conversations: [] })),
-  forestReading: vi.fn(async (scope: ForestScope) => readingOf([], scope)),
-  forestNodes: vi.fn(async () => ({ nodes: forestWalk(), gone: [], readAt: 1 })),
-}
+  },
+)
 
 beforeEach(() => {
-  vi.clearAllMocks()
   requests = []
   owed = []
-  usePersonsQueue().forget()
-  useOverlays().close()
-  localStorage.clear()
-  window.api = {
-    runtime,
-    getAppInfo: async () => ({
-      name: 'Fictional BroBot',
-      windowTitle: 'Fictional BroBot',
-      version: '0.0.0',
-      step: 'test',
-      workspace: { name: 'Fiction', path: '/fictional/work', isDefault: false },
-      build: { id: 'test', commit: '', dirty: false, branches: null },
-      db: { migrationsApplied: 0, providerSessionCount: 0 },
-    }),
-  } as unknown as Window['api']
-  sessions = createSessionStore(window.api.runtime as RuntimeBridge)
-  agentStore = createAgentStore(window.api.runtime)
+  installRuntimeScreenFixture()
+  runtime.waitingOnWhoWroteForAPerson.mockImplementation(
+    async () =>
+      ({
+        ...walk(),
+        walk: 'every-conversation-that-was-given-work' as const,
+        rows: owed,
+      }) as never,
+  )
+  runtime.mcpServerRequestsForAPerson.mockImplementation(async () => requests as never)
+  Object.assign(window.api.runtime, { decideMcpServerRequest })
 })
 afterEach(() => {
   usePersonsQueue().forget()
-  applyTheme(null)
-  unmountAll()
-  sessions.dispose()
-  useOverlays().close()
-  localStorage.clear()
+  disposeRuntimeScreenFixture()
 })
 
 it('one MCP request appears on Waiting, its rail badge and the overlay corner exactly once', async () => {
@@ -183,12 +87,12 @@ it('the actual screen sends only id and approve and removes the count before its
     .poll(() => m.all('waiting-server-request-approve-fictional-request-1').length)
     .toBe(1)
   m.q('waiting-server-request-approve-fictional-request-1').click()
-  await expect.poll(() => runtime.decideMcpServerRequest.mock.calls.length).toBe(1)
-  expect(runtime.decideMcpServerRequest).toHaveBeenCalledWith({
+  await expect.poll(() => decideMcpServerRequest.mock.calls.length).toBe(1)
+  expect(decideMcpServerRequest).toHaveBeenCalledWith({
     requestId: 'fictional-request-1',
     approve: true,
   })
-  expect(Object.keys(runtime.decideMcpServerRequest.mock.calls[0]![0]).sort()).toEqual([
+  expect(Object.keys(decideMcpServerRequest.mock.calls[0]![0]).sort()).toEqual([
     'approve',
     'requestId',
   ])

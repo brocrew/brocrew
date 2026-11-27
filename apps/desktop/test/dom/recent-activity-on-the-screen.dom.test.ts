@@ -1,144 +1,21 @@
-import { readingOf } from './forest-fixture'
-import type { ForestScope } from '../../src/shared/the-whole-forest'
-import { createModelLists } from '../lib/provider-launch-fixture'
+import {
+  installRuntimeScreenFixture,
+  disposeRuntimeScreenFixture,
+  runtime,
+} from './runtime-screen-fixture'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
-import { nextTick } from 'vue'
-import RuntimeScreen from '../../src/renderer/src/components/RuntimeScreen.vue'
-import { createSessionStore, type SessionStore } from '../../src/renderer/src/lib/session-store'
-import { createAgentStore } from '../../src/renderer/src/lib/agent-store'
-
-import { useOverlays } from '../../src/renderer/src/lib/overlay-store'
-import type { AgentIdentities, RuntimeBridge, ResumedSession } from '../../src/shared/runtime-ipc'
+import type { RuntimeBridge } from '../../src/shared/runtime-ipc'
 import type { ActivityLine, RecentActivityReading } from '../../src/shared/recent-activity'
-import { applyTheme } from '../../src/renderer/src/lib/apply-theme'
-import { mount, unmountAll, META } from './harness'
+import { mount } from './harness'
+import { settleFrames as settle } from './settle-dom'
 
-// Provider setup has its own tests; this screen fixture never enters sign-in.
-vi.mock('../../src/renderer/src/components/ProviderSetupAtLaunch.vue', () => ({
-  default: { render: () => null },
-}))
+const { default: RuntimeScreen } =
+  await import('../../src/renderer/src/components/RuntimeScreen.vue')
 
-let sessions: SessionStore
-let agentStore: ReturnType<typeof createAgentStore>
-vi.mock('../../src/renderer/src/composables/useSessionStore', () => ({
-  useSessionStore: () => sessions,
-}))
-vi.mock('../../src/renderer/src/composables/useAgentStore', () => ({
-  useAgentStore: () => agentStore,
-}))
-vi.mock('../../src/renderer/src/composables/useModelLists', () => ({
-  useModelLists: () => createModelLists(() => window.api.runtime),
-}))
-
-const agents: AgentIdentities = {
-  identities: [
-    {
-      id: 'agent:editor',
-      slug: 'editor',
-      displayName: 'Editor',
-      createdAt: 1,
-      createdBy: null,
-      provider: 'codex',
-      externalMcpServerIds: [],
-    },
-  ],
-  use: [
-    {
-      slug: 'editor',
-      conversations: 0,
-      thisAppMintsIt: false,
-      isLaunching: false,
-      isStarting: false,
-      runsOn: { provider: 'codex', from: 'saved' },
-    },
-  ],
-  foldersWithoutARow: [],
-  defaultApprovalMode: 'ask',
-  externalMcpServers: [],
-}
-const walk = () => ({
-  rows: [],
-  walk: 'every-conversation-that-routed' as const,
-  ledgers: 0,
-  rowsUnread: 0,
-})
-const forestWalk = () => ({ ...walk(), walk: 'every-conversation-this-app-placed' as const })
-const runtime = {
-  onEvent: vi.fn(() => () => {}),
-  onLiveness: vi.fn(() => () => {}),
-  onChanged: vi.fn(() => () => {}),
-  recentActivity: vi.fn<RuntimeBridge['recentActivity']>(),
-  onStates: vi.fn(() => () => {}),
-  onLimitsDisplayChanged: vi.fn(() => () => {}),
-  attachOpen: vi.fn(async (): Promise<ResumedSession[]> => []),
-  resolveLink: vi.fn<RuntimeBridge['resolveLink']>(async () => ({
-    state: 'unavailable',
-    kind: 'piece',
-    title: null,
-    status: null,
-    opens: null,
-  })),
-  look: vi.fn(async ({ sessionId }: { sessionId: string }): Promise<ResumedSession> => ({
-    ...META,
-    sessionId,
-    handover: 'recorded',
-    history: { entries: [], from: 0, hasOlder: false, turnAligned: true },
-  })),
-  latestHistory: vi.fn<RuntimeBridge['latestHistory']>(async () => ({
-    entries: [],
-    from: 0,
-    hasOlder: false,
-    turnAligned: true,
-  })),
-  archiveConversation: vi.fn(async ({ sessionId }: { sessionId: string }) => ({
-    done: true as const,
-    conversations: [sessionId],
-  })),
-  startAndSend: vi.fn(),
-  stopLooking: vi.fn(async () => {}),
-  send: vi.fn(),
-  resume: vi.fn(),
-  interrupt: vi.fn<RuntimeBridge['interrupt']>(async () => {}),
-  listResumable: vi.fn(async () => []),
-  listUnresumable: vi.fn(async () => []),
-  agentIdentities: vi.fn(async () => agents),
-  profiles: vi.fn(async () => []),
-  capabilities: vi.fn(async () => ({})),
-  providerVersions: vi.fn(async () => []),
-  questionsForAPerson: vi.fn(async () => walk()),
-  decisionsForAPerson: vi.fn(async () => walk()),
-  stalledWorkForAPerson: vi.fn(async () => walk()),
-  stoppedWorkForAPerson: vi.fn(async () => walk()),
-  workIncidentsForAPerson: vi.fn(async () => walk()),
-  waitingOnWhoWroteForAPerson: vi.fn(async () => walk()),
-  instructionAsksForAPerson: vi.fn(async () => []),
-  mcpServerRequestsForAPerson: vi.fn(async () => []),
-  readLimitsDisplay: vi.fn(async () => null),
-  readWorkspace: vi.fn(async () => null),
-  whatEachConversationIsWaitingOn: vi.fn(async () => null),
-  whatIsBeingDone: vi.fn(async () => ({ readAt: 1, conversations: [] })),
-  forestReading: vi.fn(async (scope: ForestScope) => readingOf([], scope)),
-  forestNodes: vi.fn(async () => ({ nodes: forestWalk(), gone: [], readAt: 1 })),
-}
-
+const recentActivity = vi.fn<RuntimeBridge['recentActivity']>()
 beforeEach(() => {
-  vi.clearAllMocks()
-  useOverlays().close()
-  localStorage.clear()
-  window.api = {
-    runtime,
-    getAppInfo: async () => ({
-      name: 'Fictional BroBot',
-      windowTitle: 'Fictional BroBot',
-      version: '0.0.0',
-      step: 'test',
-      workspace: { name: 'Fiction', path: '/fictional/work', isDefault: false },
-      build: { id: 'test', commit: '', dirty: false, branches: null },
-      db: { migrationsApplied: 0, providerSessionCount: 0 },
-    }),
-  } as unknown as Window['api']
-  sessions = createSessionStore(window.api.runtime as RuntimeBridge)
-  agentStore = createAgentStore(window.api.runtime)
+  installRuntimeScreenFixture()
+  Object.assign(window.api.runtime, { recentActivity })
 })
 
 /**
@@ -148,21 +25,9 @@ beforeEach(() => {
 
 afterEach(() => {
   // What a test told the host to answer goes back to the fixture's own answers.
-  for (const one of [runtime.look, runtime.recentActivity]) one.mockReset()
-  applyTheme(null)
-  unmountAll()
-  sessions.dispose()
-  useOverlays().close()
-  localStorage.clear()
+  for (const one of [runtime.look, recentActivity]) one.mockReset()
+  disposeRuntimeScreenFixture()
 })
-
-const settle = async (): Promise<void> => {
-  await new Promise((done) => setTimeout(done, 0))
-  await nextTick()
-  await new Promise<void>((done) =>
-    requestAnimationFrame(() => requestAnimationFrame(() => done())),
-  )
-}
 
 const MINUTE = 60_000
 const LAST_SEEN = 'brocrew:last-seen:/fictional/work'
@@ -200,14 +65,14 @@ const summary = (m: { host: HTMLElement }): string =>
 it('Waiting on you says what finished or failed since the person was last here, above its lists', async () => {
   const since = Date.now() - 40 * MINUTE
   localStorage.setItem(LAST_SEEN, String(since))
-  runtime.recentActivity.mockResolvedValue(
+  recentActivity.mockResolvedValue(
     reading([line('1', 'finished', 5), line('2', 'failed', 10), line('3', 'started', 15)]),
   )
   const m = await screen()
   m.q('rail-waiting').click()
   await expect.poll(() => summary(m)).toContain('1 reported done · 1 failed')
   // The chip asks for exactly the time since the person was last here.
-  expect(runtime.recentActivity).toHaveBeenCalledWith({ from: since, to: expect.any(Number) })
+  expect(recentActivity).toHaveBeenCalledWith({ from: since, to: expect.any(Number) })
   // It sits in the page head, above the lists.
   const chip = m.q('since-last-here').getBoundingClientRect()
   const lists = m.host.querySelector<HTMLElement>('.attention-list')!.getBoundingClientRect()
@@ -216,22 +81,22 @@ it('Waiting on you says what finished or failed since the person was last here, 
 
 it('See all goes to Recent activity, which reads the chosen window', async () => {
   localStorage.setItem(LAST_SEEN, String(Date.now() - 40 * MINUTE))
-  runtime.recentActivity.mockResolvedValue(reading([line('1', 'finished', 5)]))
+  recentActivity.mockResolvedValue(reading([line('1', 'finished', 5)]))
   const m = await screen()
   m.q('rail-waiting').click()
   await expect.poll(() => m.all('since-last-here').length).toBe(1)
   m.q('since-last-here').click()
   await expect.poll(() => m.all('recent-activity').length).toBe(1)
   await expect.poll(() => m.all('activity-line').length).toBe(1)
-  runtime.recentActivity.mockClear()
+  recentActivity.mockClear()
   m.q(`activity-window-${String(7 * 24 * 3_600_000)}`).click()
-  await expect.poll(() => runtime.recentActivity.mock.calls.length).toBeGreaterThan(0)
-  const asked = runtime.recentActivity.mock.calls.at(-1)![0]
+  await expect.poll(() => recentActivity.mock.calls.length).toBeGreaterThan(0)
+  const asked = recentActivity.mock.calls.at(-1)![0]
   expect(asked.to - asked.from).toBe(7 * 24 * 3_600_000)
 })
 
 it('without a last-seen record there is no box, and nothing is guessed', async () => {
-  runtime.recentActivity.mockResolvedValue(reading([line('1', 'finished', 5)]))
+  recentActivity.mockResolvedValue(reading([line('1', 'finished', 5)]))
   const m = await screen()
   m.q('rail-waiting').click()
   await settle()
@@ -242,10 +107,10 @@ it('without a last-seen record there is no box, and nothing is guessed', async (
 
 it('a read that fails draws no box, rather than an empty one', async () => {
   localStorage.setItem(LAST_SEEN, String(Date.now() - 40 * MINUTE))
-  runtime.recentActivity.mockRejectedValue(new Error('The read could not be made.'))
+  recentActivity.mockRejectedValue(new Error('The read could not be made.'))
   const m = await screen()
   m.q('rail-waiting').click()
-  await expect.poll(() => runtime.recentActivity.mock.calls.length).toBeGreaterThan(0)
+  await expect.poll(() => recentActivity.mock.calls.length).toBeGreaterThan(0)
   await settle()
   expect(m.all('since-last-here')).toHaveLength(0)
   m.q('rail-away').click()
@@ -255,7 +120,7 @@ it('a read that fails draws no box, rather than an empty one', async () => {
 /** Every activity read waits until the test answers it, in the order they were asked. */
 function heldReplies() {
   const waiting: ((value: RecentActivityReading) => void)[] = []
-  runtime.recentActivity.mockImplementation(
+  recentActivity.mockImplementation(
     () =>
       new Promise((done) => {
         waiting.push(done)
@@ -315,7 +180,7 @@ it('a reply for an earlier "last here" is dropped once the boundary moved', asyn
   localStorage.setItem(LAST_SEEN, String(later))
   window.dispatchEvent(new StorageEvent('storage', { key: LAST_SEEN }))
   await expect.poll(() => replies.length).toBe(2)
-  expect(runtime.recentActivity.mock.calls.at(-1)![0].from).toBe(later)
+  expect(recentActivity.mock.calls.at(-1)![0].from).toBe(later)
   replies[1]!(reading([line('1', 'finished', 5)]))
   await expect.poll(() => summary(m)).toContain('1 reported done')
   replies[0]!(
