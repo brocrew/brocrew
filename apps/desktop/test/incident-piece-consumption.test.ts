@@ -11,6 +11,9 @@ import { rowsUnreadOnce } from '../src/main/db/rows-unread'
 import { windowFoldCache } from '../src/main/db/window-fold-cache'
 import { WindowReadEngine } from '../src/main/db/window-read-engine'
 import { WindowWorkerReader } from '../src/main/db/window-worker-reader'
+import { WindowIncidentReads } from '../src/main/db/window-incident-reads'
+import { recordedReadKey } from '../src/main/db/window-read-protocol'
+import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { bundleAWorker } from './helpers/bundle-a-worker'
 import { adoptOwnerWithChild } from './helpers/adopt-owner-with-child'
 import { withoutBrief } from './helpers/window-incident-cases'
@@ -114,6 +117,12 @@ it.each([false, true])(
             piecesSkipped: torn ? [skipped] : [],
           },
         ],
+        reads: expect.arrayContaining([
+          expect.objectContaining({ key: recordedReadKey(['providerFailureEpisode', 'alpha']) }),
+          expect.objectContaining({
+            key: recordedReadKey(['reconciliationReceiptsForOwner', 'alpha']),
+          }),
+        ]),
       })
     } finally {
       await reader.close()
@@ -121,3 +130,90 @@ it.each([false, true])(
   },
   60_000,
 )
+
+it('answers a group’s failure and wait reads from the worker’s snapshot, and asks the store for the rest', () => {
+  const directory = mkdtempSync(join(tmpdir(), 'reconciliation-reads-'))
+  const file = join(directory, 'fictional.sqlite')
+  const db = openDatabase(file)
+  cleanup.push(() => {
+    db.close()
+    rmSync(directory, { recursive: true, force: true })
+  })
+  applyMigrations(db, join(dirname(fileURLToPath(import.meta.url)), '../src/main/db/migrations'))
+  const store = createSessionStore(db)
+  adoptOwnerWithChild(store, 'alpha', directory, 'Fictional open work')
+  const root = store.rootOf('alpha')!
+  const target = {
+    piece: 'fictional-target',
+    parent: root.piece,
+    givenBy: 'alpha',
+    title: 'Fictional target',
+    brief: 'Fictional',
+  }
+  store.recordGive(
+    { ...target, number: 2, owner: 'alpha', folder: null, inputs: [] },
+    store.nextOrdinal('alpha'),
+    { type: 'work_given', ...target, label: `${root.label}.2` },
+    2,
+  )
+  store.append(
+    'alpha',
+    store.nextOrdinal('alpha'),
+    {
+      type: 'work_status_set',
+      piece: root.piece,
+      line: 'waiting for the fictional child',
+      by: 'alpha',
+      waiting: true,
+      on: { kind: 'agent', piece: target.piece, label: `${root.label}.2` },
+    } as TranscriptEvent,
+    2,
+  )
+  const engine = new WindowReadEngine(file)
+  cleanup.push(() => engine.close())
+  const result = engine.read({ kind: 'reconciliation-folds', holders: ['alpha'] })
+  if (result.kind !== 'reconciliation-folds') throw new Error('wrong reconciliation reading')
+  expect(result.reads?.map((read) => read.key)).toEqual(
+    expect.arrayContaining([
+      recordedReadKey(['providerFailureEpisode', 'alpha']),
+      recordedReadKey(['reconciliationReceiptsForOwner', 'alpha']),
+      recordedReadKey(['workById', target.piece]),
+      recordedReadKey(['piecesOwnedBy', 'alpha']),
+    ]),
+  )
+
+  const incidents = new WindowIncidentReads(
+    () => null,
+    () => null,
+  )
+  const served = incidents.store(store)
+  const asked: string[] = []
+  for (const key of ['workById', 'piecesOwnedBy', 'providerFailureEpisode'] as const) {
+    const original = store[key].bind(store) as (...args: unknown[]) => unknown
+    vi.spyOn(store, key).mockImplementation(((...args: unknown[]) => {
+      asked.push(`${key} ${String(args[0])}`)
+      return original(...args)
+    }) as never)
+  }
+  const expected = {
+    target: store.workById(target.piece),
+    pieces: store.piecesOwnedBy('alpha', rowsUnreadOnce()),
+    episode: store.providerFailureEpisode('alpha'),
+  }
+  asked.length = 0
+  expect(expected.target?.owner).toBe('alpha')
+  const answered = incidents.run(
+    () => ({
+      target: served.workById(target.piece),
+      pieces: served.piecesOwnedBy('alpha', rowsUnreadOnce()),
+      episode: served.providerFailureEpisode('alpha'),
+      elsewhere: served.workById('fictional-unrecorded-piece'),
+    }),
+    result,
+  )
+  expect(answered).toEqual({ ...expected, elsewhere: null })
+  expect(asked).toEqual(['workById fictional-unrecorded-piece'])
+  // Outside the group's step every read goes to the store.
+  served.workById(target.piece)
+  expect(asked).toEqual(['workById fictional-unrecorded-piece', `workById ${target.piece}`])
+})

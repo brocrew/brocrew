@@ -10,10 +10,13 @@ import { createSessionStore, type SessionStore, type ThreadLeadRow } from './ses
 import { rowsUnreadOnce, type RowsUnread } from './rows-unread'
 import { readTheForestFirst } from './forest-first-read'
 import { TASK_IS_OPEN } from '../../shared/tasks'
+import type { StatusLine } from '../../shared/task-contracts'
 import {
   WINDOW_READ_BOUNDS,
   windowReadQuery,
   WindowReadUnavailable,
+  recordedReadKey,
+  type RecordedRead,
   type RoutingReading,
   type IncidentReading,
   type IncidentFact,
@@ -67,6 +70,90 @@ function reconciliationWorkFromOpenPieces(
     },
   }
   return foldedStore.reconciliationWork(new Set([sessionId]), unread)
+}
+
+/**
+ * The store reads the host makes for one reconciliation group beyond its piece folds — each
+ * holder's provider-failure episode, receipts and notice progress, and what its waits name — made
+ * in the same snapshot. A read that fails here is left out, so the host makes it itself.
+ */
+function recordReconciliationReads(store: SessionStore, checkCancelled: () => void) {
+  const all: RecordedRead[] = []
+  const values = new Map<string, unknown>()
+  const record = <T>(parts: readonly unknown[], read: (unread: RowsUnread) => T): T | undefined => {
+    const key = recordedReadKey(parts)
+    if (values.has(key)) return values.get(key) as T
+    checkCancelled()
+    const skipped: [string, SkippedRow][] = []
+    const counts = rowsUnreadOnce()
+    const unread: RowsUnread = {
+      in: (session) => (ordinal) => {
+        skipped.push([session, ordinal])
+        counts.in(session)(ordinal)
+      },
+      get count() {
+        return counts.count
+      },
+      get ledgersSkipped() {
+        return counts.ledgersSkipped
+      },
+    }
+    try {
+      const value = read(unread)
+      values.set(key, value)
+      all.push({ key, value, skipped })
+      return value
+    } catch {
+      checkCancelled()
+      return undefined
+    }
+  }
+  return {
+    all,
+    forHolder(
+      sessionId: string,
+      pieces: ReturnType<SessionStore['openPiecesOf']>,
+      work: ReturnType<SessionStore['reconciliationWork']>,
+    ): void {
+      const episode = record(['providerFailureEpisode', sessionId], () =>
+        store.providerFailureEpisode(sessionId),
+      )
+      if (typeof episode === 'object')
+        for (const asker of new Set(episode.asks.map((one) => one.asker)))
+          record(['routedRequestsOf', asker], (unread) => store.routedRequestsOf(asker, unread))
+      const receipts = record(['reconciliationReceiptsForOwner', sessionId], () =>
+        store.reconciliationReceiptsForOwner(sessionId),
+      )
+      for (const receipt of receipts ?? [])
+        if (receipt.kind === 'provider-turn-failed' && receipt.outcome === 'planned')
+          record(['providerFailureNoticeProgress', receipt.target, receipt.messageId], () =>
+            store.providerFailureNoticeProgress(receipt.target, receipt.messageId),
+          )
+      for (const row of work) {
+        let line: StatusLine | null | undefined
+        try {
+          line =
+            (row.parent === null ? store.rootLines(row.piece).statusLine : undefined) ??
+            pieces.find((one) => one.piece === row.piece)?.statusLine
+        } catch {
+          checkCancelled()
+          continue
+        }
+        const on = line?.waiting === true ? line.on : undefined
+        if (on === undefined) continue
+        if (on.kind === 'agent' && 'piece' in on) {
+          const target = record(['workById', on.piece], () => store.workById(on.piece))
+          if (target != null && target.parent !== null)
+            record(['piecesOwnedBy', target.owner], (unread) =>
+              store.piecesOwnedBy(target.owner, unread),
+            )
+        } else if (on.kind === 'person' || (on.kind === 'agent' && 'request' in on))
+          for (const id of new Set([sessionId, row.givenBy, line?.by]))
+            if (typeof id === 'string')
+              record(['routedRequestsOf', id], (unread) => store.routedRequestsOf(id, unread))
+      }
+    },
+  }
 }
 
 /** Canonical folds over one read-only WAL snapshot, consuming SQLite iterators incrementally. */
@@ -253,7 +340,10 @@ export class WindowReadEngine {
           kind: 'forest-nodes',
           ...store.forestNodesOf(query.conversations, new Set(query.drawn), query.hidden),
         }
+      } else if (query.kind === 'reconciliation-owners') {
+        result = { kind: 'reconciliation-owners', owners: store.reconciliationOwners(true) }
       } else if (query.kind === 'reconciliation-folds') {
+        const reads = recordReconciliationReads(store, checkCancelled)
         result = {
           kind: 'reconciliation-folds',
           owners: query.holders.map((sessionId) => {
@@ -268,6 +358,7 @@ export class WindowReadEngine {
               piecesSkipped,
               noted,
             )
+            reads.forHolder(sessionId, pieces, work)
             return {
               sessionId,
               pieces: pieces.map(withoutBrief),
@@ -275,6 +366,7 @@ export class WindowReadEngine {
               piecesSkipped: [...piecesSkipped],
             }
           }),
+          reads: reads.all,
         }
       } else if (query.kind === 'incidents') {
         const owners = store.reconciliationOwners()

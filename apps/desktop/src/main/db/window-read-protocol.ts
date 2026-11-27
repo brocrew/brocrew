@@ -57,6 +57,7 @@ export const windowReadQuery = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('incidents'), reuse: foldReuse.optional() }).strict(),
   z.object({ kind: z.literal('checkpoint'), reuse: foldReuse.optional() }).strict(),
   z.object({ kind: z.literal('reconciliation-folds'), holders: conversationIds }).strict(),
+  z.object({ kind: z.literal('reconciliation-owners') }).strict(),
   z
     .object({
       kind: z.literal('work-given'),
@@ -174,9 +175,27 @@ export interface IncidentReading extends ReconciliationFoldReading {
   readonly messagesSkipped: readonly SkippedRow[]
   readonly stopSkipped: readonly SkippedRow[]
 }
+/**
+ * One store read the host makes while it reconciles, made by the worker in the same snapshot:
+ * `key` is the method and its arguments, `skipped` the rows it could not read, by conversation.
+ */
+export interface RecordedRead {
+  readonly key: string
+  readonly value: unknown
+  readonly skipped: readonly (readonly [string, SkippedRow])[]
+}
+/** The key a recorded read is stored and looked up under: the method and its arguments. */
+export function recordedReadKey(parts: readonly unknown[]): string {
+  return JSON.stringify(parts)
+}
 export interface WindowReconciliationFolds {
   readonly kind: 'reconciliation-folds'
   readonly owners: readonly ReconciliationFoldReading[]
+  readonly reads?: readonly RecordedRead[]
+}
+interface WindowReconciliationOwners {
+  readonly kind: 'reconciliation-owners'
+  readonly owners: readonly string[]
 }
 export interface WindowIncidents {
   readonly kind: 'incidents'
@@ -205,6 +224,7 @@ export type WindowReadResult =
   | WindowActivity
   | WindowIncidents
   | WindowReconciliationFolds
+  | WindowReconciliationOwners
   | WindowForest
   | WindowForestNodes
   | WindowPublication
@@ -256,7 +276,21 @@ export const windowReadResult = z.discriminatedUnion('kind', [
     .object({
       kind: z.literal('reconciliation-folds'),
       owners: z.array(reconciliationFoldReading.strict()),
+      reads: z
+        .array(
+          z
+            .object({
+              key: z.string(),
+              value: z.unknown(),
+              skipped: z.array(z.tuple([z.string(), skipped])),
+            })
+            .strict(),
+        )
+        .optional(),
     })
+    .strict(),
+  z
+    .object({ kind: z.literal('reconciliation-owners'), owners: z.array(z.string().min(1)) })
     .strict(),
   z
     .object({

@@ -39,7 +39,13 @@ export interface ReconciliationPiece {
 
 export interface ReconciliationReads {
   holders(): readonly string[]
+  /** Reads the holders off the writer; the returned step answers them, or `undefined` to read here. */
+  prepareHolders?(): Promise<(() => readonly string[] | undefined) | undefined>
   providerFailures?(holders: ReadonlySet<string>): void
+  /**
+   * Reads a group off the writer. The returned step, run right after the await, settles the group's
+   * provider failures and answers its pieces, or answers `undefined` having done neither.
+   */
   preparePieces?(
     holders: ReadonlySet<string>,
   ): Promise<(() => readonly ReconciliationPiece[] | undefined) | undefined>
@@ -126,7 +132,10 @@ export class WorkReconciler {
   private async walk(holders?: ReadonlySet<string>): Promise<void> {
     if (holders === undefined) {
       this.watching.clear()
-      const all = this.reads.holders()
+      const prepared =
+        this.reads.prepareHolders === undefined ? undefined : await this.reads.prepareHolders()
+      if (this.closed) return
+      const all = prepared?.() ?? this.reads.holders()
       for (let at = 0; at < all.length; at += HOLDERS_READ_AT_ONCE) {
         if (at > 0) await new Promise((resolve) => setImmediate(resolve))
         if (this.closed) return
@@ -144,11 +153,15 @@ export class WorkReconciler {
   }
 
   private async walkHolders(holders: ReadonlySet<string>): Promise<void> {
-    this.reads.providerFailures?.(holders)
     const prepared =
       this.reads.preparePieces === undefined ? undefined : await this.reads.preparePieces(holders)
     if (this.closed) return
-    const pieces = (prepared?.() ?? this.reads.pieces(holders)).filter(
+    let read = prepared?.()
+    if (read === undefined) {
+      this.reads.providerFailures?.(holders)
+      read = this.reads.pieces(holders)
+    }
+    const pieces = read.filter(
       (one) => one.disposition !== 'ended' && one.disposition !== 'unknown',
     )
     for (const piece of pieces)

@@ -97,16 +97,82 @@ describe('ordinary reconciliation with worker preparation', () => {
 
       await machine.run(new Set(['holder']))
       await machine.run(new Set(['dependency']))
+      // The group's provider failures are settled after the worker's reply, before its pieces.
       expect(calls).toEqual([
-        'provider',
         'worker',
+        'provider',
         'holder',
-        'provider',
         'worker',
+        'provider',
         'dependency,holder',
       ])
     },
   )
+
+  it('a usable prepared step settles the failures and answers the pieces itself', async () => {
+    const f = fixture()
+    const calls: string[] = []
+    const machine = new WorkReconciler({
+      ...f.reads,
+      providerFailures: () => calls.push('host provider'),
+      preparePieces: async (holders) => {
+        calls.push('worker')
+        return () => {
+          calls.push(`step ${[...holders].join(',')}`)
+          return f.reads.pieces(holders)
+        }
+      },
+      pieces: () => {
+        calls.push('host pieces')
+        return []
+      },
+    })
+
+    await flush(machine)
+    // The delivery reruns the group the same way; the host never settles it itself.
+    expect(calls.slice(0, 2)).toEqual(['worker', 'step holder'])
+    expect(calls.filter((one) => one.startsWith('host'))).toEqual([])
+    expect(f.deliveries.map((one) => one.target)).toEqual(['holder'])
+  })
+
+  it('reads the holders off the writer, and here when that reply is unusable', async () => {
+    for (const why of ['usable', 'moved', 'busy'] as const) {
+      const f = fixture()
+      const asked: string[] = []
+      const machine = new WorkReconciler({
+        ...f.reads,
+        prepareHolders: async () =>
+          why === 'busy' ? undefined : () => (why === 'moved' ? undefined : ['holder']),
+        holders: () => {
+          asked.push('host holders')
+          return f.reads.holders()
+        },
+      })
+      await flush(machine)
+      expect(asked).toEqual(why === 'usable' ? [] : ['host holders'])
+      expect(f.deliveries.map((one) => one.target)).toEqual(['holder'])
+    }
+  })
+
+  it('reads no holders after a close during the holders read', async () => {
+    const f = fixture()
+    const held = deferred()
+    const machine = new WorkReconciler({
+      ...f.reads,
+      prepareHolders: async () => {
+        await held.promise
+        return () => ['holder']
+      },
+      holders: () => {
+        throw new Error('late fallback')
+      },
+    })
+    const pass = machine.run()
+    machine.close()
+    held.resolve()
+    await pass
+    expect(f.receipts).toEqual([])
+  })
 
   it('does not compose a prepared read or fall back after close', async () => {
     const f = fixture()

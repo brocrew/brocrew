@@ -2754,6 +2754,7 @@ export class RuntimeHost implements LiveHost {
       ...(deps.windowReader === undefined
         ? {}
         : {
+            prepareHolders: () => this.prepareReconciliationOwners(),
             preparePieces: (holders: ReadonlySet<string>) =>
               this.prepareReconciliationPieces(holders),
           }),
@@ -13334,6 +13335,25 @@ export class RuntimeHost implements LiveHost {
     return rows.filter((row) => !abandonments.has(row.piece))
   }
 
+  private async prepareReconciliationOwners() {
+    const query: WindowReadQuery = { kind: 'reconciliation-owners' }
+    const before = this.sampleWindowWriter(query)
+    const reader = this.deps.windowReader
+    if (before === null || reader === undefined || this.launches.closed) return undefined
+    try {
+      const result = await reader.read(query)
+      if (result.kind !== 'reconciliation-owners') return undefined
+      return () => {
+        if (this.launches.closed) return []
+        this.deps.store.checkCommitted()
+        return sameWindowWriter(before, this.sampleWindowWriter(query)) ? result.owners : undefined
+      }
+    } catch (error) {
+      if (error instanceof WindowReadUnavailable) return undefined
+      throw error
+    }
+  }
+
   private async prepareReconciliationPieces(holders: ReadonlySet<string>) {
     const query: WindowReadQuery = { kind: 'reconciliation-folds', holders: [...holders] }
     const before = this.sampleWindowWriter(query)
@@ -13352,7 +13372,12 @@ export class RuntimeHost implements LiveHost {
         if (this.launches.closed) return []
         this.deps.store.checkCommitted()
         if (!sameWindowWriter(before, this.sampleWindowWriter(query))) return undefined
-        return this.reconciliationPiecesForHolders(holders, result)
+        this.windowIncidentReads.run(() => this.reconcileProviderFailureNotices(holders), result)
+        // A failure notice recorded just now moves the writer, so the pieces are read here instead.
+        this.deps.store.checkCommitted()
+        return sameWindowWriter(before, this.sampleWindowWriter(query))
+          ? this.reconciliationPiecesForHolders(holders, result)
+          : this.reconciliationPiecesForHolders(holders)
       }
     } catch (error) {
       if (error instanceof WindowReadUnavailable) return undefined

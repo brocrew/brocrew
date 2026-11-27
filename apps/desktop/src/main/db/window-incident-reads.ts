@@ -13,6 +13,8 @@ import {
   type WindowIncidents,
   type WindowReconciliationFolds,
   type ReconciliationFoldReading,
+  type RecordedRead,
+  recordedReadKey,
 } from './window-read-protocol'
 
 export const INCIDENT_READ_LIMIT = { entries: 512, bytes: 4 * 1024 * 1024 } as const
@@ -24,6 +26,7 @@ export class WindowIncidentReads {
     active: boolean
     owners?: ReadonlyMap<string, IncidentReading>
     folds?: ReadonlyMap<string, ReconciliationFoldReading>
+    reads?: ReadonlyMap<string, RecordedRead>
     roots?: ReadonlyMap<string, IncidentHistory['roots'][number]>
     reported?: ReadonlyMap<string, IncidentFact<readonly string[]>>
   }>()
@@ -50,7 +53,10 @@ export class WindowIncidentReads {
       ...(snapshot === undefined
         ? {}
         : snapshot.kind === 'reconciliation-folds'
-          ? { folds: new Map(snapshot.owners.map((row) => [row.sessionId, row])) }
+          ? {
+              folds: new Map(snapshot.owners.map((row) => [row.sessionId, row])),
+              reads: new Map((snapshot.reads ?? []).map((read) => [read.key, read])),
+            }
           : {
               owners: new Map(snapshot.owners.map((row) => [row.sessionId, row])),
               roots: new Map(
@@ -159,6 +165,15 @@ export class WindowIncidentReads {
       if (row !== undefined) for (const ordinal of row.piecesSkipped) unread?.in(id)(ordinal)
       return row
     }
+    // A read the worker made for this reconciliation group, with the rows it could not read.
+    const recorded = (parts: readonly unknown[], unread?: RowsUnread) => {
+      const scope = this.context.getStore()
+      if (scope?.active !== true) return undefined
+      const read = scope.reads?.get(recordedReadKey(parts))
+      if (read === undefined) return undefined
+      for (const [session, ordinal] of read.skipped) unread?.in(session)(ordinal)
+      return { value: structuredClone(read.value) }
+    }
     const valueOf = <T>(fact: IncidentFact<T> | undefined): T => {
       if (fact == null) throw new WindowReadUnavailable()
       return structuredClone(fact.value)
@@ -255,9 +270,46 @@ export class WindowIncidentReads {
         if (key === 'routedRequestsOf')
           return (id: string, unread?: RowsUnread) => {
             const row = fact(id, unread, 'routes')
-            return row === undefined
+            if (row !== undefined) return structuredClone(row.routes)
+            const read = recorded([key, id], unread)
+            return read === undefined
               ? store.routedRequestsOf(id, unread)
-              : structuredClone(row.routes)
+              : (read.value as ReturnType<SessionStore['routedRequestsOf']>)
+          }
+        if (key === 'providerFailureEpisode')
+          return (...args: Parameters<SessionStore['providerFailureEpisode']>) => {
+            const read = args.length === 1 ? recorded([key, args[0]]) : undefined
+            return read === undefined
+              ? store.providerFailureEpisode(...args)
+              : (read.value as ReturnType<SessionStore['providerFailureEpisode']>)
+          }
+        if (key === 'reconciliationReceiptsForOwner')
+          return (owner: string) => {
+            const read = recorded([key, owner])
+            return read === undefined
+              ? store.reconciliationReceiptsForOwner(owner)
+              : (read.value as ReturnType<SessionStore['reconciliationReceiptsForOwner']>)
+          }
+        if (key === 'providerFailureNoticeProgress')
+          return (target: string, messageId: string) => {
+            const read = recorded([key, target, messageId])
+            return read === undefined
+              ? store.providerFailureNoticeProgress(target, messageId)
+              : (read.value as ReturnType<SessionStore['providerFailureNoticeProgress']>)
+          }
+        if (key === 'workById')
+          return (piece: string) => {
+            const read = recorded([key, piece])
+            return read === undefined
+              ? store.workById(piece)
+              : (read.value as ReturnType<SessionStore['workById']>)
+          }
+        if (key === 'piecesOwnedBy')
+          return (owner: string, unread?: RowsUnread) => {
+            const read = recorded([key, owner], unread)
+            return read === undefined
+              ? store.piecesOwnedBy(owner, unread)
+              : (read.value as ReturnType<SessionStore['piecesOwnedBy']>)
           }
         if (key === 'messagesWaitingIn')
           return (id: string, unread?: RowsUnread, maximumRows?: number) => {
