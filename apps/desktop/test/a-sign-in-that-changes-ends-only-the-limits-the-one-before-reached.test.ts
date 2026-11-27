@@ -1,3 +1,4 @@
+import { ClaudeQueryDouble as FakeQuery } from './lib/scripted-claude-query'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -8,7 +9,6 @@ import type { Options, SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import { ClaudeRuntime } from '@brobot2/runtime/claude'
 import { FakeProviderSessions, type FakeSessionHandle } from '@brobot2/runtime/testing'
 import type { Provider } from '@brobot2/shared'
-import { TheCliAnswersInOrder } from '../../../packages/runtime/test/the-cli-answers-in-order'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
@@ -409,53 +409,6 @@ describe('13a0ab52 · a sign-in that changes ends only the limits the sign-in be
   })
 
   describe('§3 · the reopen door: a conversation killed by a sign-in renewed elsewhere', () => {
-    /** ⚑ `a-conversation-reopens-on-a-renewed-sign-in.test.ts`' query double, as it is there. */
-    class FakeQuery {
-      private resolve: ((value: IteratorResult<SDKMessage>) => void) | null = null
-      private readonly buffer: SDKMessage[] = []
-      private done = false
-
-      emit(message: SDKMessage): void {
-        if (this.resolve) {
-          const resolve = this.resolve
-          this.resolve = null
-          resolve({ value: message, done: false })
-          return
-        }
-        this.buffer.push(message)
-      }
-
-      end(): void {
-        this.done = true
-        if (this.resolve) {
-          const resolve = this.resolve
-          this.resolve = null
-          resolve({ value: undefined as never, done: true })
-        }
-      }
-
-      async interrupt(): Promise<void> {}
-      async setPermissionMode(): Promise<void> {}
-      close(): void {
-        this.end()
-      }
-
-      [Symbol.asyncIterator](): AsyncIterator<SDKMessage> {
-        return this.cli.over({
-          next: (): Promise<IteratorResult<SDKMessage>> => {
-            const queued = this.buffer.shift()
-            if (queued) return Promise.resolve({ value: queued, done: false })
-            if (this.done) return Promise.resolve({ value: undefined as never, done: true })
-            return new Promise((resolve) => {
-              this.resolve = resolve
-            })
-          },
-        })
-      }
-
-      readonly cli = new TheCliAnswersInOrder()
-    }
-
     const frame = (value: Record<string, unknown>): SDKMessage => value as unknown as SDKMessage
     const REVOKED = 'Failed to authenticate. API Error: 401 OAuth access token has been revoked.'
 

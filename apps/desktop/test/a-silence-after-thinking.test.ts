@@ -1,8 +1,8 @@
+import { ClaudeQueryDouble as FakeQuery } from './lib/scripted-claude-query'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { CanUseTool, SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import { ClaudeRuntime } from '@brobot2/runtime/claude'
 import { type RuntimeEvent } from '@brobot2/runtime'
-import { TheCliAnswersInOrder } from '../../../packages/runtime/test/the-cli-answers-in-order'
 import { LivenessTracker } from '../src/main/runtime/liveness'
 
 /**
@@ -10,51 +10,6 @@ import { LivenessTracker } from '../src/main/runtime/liveness'
  * adapter's stall notice, and main's header tracker fed every event the adapter delivers. The
  * notice is the adapter's own, so neither reader may take it for the provider working again.
  */
-
-class FakeQuery {
-  readonly cli = new TheCliAnswersInOrder()
-  private resolve: ((value: IteratorResult<SDKMessage>) => void) | null = null
-  private readonly buffer: SDKMessage[] = []
-  private done = false
-
-  emit(message: SDKMessage): void {
-    if (this.resolve) {
-      const resolve = this.resolve
-      this.resolve = null
-      resolve({ value: message, done: false })
-      return
-    }
-    this.buffer.push(message)
-  }
-
-  end(): void {
-    this.done = true
-    if (this.resolve) {
-      const resolve = this.resolve
-      this.resolve = null
-      resolve({ value: undefined as never, done: true })
-    }
-  }
-
-  async interrupt(): Promise<void> {}
-  async setPermissionMode(): Promise<void> {}
-  close(): void {
-    this.end()
-  }
-
-  [Symbol.asyncIterator](): AsyncIterator<SDKMessage> {
-    return this.cli.over({
-      next: (): Promise<IteratorResult<SDKMessage>> => {
-        const queued = this.buffer.shift()
-        if (queued) return Promise.resolve({ value: queued, done: false })
-        if (this.done) return Promise.resolve({ value: undefined as never, done: true })
-        return new Promise((resolve) => {
-          this.resolve = resolve
-        })
-      },
-    })
-  }
-}
 
 const thinks = {
   type: 'stream_event',
