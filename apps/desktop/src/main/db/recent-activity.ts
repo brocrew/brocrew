@@ -5,7 +5,7 @@ import {
   type ActivityLine,
   type RecentActivityReading,
 } from '../../shared/recent-activity'
-import { ledgersSkippedOf, type DigestRow, type SessionStore } from '../db/session-store'
+import { ledgersSkippedOf, type DigestRow, type SessionStore } from './session-store'
 
 /** All rows and names belong to the worker's single read-only snapshot. */
 export function recentActivity(
