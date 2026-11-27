@@ -29,6 +29,11 @@ jobs:
       - name: Retain the release toolchain path
         shell: bash
         run: echo "PLUGIN_GATE_NODE22=$(command -v node)" >> "$GITHUB_ENV"
+      # The Chrome release builds its Windows process-birth reader with the pinned Go.
+      - uses: actions/setup-go@v6
+        with:
+          go-version: '1.27.2'
+          cache: false
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
@@ -36,7 +41,7 @@ jobs:
         run: node scripts/gates/plugin-packaged/owner.mjs init
       - name: Build, measure V0–V4, and exercise the packaged app under the independent owner
         shell: bash
-        run: node scripts/gates/plugin-packaged/owner.mjs run "$PLUGIN_GATE_CONTROL" "$PLUGIN_GATE_NODE22" "$(command -v pnpm)"
+        run: node scripts/gates/plugin-packaged/owner.mjs run "$PLUGIN_GATE_CONTROL" "$PLUGIN_GATE_NODE22" "$(command -v pnpm)" "$(command -v go)"
       - name: Best-effort drain; hosted VM teardown is the final boundary
         if: always() && env.PLUGIN_GATE_CONTROL != ''
         run: node scripts/gates/plugin-packaged/owner.mjs clean "$PLUGIN_GATE_CONTROL"
