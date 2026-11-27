@@ -65,7 +65,6 @@ export function createPrivatePluginPort(options: {
   const credential = options.credential
   if (!/^[0-9a-f]{64}$/.test(credential)) throw new Error(WORDS)
   return {
-    independentToolCalls: true,
     tool(request, signal, onprogress) {
       let client: Client | undefined,
         cancelled = false,

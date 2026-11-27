@@ -1,7 +1,6 @@
 import { createPluginToolBroker } from '../../src/main/plugins/tool-broker'
 import type {
   BrokerAudit,
-  BrokerClock,
   BrokerProgress,
   BrokerInput,
   BrokerOptions,
@@ -30,32 +29,6 @@ export function deferred<T>() {
     reject = no
   })
   return { promise, resolve, reject }
-}
-class Clock implements BrokerClock {
-  time = 0
-  next = 0
-  timers = new Map<number, { at: number; callback: () => void }>()
-  now = () => this.time
-  after = (ms: number, callback: () => void) => {
-    const id = ++this.next
-    this.timers.set(id, { at: this.time + ms, callback })
-    return () => {
-      this.timers.delete(id)
-    }
-  }
-  advance(ms: number) {
-    const until = this.time + ms
-    for (;;) {
-      const next = [...this.timers]
-        .filter(([, item]) => item.at <= until)
-        .sort((a, b) => a[1].at - b[1].at || a[0] - b[0])[0]
-      if (!next) break
-      this.time = next[1].at
-      this.timers.delete(next[0])
-      next[1].callback()
-    }
-    this.time = until
-  }
 }
 class Server {
   calls: Array<{
@@ -107,8 +80,7 @@ export const tracked = <T>(promise: Promise<T>): Promise<T> => {
   return promise
 }
 export function setup(change: (options: BrokerOptions) => BrokerOptions = (options) => options) {
-  const clock = new Clock(),
-    server = new Server(),
+  const server = new Server(),
     audit: BrokerAudit[] = []
   const options: BrokerOptions = {
     binding: { pluginId: 'fictional-browser', installId: 'installation-fern', epoch: 'epoch-one' },
@@ -128,7 +100,6 @@ export function setup(change: (options: BrokerOptions) => BrokerOptions = (optio
         inputSchema: { type: 'object' },
       },
     ],
-    clock,
     server,
     audit: (event) => audit.push(event),
   }
@@ -138,5 +109,5 @@ export function setup(change: (options: BrokerOptions) => BrokerOptions = (optio
   const name = broker.agent.discover(agent)[0]!.qualifiedName
   const call = (who = agent, input: BrokerInput = { profile: 'fern' }, signal?: AbortSignal) =>
     tracked(broker.agent.call(who, name, input, signal))
-  return { broker, options, clock, server, audit, ws, agent, name, call }
+  return { broker, options, server, audit, ws, agent, name, call }
 }

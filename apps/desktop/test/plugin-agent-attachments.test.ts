@@ -4,7 +4,6 @@ import { createLifecycleAgentBridge } from '../src/main/plugins/lifecycle/agent-
 import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
 import { WorkspacePluginAttachments } from '../src/main/plugins/attachments'
 import { fixture, cleanupLifecycleFixtures, deferred } from './plugin-lifecycle-fixtures'
-import type { BrokerClock } from '../src/main/plugins/tool-broker'
 import { echoBinding } from './helpers/plugin-echo-binding'
 import {
   withManagedPluginAttachments,
@@ -21,29 +20,6 @@ import {
   lease,
   recoveringLive,
 } from './helpers/plugin-agent-bridge'
-function brokerClock() {
-  let now = 0,
-    sequence = 0
-  const timers = new Map<number, { at: number; callback: () => void }>()
-  const clock: BrokerClock = {
-    now: () => now,
-    after(ms, callback) {
-      const key = ++sequence
-      timers.set(key, { at: now + ms, callback })
-      return () => {
-        timers.delete(key)
-      }
-    },
-  }
-  return {
-    clock,
-    advance(ms: number) {
-      now += ms
-      for (const [key, one] of [...timers].sort((a, b) => a[1].at - b[1].at))
-        if (one.at <= now && timers.delete(key)) one.callback()
-    },
-  }
-}
 afterEach(async () => {
   for (const close of closes.splice(0).reverse()) await close()
   await cleanupLifecycleFixtures()
@@ -51,35 +27,40 @@ afterEach(async () => {
 async function holdToolCall(
   f: Awaited<ReturnType<typeof live>>,
   quiescent: Promise<void> = new Promise(() => {}),
-  clock?: BrokerClock,
+  result: Promise<never> = new Promise(() => {}),
   firstOnly = false,
 ) {
   const original = await f.binding()
   let held = false
   f.binding.mockResolvedValueOnce({
     ...original,
-    ...(clock ? { clock } : {}),
     server: {
       ...original.server,
       tool() {
         if (firstOnly && held) return original.server.tool()
         held = true
         f.call()
-        return { result: new Promise<never>(() => {}), quiescent, cancel() {} }
+        return { result, quiescent, cancel() {} }
       },
     },
   })
 }
-function failingProof() {
-  let fail!: (error: Error) => void
-  const proof = new Promise<void>((_resolve, reject) => {
-    fail = reject
+/** A server that breaks its contract at dispatch leaves the broker unavailable with the call unproven. */
+async function breakToolCall(f: Awaited<ReturnType<typeof live>>) {
+  const original = await f.binding()
+  f.binding.mockResolvedValueOnce({
+    ...original,
+    server: {
+      ...original.server,
+      tool() {
+        f.call()
+        throw new Error('fictional broken execution')
+      },
+    },
   })
-  void proof.catch(() => undefined)
-  return { proof, fail }
 }
 describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, inert server', () => {
-  it('keeps routes and the host after an independent tool fails without completion proof', async () => {
+  it('keeps routes and the host after a tool fails without completion proof', async () => {
     const recover = vi.fn(async () => {})
     const f = await live({ restartHost: recover })
     const original = await f.binding()
@@ -89,7 +70,6 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
     f.binding.mockResolvedValueOnce({
       ...original,
       server: Object.assign({}, original.server, {
-        independentToolCalls: true,
         tool() {
           if (!first) return original.server.tool()
           first = false
@@ -163,8 +143,7 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
       firstStop: () => stopping.promise,
       restartHost: (id, runId, stopped) => f.controller.restartPluginTools(id, runId, stopped),
     })
-    const { proof, fail } = failingProof()
-    await holdToolCall(f, proof)
+    await breakToolCall(f)
     const owner = lease(),
       req = request(f.local.sink.workspaceId)
     const [before] = await f.bridge.routes(owner, req)
@@ -172,7 +151,6 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
     try {
       const pending = client.callTool({ name: 'echo', arguments: {} }, undefined, { timeout: 1500 })
       await vi.waitFor(() => expect(f.call).toHaveBeenCalledOnce())
-      fail(new Error('fictional negative completion proof'))
       expect(await pending).toMatchObject({ isError: true })
       await vi.waitFor(
         () => expect(f.diagnostic).toHaveBeenCalledWith('chrome', 'recovery-host-unproven'),
@@ -280,8 +258,7 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
       const f = await live({
         restartHost: (id, runId, stopped) => f.controller.restartPluginTools(id, runId, stopped),
       })
-      const { proof, fail } = failingProof()
-      await holdToolCall(f, proof)
+      await breakToolCall(f)
       const owner = lease(),
         req = request(f.local.sink.workspaceId)
       const raw = new FakeRuntime(provider)
@@ -340,7 +317,6 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
       expect(identity).not.toBeNull()
       const first = conversation.send('fictional first turn')
       await vi.waitFor(() => expect(f.call).toHaveBeenCalledOnce())
-      fail(new Error('fictional failed completion proof'))
       await first
       expect(replies[0]).toMatchObject({ isError: true })
       await vi.waitFor(() => expect(f.starts()).toBe(2))
@@ -405,10 +381,9 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
     else expect(outcome.error).toBeInstanceOf(Error)
     expect(await f.bridge.routes(owner, request(f.local.sink.workspaceId))).toEqual([])
   })
-  it('reports an unavailable broker on the Running card, withholds dead routes and never overlaps a failed proof', async () => {
+  it('reports an unavailable broker on the Running card, withholds dead routes and never overlaps unproven work', async () => {
     const f = await live()
-    const { proof, fail: rejectProof } = failingProof()
-    await holdToolCall(f, proof)
+    await breakToolCall(f)
     const close = closes.pop()!
     try {
       const owner = lease(),
@@ -420,13 +395,10 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
         arguments: { private: 'fictional-private-input' },
       })
       await vi.waitFor(() => expect(f.call).toHaveBeenCalledOnce())
-      rejectProof(new Error('fictional-private-proof-error'))
       expect(await pending).toMatchObject({ isError: true })
-      // The agents' plugin line names why: tools unavailable: proof-rejected.
       expect((await f.controller.status()).cards[0]).toMatchObject({
         state: 'Running',
         toolsUnavailable: true,
-        toolsCause: 'proof-rejected',
       })
       expect(await f.bridge.routes(owner, req)).toEqual([])
       expect(await f.bridge.routes(owner, request(f.local.sink.workspaceId))).toEqual([])
@@ -439,14 +411,15 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
       await expect(close()).resolves.toBeUndefined()
     }
   })
-  it('retains both caller routes after a deadline and late positive completion', async () => {
-    const f = await live(),
-      time = brokerClock()
+  it('retains both caller routes after a call of unknown completion and its late positive completion', async () => {
+    const f = await live()
     let prove!: () => void
     const quiet = new Promise<void>((resolve) => {
       prove = resolve
     })
-    await holdToolCall(f, quiet, time.clock, true)
+    const stalled = Promise.reject<never>(new Error('fictional stalled call'))
+    void stalled.catch(() => undefined)
+    await holdToolCall(f, quiet, stalled, true)
     const owner = lease(),
       first = request(f.local.sink.workspaceId),
       second = request(f.local.sink.workspaceId)
@@ -455,9 +428,7 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
     const client = await connected(beforeFirst!)
     const pending = client.callTool({ name: 'echo', arguments: {} })
     await vi.waitFor(() => expect(f.call).toHaveBeenCalledOnce())
-    time.advance(120000)
     expect(await pending).toMatchObject({ isError: true })
-    time.advance(1000)
     expect((await f.controller.status()).cards[0]).not.toHaveProperty('toolsUnavailable')
     expect(await f.bridge.routes(owner, first)).toEqual([beforeFirst])
     expect(await f.bridge.routes(owner, second)).toEqual([beforeSecond])
@@ -490,17 +461,13 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
     const bridgeClose = closes.pop()!
     try {
       const original = await f.binding()
-      let rejectProof!: (error: Error) => void
       f.binding.mockImplementation(async () => ({
         ...original,
         server: {
           ...original.server,
           tool() {
             f.call()
-            const proof = new Promise<void>((_resolve, reject) => {
-              rejectProof = reject
-            })
-            return { result: new Promise<never>(() => {}), quiescent: proof, cancel() {} }
+            throw new Error('fictional private failure')
           },
         },
       }))
@@ -516,7 +483,6 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
         const client = await connected(route!)
         const pending = client.callTool({ name: 'echo', arguments: {} })
         await vi.waitFor(() => expect(f.call).toHaveBeenCalledTimes(attempt))
-        rejectProof(new Error('fictional private failure'))
         expect(await pending).toMatchObject({ isError: true })
         if (attempt <= 3) await vi.waitFor(() => expect(f.starts()).toBe(attempt + 1))
         else
@@ -578,8 +544,7 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
         await held
       },
     })
-    const { proof, fail } = failingProof()
-    await holdToolCall(f, proof)
+    await breakToolCall(f)
     try {
       const owner = lease(),
         req = request(f.local.sink.workspaceId)
@@ -589,7 +554,6 @@ describe.skipIf(process.platform === 'win32')('live lifecycle agent bridge, iner
         .callTool({ name: 'echo', arguments: {} }, undefined, { timeout: 1500 })
         .catch(() => null)
       await vi.waitFor(() => expect(f.call).toHaveBeenCalledOnce())
-      fail(new Error('fictional failed proof'))
       await vi.waitFor(() => expect(f.starts()).toBe(2))
       let after: ManagedPluginMcpServer | undefined
       await vi.waitFor(async () => {
