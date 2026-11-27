@@ -75,6 +75,13 @@ export class WindowRoutingReads {
     return this.context.getStore()?.active === true
   }
 
+  startedHereCounts(): WindowListingStates['startedHereCounts'] | undefined {
+    const reading = this.context.getStore()
+    return reading?.active && reading.snapshot.kind === 'listing'
+      ? reading.snapshot.startedHereCounts
+      : undefined
+  }
+
   askersOf(parent: string): ReadonlySet<string> | undefined {
     const reading = this.context.getStore()
     if (!reading?.active) return undefined

@@ -212,6 +212,7 @@ export const NULL_SESSION_STORE: SessionStore = {
   ...EMPTY_FOREST_STORE,
   workGivenOutBy: () => ({ rows: [], walk: 'no-ledger', ledgers: 0, rowsUnread: 0 }),
   spawnedBy: () => ({ rows: [], walk: 'no-ledger', ledgers: 0, rowsUnread: 0 }),
+  startedHereCounts: () => [],
   conversationTree: () => [],
   whatTiesTheTreeOutside: () => [],
   providerSessionsOf: () => [],

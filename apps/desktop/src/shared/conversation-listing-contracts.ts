@@ -36,13 +36,20 @@ export interface PieceWaitingOnPurpose {
   readonly agentName?: string
 }
 
+export interface ConversationCardFacts {
+  /** Direct conversations it started. Zero is a known empty count. */
+  readonly startedHereCount?: number
+  /** Latest status text of the task that names this conversation, when available. */
+  readonly namingTaskStatus?: string
+}
+
 /**
  * A recorded session that could be resumed: it has a provider ref to resume *from*.
  * The row is what 084's resume flow offers; `approvalMode` is here because it is the
  * one launch decision that cannot be re-derived, and resuming an `auto` session as
  * `ask` (or the reverse) would silently change what the agent may do.
  */
-export interface ResumableSessionInfo {
+export interface ResumableSessionInfo extends ConversationCardFacts {
   /** Stable normal-worker identity, absent when its binding is unavailable. */
   readonly worker?: WorkerBindingReading
   /** Current has an explicit value or null; unavailable does not renew a kept value. */
@@ -154,7 +161,7 @@ export interface ResumableSessionInfo {
  * from {@link ResumableSessionInfo} so the two can never be confused: this one has no ref, so
  * there is nothing to resume from and no Resume button to press.
  */
-export interface UnresumableSessionInfo {
+export interface UnresumableSessionInfo extends ConversationCardFacts {
   /** Stable normal-worker identity, absent when its binding is unavailable. */
   readonly worker?: WorkerBindingReading
   /** Current has an explicit value or null; unavailable does not renew a kept value. */

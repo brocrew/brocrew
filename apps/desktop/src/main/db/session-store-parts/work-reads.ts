@@ -23,7 +23,13 @@ import { closePastWorkSearch, pastWorkSource, searchPastWork } from '../past-wor
 import { type RowsUnread, rowsUnreadOnce } from '../rows-unread'
 import { aStoredObject, noteUnreadRow } from '../stored-event-codec'
 import type { SessionStore } from './session-store-contract'
-import type { ClosedTurnRow, ExchangeRow, PieceForAName, WorkDbRow } from './session-store-rows'
+import type {
+  ClosedTurnRow,
+  ExchangeRow,
+  PieceForAName,
+  PieceNamingStatus,
+  WorkDbRow,
+} from './session-store-rows'
 import type { createTurnReadsPart } from './turn-reads'
 import type { createWorkStatementsPart } from './work-statements'
 import type { createLedgerEventsPart } from './ledger-events'
@@ -205,8 +211,9 @@ export function createWorkReadsPart(deps: WorkReadsPartDeps) {
     generation: number,
     unread: RowsUnread | undefined,
   ): {
-    readonly pieces: readonly PieceForAName[]
+    readonly pieces: readonly PieceNamingStatus[]
     readonly waiting: PieceRow | null
+    readonly incomplete?: true
   } {
     const mayKeep = theFoldsMayBeKept()
     const through =
@@ -224,7 +231,7 @@ export function createWorkReadsPart(deps: WorkReadsPartDeps) {
     const newestOpen = folded.filter((piece) => TASK_IS_OPEN[piece.state]).at(-1)
     const waiting = newestOpen?.state === 'waiting-on-purpose' ? newestOpen : null
     const pieces = folded.map(
-      ({ piece, label, title, owner, giver, givenAt, state, outcome, endedAt }): PieceForAName => ({
+      ({
         piece,
         label,
         title,
@@ -234,11 +241,23 @@ export function createWorkReadsPart(deps: WorkReadsPartDeps) {
         state,
         outcome,
         endedAt,
+        statusLine,
+      }): PieceNamingStatus => ({
+        piece,
+        label,
+        title,
+        owner,
+        giver,
+        givenAt,
+        state,
+        outcome,
+        endedAt,
+        statusLine,
       }),
     )
-    if (mayKeep && missed.count === 0 && missed.ledgersSkipped === 0) {
-      namedByAPiece.set(conversation, { generation, through, pieces, waiting })
-    }
+    if (missed.count !== 0 || missed.ledgersSkipped !== 0)
+      return { pieces, waiting, incomplete: true }
+    if (mayKeep) namedByAPiece.set(conversation, { generation, through, pieces, waiting })
     return { pieces, waiting }
   }
 
@@ -263,13 +282,30 @@ export function createWorkReadsPart(deps: WorkReadsPartDeps) {
 
   function theRootThatNames(conversation: string, generation: number): WorkThatNamesIt | null {
     const root = workSql().rootOwnedBy.get(conversation) as WorkDbRow | undefined
-    return root === undefined
-      ? null
-      : {
-          label: pieceCalled([root.number]),
-          title: titleNow(root, generation),
-          definitionOfDone: doneConditionOfRoot(root),
+    return root === undefined ? null : theNameOfRoot(root, generation)
+  }
+
+  function theNameOfRoot(root: WorkDbRow, generation: number): WorkThatNamesIt {
+    return {
+      label: pieceCalled([root.number]),
+      title: titleNow(root, generation),
+      definitionOfDone: doneConditionOfRoot(root),
+    }
+  }
+
+  function rootStatusOf(root: WorkDbRow, generation: number): PieceRow['statusLine'] {
+    const statusSet = newestLineAbout(root, generation, 'work_status_set')
+    return typeof statusSet?.line === 'string' &&
+      typeof statusSet.by === 'string' &&
+      typeof statusSet.at === 'number'
+      ? {
+          text: statusSet.line,
+          by: statusSet.by,
+          at: statusSet.at,
+          revision: statusSet.revision as number,
+          ...theWaitItMarks(statusSet),
         }
+      : null
   }
 
   function theWorkThatNamesNow(
@@ -440,22 +476,8 @@ export function createWorkReadsPart(deps: WorkReadsPartDeps) {
       const row = workSql().byId.get(root) as WorkDbRow | undefined
       if (row === undefined || row.parent_id !== null) return { title: null, statusLine: null }
       const generation = activeGeneration(row.owner_session_id)
-      const statusSet = newestLineAbout(row, generation, 'work_status_set')
-      return {
-        title: titleNow(row, generation),
-        statusLine:
-          typeof statusSet?.line === 'string' &&
-          typeof statusSet.by === 'string' &&
-          typeof statusSet.at === 'number'
-            ? {
-                text: statusSet.line,
-                by: statusSet.by,
-                at: statusSet.at,
-                revision: statusSet.revision as number,
-                ...theWaitItMarks(statusSet),
-              }
-            : null,
-      }
+      const statusLine = rootStatusOf(row, generation)
+      return { title: titleNow(row, generation), statusLine }
     },
 
     turnBlockRootLines(root) {
@@ -500,17 +522,28 @@ export function createWorkReadsPart(deps: WorkReadsPartDeps) {
       return theWorkThatNamesNow(conversation, unread)
     },
 
-    workThatNamesAndItsWait(conversation, unread, folded) {
+    workThatNamesAndItsWait(conversation, unread, folded, includeNamingStatus) {
       const generation = activeGeneration(conversation)
       const held =
         folded === undefined
           ? heldForAName(conversation, generation, unread)
           : {
               pieces: folded,
+              incomplete: undefined,
               waiting: folded.filter((piece) => TASK_IS_OPEN[piece.state]).at(-1) ?? null,
             }
+      const root = workSql().rootOwnedBy.get(conversation) as WorkDbRow | undefined
+      const named =
+        root === undefined ? theWorkThatNamesItAmong(held.pieces) : theNameOfRoot(root, generation)
+      let line: PieceRow['statusLine'] | undefined
+      if (includeNamingStatus) {
+        if (root !== undefined) line = rootStatusOf(root, generation)
+        else if (!held.incomplete && named !== null)
+          line = held.pieces.find((piece) => piece.label === named.label)?.statusLine
+      }
       return {
-        named: theRootThatNames(conversation, generation) ?? theWorkThatNamesItAmong(held.pieces),
+        named,
+        ...(line == null ? {} : { namingTaskStatus: line.text }),
         waitingOnPurpose: held.waiting?.state === 'waiting-on-purpose' ? held.waiting : null,
       }
     },

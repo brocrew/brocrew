@@ -107,6 +107,10 @@ it('measures window reads with 1960 conversations and nine live agents', async (
     kind: string
     queries: number
     rows: number
+    startCountQueries: number
+    startCountRows: number
+    rootStatusQueries: number
+    rootStatusRows: number
     elapsedMs: number
     bytes: number
     routingBytes: number
@@ -360,12 +364,18 @@ it('measures window reads with 1960 conversations and nine live agents', async (
       const answer = await executeRuntimeCommand(host, world.window, { kind: 'listResumable' })
       expect(Array.isArray(answer)).toBe(true)
       expect(answer).toHaveLength(9)
+      expect(answer).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ sessionId: ids[0], startedHereCount: 0 }),
+        ]),
+      )
       if (phase.includes('commit'))
         expect(answer).toEqual(
           expect.arrayContaining([
             expect.objectContaining({
               sessionId: ids[0],
               named: expect.objectContaining({ title: 'Changed fictional title' }),
+              namingTaskStatus: 'Fictional root progress',
             }),
           ]),
         )
@@ -406,6 +416,12 @@ it('measures window reads with 1960 conversations and nine live agents', async (
         title: 'Changed fictional title',
         by: null,
       },
+      world.clock,
+    )
+    world.store.append(
+      ids[0]!,
+      world.store.nextOrdinal(ids[0]!),
+      { type: 'work_status_set', piece: root.piece, line: 'Fictional root progress', by: ids[0]! },
       world.clock,
     )
     await list('after-one-owner-commit')
@@ -522,6 +538,15 @@ it('measures window reads with 1960 conversations and nine live agents', async (
         },
       }),
     )
+    const observedListings = readings.filter((one) => one.kind === 'listing')
+    expect(observedListings.length).toBeGreaterThan(0)
+    for (const reading of observedListings) {
+      expect(reading.startCountQueries).toBe(1)
+      expect(reading.startCountRows).toBe(population.total)
+      expect(reading.rootStatusQueries).toBe(population.total)
+      expect(reading.rootStatusRows).toBeLessThanOrEqual(1)
+    }
+    expect(observedListings.some((one) => one.rootStatusRows === 1)).toBe(true)
     expect(mainHistory.length).toBe(0)
     expect(gaps.length).toBeGreaterThan(0)
     expect(failures).toEqual([])
