@@ -2928,12 +2928,13 @@ watch([activeId, surface], () => void readTheFiles())
  * ⚑ **D-017b · a recorded conversation is held only while it is on screen** — the list names every
  * conversation, and the store keeps a page of one only for the view drawing it. ⚑ So a person
  * leaving one lets it go ({@link SessionStore.forget}), and a live one that stops while it is not on
- * screen is let go too. ⛔ `forget` keeps anything live, anything being handed over and anything a
- * command for it is still out on.
+ * screen is let go too. ⛔ `forget` keeps anything live; one being handed over, or with a command
+ * out, is let go once that settles, unless it is on screen again by then ({@link SessionStore.keep}).
  */
 const onScreenNow = computed(() => (place.value === null ? activeId.value : null))
-watch(onScreenNow, (_now, was) => {
+watch(onScreenNow, (now, was) => {
   if (was !== null) store.forget(was)
+  if (now !== null) store.keep(now)
 })
 watch(
   () => store.live.value.map((record) => record.sessionId),

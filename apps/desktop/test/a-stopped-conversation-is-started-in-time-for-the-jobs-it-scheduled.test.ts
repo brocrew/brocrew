@@ -1091,7 +1091,7 @@ describe('D-029 · the host starts a stopped conversation in time for the jobs i
     if (!writer.writeWhileNothingRunsIt(id, row)) throw new Error(`${id}'s row was not written`)
   }
   const shownOf = (sink: RecordingSink, id: string): RuntimeEventMessage[] =>
-    sink.messages.filter((one) => one.sessionId === id)
+    sink.messages.filter((one) => one.sessionId === id && one.notHeldHere !== true)
 
   it('🔴 a window that reloads is shown nothing it looked at before, until it looks again; one it looks at after is shown its rows', async () => {
     const g = await opens('agent-g')

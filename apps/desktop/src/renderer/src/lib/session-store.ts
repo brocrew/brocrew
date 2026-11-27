@@ -28,6 +28,7 @@ import type {
   ResumedSession,
   LaunchRefusal,
   ProcessMemory,
+  RuntimeEventMessage,
 } from '../../../shared/runtime-ipc'
 import { markAnswerRefused, markReopened, markRequestFailed } from './transcript'
 import { createProviderBlockStore } from './provider-limit-facts'
@@ -342,12 +343,54 @@ export function createSessionStore(bridge: ClientSessionApi): SessionStore {
       if (wasOpen && phaseOf(record) === 'recorded' && mayLookAgain) {
         void store.look(record.sessionId, 'again')
       }
+      letGoIfLeft(record.sessionId)
       return
+    }
+    // Rows of the running life a page of it was drawn from, held while the page was on its way:
+    // the ones that continue it are folded in order ({@link followARowItDoesNotHold}).
+    if (record.liveFrom === null) {
+      const held = record.earlyEvents
+      record.earlyEvents = []
+      for (const message of held) {
+        if (message.notHeldHere === true && message.ordinal === record.nextOrdinal) {
+          acceptEvent(record, message)
+        } else if (message.ordinal >= record.nextOrdinal) record.earlyEvents.push(message)
+      }
     }
     record.earlyEvents = mayLookAgain
       ? record.earlyEvents.filter((held) => held.ordinal >= record.nextOrdinal)
       : []
     if (record.earlyEvents.length > 0) void store.look(record.sessionId, 'again')
+    letGoIfLeft(record.sessionId)
+  }
+
+  /**
+   * The recorded conversations the screen left while a hand-over or a command for them was still
+   * out: let go once that settles, unless the screen shows them again first ({@link SessionStore.keep}).
+   */
+  const leftWhileBusy = new Set<string>()
+
+  function letGoIfLeft(sessionId: string): void {
+    if (leftWhileBusy.delete(sessionId)) store.forget(sessionId)
+  }
+
+  /**
+   * A row of a running conversation this window does not hold, sent because the window draws it
+   * from its ledger. Onto a page of that running life it is folded as a live view folds it, so the
+   * view follows the turn and keeps the older history it loaded; past any other page, the page is
+   * read again. While a hand-over is in the air it is held for the page on its way
+   * ({@link settleHeld}).
+   */
+  function followARowItDoesNotHold(record: SessionRecord, message: RuntimeEventMessage): void {
+    if (record.handover > 0) {
+      record.earlyEvents.push(message)
+      return
+    }
+    if (record.meta === null || record.phase !== 'recorded') return
+    if (message.ordinal < record.nextOrdinal) return
+    if (record.liveFrom === null && message.ordinal === record.nextOrdinal) {
+      acceptEvent(record, message)
+    } else void store.look(record.sessionId, 'again')
   }
 
   /**
@@ -435,6 +478,10 @@ export function createSessionStore(bridge: ClientSessionApi): SessionStore {
   const unsubscribeEvents = bridge.onEvent((message) => {
     const record = sessions.get(message.sessionId)
     records.hearEvent(message)
+    if (message.notHeldHere === true) {
+      if (record !== undefined) followARowItDoesNotHold(record, message)
+      return
+    }
     // A session we have never heard of is still recorded rather than dropped: it is ours the
     // moment the host answers, and the events before that answer are part of the conversation.
     //
@@ -548,6 +595,7 @@ export function createSessionStore(bridge: ClientSessionApi): SessionStore {
       bounds.delete(bound)
       if (counted) countDown()
       else record.unanswered -= 1
+      letGoIfLeft(sessionId)
     }
   }
 
@@ -955,8 +1003,9 @@ export function createSessionStore(bridge: ClientSessionApi): SessionStore {
         return sessions.get(handed.sessionId) === into ? handed.sessionId : null
       } catch (cause) {
         // ⚠️ As `resume` does for a hand-over that did not happen: a record this call made up for a
-        // conversation it does not hold is not left behind.
-        if (holding.meta === null) sessions.delete(sessionId)
+        // conversation it does not hold is not left behind — unless another look for it is still on
+        // its way, which adopts it or lets it go in its turn.
+        if (holding.meta === null && holding.handover === 1) sessions.delete(sessionId)
         lookError.value = readableError(cause)
         return null
       } finally {
@@ -969,8 +1018,13 @@ export function createSessionStore(bridge: ClientSessionApi): SessionStore {
 
     forget(sessionId) {
       const record = sessions.get(sessionId)
-      if (record === undefined || record.phase !== 'recorded' || record.handover > 0) return
-      if ((commandsInFlight.get(record) ?? 0) > 0) return
+      if (record === undefined) return
+      // ⚑ Being handed over, or a command for it still out: let go once that settles.
+      if (record.handover > 0 || (commandsInFlight.get(record) ?? 0) > 0) {
+        leftWhileBusy.add(sessionId)
+        return
+      }
+      if (record.phase !== 'recorded') return
       sessions.delete(sessionId)
       // ⚑ **The one-ask bound is about a record this store HOLDS** — with the record gone, an event
       // for it later (the host started it for this window: an answer, a renewed sign-in) asks again
@@ -980,6 +1034,10 @@ export function createSessionStore(bridge: ClientSessionApi): SessionStore {
       void bridge.stopLooking({ sessionId }).catch((cause: unknown) => {
         console.warn(`could not tell the host this window stopped looking at ${sessionId}:`, cause)
       })
+    },
+
+    keep(sessionId) {
+      leftWhileBusy.delete(sessionId)
     },
 
     async startAndSend(sessionId, text, attachments) {

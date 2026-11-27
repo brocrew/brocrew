@@ -33,6 +33,7 @@ export function fixtureRuntimeBridge(
     queueMessage: (input) => run({ kind: 'queueMessage', ...input }),
     close: (input) => run({ kind: 'close', ...input }),
     look: (input) => run({ kind: 'look', ...input }),
+    stopLooking: (input) => run({ kind: 'stopLooking', ...input }),
     release: (input) => run({ kind: 'release', ...input }),
     listResumable: () => run({ kind: 'listResumable' }),
     listUnresumable: () => run({ kind: 'listUnresumable' }),

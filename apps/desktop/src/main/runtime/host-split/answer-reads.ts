@@ -62,6 +62,10 @@ interface CardReads {
  */
 interface OneLook {
   readonly sink: RuntimeEventSink
+  /** The same window's look this one took the place of, until this one's page is drawn. */
+  before?: OneLook
+  /** It failed: never put back in the place of a look that fails after it. */
+  failed?: true
 }
 
 type ListingReadFloor = {

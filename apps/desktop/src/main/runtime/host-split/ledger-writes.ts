@@ -384,16 +384,41 @@ export class LedgerWrites {
 
   /** A row of a conversation nothing runs, sent to the windows that have it open. ⛔ Never throws. */
   showTheWindowsLookingAt(sessionId: string, message: RuntimeEventMessage): void {
+    if (!this.host.lookingAtItsRecord().has(sessionId)) return
+    const provider = this.deps.store.recordedOne(sessionId)?.provider
+    this.sendToTheWindowsLookingAt(sessionId, null, () =>
+      transcriptMessageForDisplay(this.host.withCurrentAgentState(message), provider),
+    )
+  }
+
+  /**
+   * A row a running conversation sent the one holding it, sent marked to the windows that draw it
+   * from its ledger and do not hold it ({@link RuntimeEventMessage.notHeldHere}), so their view
+   * follows the turn. ⛔ Never throws.
+   */
+  showTheWindowsThatDoNotHoldIt(
+    sessionId: string,
+    holder: string,
+    shown: RuntimeEventMessage,
+  ): void {
+    this.sendToTheWindowsLookingAt(sessionId, holder, () => ({ ...shown, notHeldHere: true }))
+  }
+
+  private sendToTheWindowsLookingAt(
+    sessionId: string,
+    holder: string | null,
+    compose: () => RuntimeEventMessage,
+  ): void {
     const looking = this.host.lookingAtItsRecord().get(sessionId)
     if (looking === undefined) return
-    const provider = this.deps.store.recordedOne(sessionId)?.provider
     for (const [owner, { sink }] of looking) {
+      if (owner === holder) continue
       if (!sink.alive) {
         looking.delete(owner)
         continue
       }
       try {
-        sink.send(transcriptMessageForDisplay(this.host.withCurrentAgentState(message), provider))
+        sink.send(compose())
       } catch (error) {
         console.warn(
           `runtime host could not show ${sessionId}'s new row to a window: ${errorMessage(error)}`,

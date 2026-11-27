@@ -198,10 +198,14 @@ export interface SessionStore {
   /**
    * ⚑ **D-017b · let go of a recorded conversation nobody is looking at** — the record is deleted
    * when it is `recorded`, nothing hands it over and no command for it is out; a live one is kept.
+   * One being handed over, or with a command out, is let go once that settles, unless {@link keep}
+   * says the screen shows it again first.
    * ⚑ And the store may ask about it again ({@link askAboutUnknown}'s one-ask bound is lifted): the
    * host may start it for this window later, and its events must find their way to a record.
    */
   forget(sessionId: string): void
+  /** The screen shows this conversation again: a let-go still waiting for it is called off. */
+  keep(sessionId: string): void
   /**
    * ⚑ **D-017b · a person's message from a recorded conversation's view, and the start it causes, in
    * ONE act** (`bridge.startAndSend`): the words go and it runs here, or they did not and nothing it

@@ -361,6 +361,11 @@ export interface RuntimeEventMessage {
   workAncestry?: WorkAncestry
   /** History reads supply canonical per-turn context, including for pages cut mid-turn. */
   humanFinal?: import('../human-answer-contracts').HumanFinalContext | null
+  /**
+   * A row of a running conversation this window does not hold, sent because the window draws it
+   * from its ledger: the view follows the turn without holding it.
+   */
+  notHeldHere?: true
   sessionId: string
   ordinal: number
   /**

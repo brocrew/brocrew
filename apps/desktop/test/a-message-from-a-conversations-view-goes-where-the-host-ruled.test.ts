@@ -4,7 +4,7 @@ import { mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   FakeLaunchGate,
   FakeProviderSessions,
@@ -19,7 +19,11 @@ import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore as createLedger, type SessionStore } from '../src/main/db/session-store'
-import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
+import {
+  RuntimeHost,
+  THE_APP_ITSELF,
+  type RuntimeEventSink,
+} from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { createSessionStore, type FirstMessageCameTo } from '../src/renderer/src/lib/session-store'
 import { NOTHING_TO_SEND, type FirstMessageAnswer } from '../src/shared/runtime-ipc'
@@ -748,6 +752,186 @@ describe('D-017b · a message from a conversation’s view goes where the host r
       expect(launches.length - atRelaunch).toBe(1)
       expect(events(id).some((event) => event.type === 'replaced_by')).toBe(false)
       expect(turnsOf(id)).toEqual(['said before the quit', 'are you there'])
+    })
+  })
+
+  /**
+   * An open view drawn from the ledger of a conversation that runs with no window shows a new answer
+   * and the turn's end as they arrive, with no navigation. It asks before it acts, so the turn waits
+   * on its card until the test answers it, and its end is written after the window was handed its
+   * page.
+   */
+  describe('the store · a recorded view of a conversation running with no window', () => {
+    const finishTheTurnThatAnswers = async (id: string, text: string): Promise<void> => {
+      const itsCard = (event: TranscriptEvent): boolean =>
+        event.type === 'permission_request' &&
+        event.detail.startsWith('run: ') &&
+        event.detail.includes(text)
+      await waitFor(() => events(id).some(itsCard), 'the turn to reach its card')
+      const card = events(id).find(itsCard) as { id: string }
+      await host.respondPermission(id, card.id, { outcome: 'allow' }, window)
+      await waitFor(
+        () =>
+          events(id).some((event) => event.type === 'tool_result' && event.summary === 'ran ok'),
+        'the turn to finish',
+      )
+    }
+
+    const showsTheAnswerAndTheEnd = async (
+      store: ReturnType<typeof openWindow>,
+      id: string,
+      text: string,
+    ): Promise<void> => {
+      const drawn = (): { answer: boolean; status: string | null } => ({
+        answer: (
+          (store.get(id)?.transcript.items ?? []) as { kind?: string; text?: string }[]
+        ).some(
+          (item) =>
+            item.kind === 'assistant' &&
+            (item.text ?? '').startsWith('echo: ') &&
+            (item.text ?? '').includes(text),
+        ),
+        status: store.get(id)?.control.status ?? null,
+      })
+      await waitFor(() => drawn().answer && drawn().status === 'idle', 'the view').catch(() => {
+        throw new Error(`the open view still draws ${JSON.stringify(drawn())}`)
+      })
+    }
+
+    it('the answer to a message sent from the view, and the turn ending, appear in it', async () => {
+      const id = await aConversationTheQuitStopped()
+      const store = openWindow()
+      expect(await store.look(id)).toBe(id)
+      // Something starts it with no window, as a delivery does, while this window shows it.
+      await host.resumeSession(id, null)
+
+      const came = await store.startAndSend(id, 'status sister?', [])
+
+      expect(came?.sent).toBe(true)
+      expect(store.get(id)?.phase, 'the premise: drawn from its ledger').toBe('recorded')
+      await finishTheTurnThatAnswers(id, 'status sister?')
+      await showsTheAnswerAndTheEnd(store, id, 'status sister?')
+    })
+
+    it('…and a turn a delivery runs while the person only watches', async () => {
+      const id = await aConversationTheQuitStopped()
+      const store = openWindow()
+      expect(await store.look(id)).toBe(id)
+      await host.resumeSession(id, null)
+
+      await host.send(id, 'a reply from its helper', THE_APP_ITSELF)
+
+      expect(store.get(id)?.phase, 'the premise: drawn from its ledger').toBe('recorded')
+      await finishTheTurnThatAnswers(id, 'a reply from its helper')
+      await showsTheAnswerAndTheEnd(store, id, 'a reply from its helper')
+    })
+
+    /**
+     * The view is left while it is read again: its window's looks again are held until `readOn`, and
+     * the start of a conversation it draws from its ledger is what makes it read again.
+     */
+    const leftWhileReadAgain = async () => {
+      const id = await aConversationTheQuitStopped()
+      const wire = window.bridge()
+      const held: (() => void)[] = []
+      let holding = true
+      const store = createSessionStore({
+        ...wire,
+        look: async (input) => {
+          const answer = await wire.look(input)
+          if (holding && !input.claim) await new Promise<void>((resolve) => held.push(resolve))
+          return answer
+        },
+      })
+      stops.push(() => store.dispose())
+      expect(await store.look(id)).toBe(id)
+      await host.resumeSession(id, null)
+      await waitFor(() => held.length > 0, 'the view to read it again')
+      store.forget(id)
+      expect(store.get(id), 'kept while it is read again').not.toBeNull()
+      const readOn = (): void => {
+        holding = false
+        for (const letItGo of held.splice(0)) letItGo()
+      }
+      return { id, store, readOn }
+    }
+
+    it('a view left while it is read again is let go once the read is done, and is shown no more rows', async () => {
+      const { id, store, readOn } = await leftWhileReadAgain()
+      readOn()
+      await waitFor(() => store.get(id) === null, 'the view to be let go')
+      await letItSettle()
+      const shown: string[] = []
+      window.bridge().onEvent((message) => {
+        if (message.sessionId === id) shown.push(message.event.type)
+      })
+      await host.send(id, 'said after it was left', THE_APP_ITSELF)
+      await waitFor(() => turnsOf(id).includes('said after it was left'), 'the words to go in')
+      await letItSettle()
+      expect(shown).toEqual([])
+    })
+
+    it('…and one shown again before the read is done is kept, and follows the turn', async () => {
+      const { id, store, readOn } = await leftWhileReadAgain()
+      store.keep(id)
+      readOn()
+      await letItSettle()
+      expect(store.get(id)).not.toBeNull()
+      await host.send(id, 'said after it came back', THE_APP_ITSELF)
+      await finishTheTurnThatAnswers(id, 'said after it came back')
+      await showsTheAnswerAndTheEnd(store, id, 'said after it came back')
+    })
+
+    it('two opens at once, the second refused: the page the first draws is kept, and shown its rows', async () => {
+      const id = await aConversationTheQuitStopped()
+      const reader = host as unknown as {
+        recordedHandover(id: string, sink: RuntimeEventSink): unknown
+      }
+      const real = reader.recordedHandover.bind(host)
+      vi.spyOn(reader, 'recordedHandover')
+        .mockImplementationOnce(real)
+        .mockImplementationOnce(() => {
+          throw new Error('the database is busy')
+        })
+      // ⚑ The host answers both at once; the window is handed the refusal first.
+      const wire = window.bridge()
+      const answered: Promise<object>[] = []
+      const handOver: (() => void)[] = []
+      const store = createSessionStore({
+        ...wire,
+        look: async (input) => {
+          const answer = wire.look(input).then(
+            (value) => ({ value }),
+            (refused: unknown) => ({ refused }),
+          )
+          answered.push(answer)
+          await new Promise<void>((resolve) => handOver.push(resolve))
+          const outcome = await answer
+          if ('refused' in outcome) throw outcome.refused
+          return outcome.value
+        },
+      })
+      stops.push(() => store.dispose())
+      const first = store.look(id)
+      const second = store.look(id)
+      await waitFor(() => handOver.length === 2, 'both opens to reach the host')
+      expect('refused' in (await answered[1]!), 'the premise: the second is refused').toBe(true)
+      handOver[1]!()
+      expect(await second).toBeNull()
+      handOver[0]!()
+      expect(await first).toBe(id)
+      expect(store.get(id)?.phase).toBe('recorded')
+
+      const shown: string[] = []
+      wire.onEvent((message) => {
+        if (message.sessionId === id) shown.push(message.event.type)
+      })
+      const writer = host as unknown as {
+        writeWhileNothingRunsIt(id: string, row: TranscriptEvent): boolean
+      }
+      const row = { type: 'scheduled_work', jobs: [], source: 'app/receipts' } as TranscriptEvent
+      expect(writer.writeWhileNothingRunsIt(id, row)).toBe(true)
+      expect(shown).toEqual(['scheduled_work'])
     })
   })
 })

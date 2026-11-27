@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   FakeRuntime,
   type FakeSessionHandle,
@@ -303,7 +303,7 @@ describe('D-017b · a look takes what a press may take, and nothing else', () =>
       expect(launches()).toBe(1)
     })
 
-    it('the owner is handed it live and another window gets the record without its stream', async () => {
+    it('the owner is handed it live and another window gets the record and its rows, marked as not held there', async () => {
       const sessionId = await openFor(one)
       await agentSays(sessionId, 'said while owned')
 
@@ -319,14 +319,17 @@ describe('D-017b · a look takes what a press may take, and nothing else', () =>
       // Something runs it, so the record has no seam to settle at.
       expect(stranger.liveFrom).toBeUndefined()
 
-      // Ownership did not move, and the stream still goes to its owner and not to the stranger.
+      // Ownership did not move: the stream still goes to its owner, and the stranger is shown the
+      // same rows, marked as rows it does not hold.
       expect(canReadCard(sessionId, one)).toBe(true)
       expect(canReadCard(sessionId, two)).toBe(true)
       const before = one.messages.length
       await agentSays(sessionId, 'said after the stranger pressed')
       await waitFor(() => one.messages.length > before, 'the owner to be sent the event')
       expect(said(one.events(), 'said after the stranger pressed')).toBe(true)
-      expect(two.messages).toEqual([])
+      expect(one.messages.some((message) => message.notHeldHere === true)).toBe(false)
+      expect(said(two.events(), 'said after the stranger pressed')).toBe(true)
+      expect(two.messages.every((message) => message.notHeldHere === true)).toBe(true)
     })
 
     it('a look at a conversation nothing runs starts nothing and reports where the page stopped, and a running one reports none', async () => {
@@ -354,15 +357,18 @@ describe('D-017b · a look takes what a press may take, and nothing else', () =>
       expect(launches()).toBe(startedSoFar)
     })
 
-    it('a recorded hand-over feeds the window no events, and the press that attaches one does', async () => {
+    it('a recorded hand-over is shown the rows marked as not held there, and the press that attaches one is fed them', async () => {
       const sessionId = await openAgentBorn()
 
       const recorded = await host.look(sessionId, one, false)
       expect(recorded.handover).toBe('recorded')
       await agentSays(sessionId, 'said while only recorded')
       await letItSettle()
-      // The ledger holds it (agentSays waited for that); the window was sent none of it.
-      expect(one.messages).toEqual([])
+      // The ledger holds it (agentSays waited for that); the window was shown it as a row it does
+      // not hold.
+      expect(said(one.events(), 'said while only recorded')).toBe(true)
+      expect(one.messages.every((message) => message.notHeldHere === true)).toBe(true)
+      const shownWhileRecorded = one.messages.length
 
       const attached = await host.look(sessionId, one, true)
       expect(attached.handover).toBe('attached')
@@ -373,11 +379,64 @@ describe('D-017b · a look takes what a press may take, and nothing else', () =>
           'said while only recorded',
         ),
       ).toBe(true)
-      expect(one.messages).toEqual([])
+      expect(one.messages).toHaveLength(shownWhileRecorded)
 
       await agentSays(sessionId, 'said after the press')
       await waitFor(() => said(one.events(), 'said after the press'), 'the window to be fed')
-      expect(said(one.events(), 'said while only recorded')).toBe(false)
+      const fed = one.messages.slice(shownWhileRecorded)
+      expect(fed.some((message) => message.notHeldHere === true)).toBe(false)
+      expect(
+        said(
+          fed.map((message) => message.event),
+          'said while only recorded',
+        ),
+      ).toBe(false)
+    })
+
+    it('a look again that fails leaves the window shown the rows of the page it still draws', async () => {
+      const sessionId = await openAgentBorn()
+      expect((await host.look(sessionId, one, false)).handover).toBe('recorded')
+      const reader = host as unknown as {
+        recordedHandover(id: string, sink: RuntimeEventSink): unknown
+      }
+      vi.spyOn(reader, 'recordedHandover').mockImplementationOnce(() => {
+        throw new Error('the database is busy')
+      })
+      await expect(host.look(sessionId, one, false)).rejects.toThrow('the database is busy')
+
+      await agentSays(sessionId, 'said after the look failed')
+      await waitFor(() => said(one.events(), 'said after the look failed'), 'the row to be shown')
+    })
+
+    it('…and two overlapping looks that both fail, the first one first, leave a window that drew no page shown nothing', async () => {
+      const sessionId = await openAgentBorn()
+      const teardown = host as unknown as { settleTeardown(id: string): Promise<void> }
+      const letEnd: (() => void)[] = []
+      const held = (): Promise<void> => new Promise<void>((resolve) => letEnd.push(resolve))
+      vi.spyOn(teardown, 'settleTeardown').mockImplementationOnce(held).mockImplementationOnce(held)
+      const reader = host as unknown as {
+        recordedHandover(id: string, sink: RuntimeEventSink): unknown
+      }
+      const busy = vi.spyOn(reader, 'recordedHandover').mockImplementation(() => {
+        throw new Error('the database is busy')
+      })
+      handleOf(sessionId).simulateError('the provider fell over', true)
+      const first = host.look(sessionId, one, false)
+      const second = host.look(sessionId, one, false)
+      await waitFor(() => letEnd.length === 2, 'both looks to wait for the life to end')
+      letEnd[0]!()
+      await expect(first).rejects.toThrow('the database is busy')
+      letEnd[1]!()
+      await expect(second).rejects.toThrow('the database is busy')
+      busy.mockRestore()
+
+      const shownBefore = one.messages.length
+      const writer = host as unknown as {
+        writeWhileNothingRunsIt(id: string, row: TranscriptEvent): boolean
+      }
+      const row = { type: 'scheduled_work', jobs: [], source: 'app/receipts' } as TranscriptEvent
+      expect(writer.writeWhileNothingRunsIt(sessionId, row)).toBe(true)
+      expect(one.messages).toHaveLength(shownBefore)
     })
 
     it('a look after the stream FAILED waits out the teardown and hands over the record, not the life that died', async () => {

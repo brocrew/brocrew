@@ -6474,7 +6474,7 @@ export class RuntimeHost implements LiveHost {
       // says their new times.
       try {
         const said = this.sayWhatIsScheduled(session, now, null)
-        if (said !== null && session.sink.alive) this.emit(session, said)
+        if (said !== null && this.aWindowSeesIt(session)) this.emit(session, said)
       } catch (error) {
         console.warn(
           `runtime host could not read ${conversation}'s jobs in the new zone: ${errorMessage(error)}`,
@@ -19047,8 +19047,16 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
    * record first and send after the event whose window it is inside.
    */
   private emitOurs(session: HostedSession, message: RuntimeEventMessage): void {
-    if (!session.sink.alive) return
+    if (!this.aWindowSeesIt(session)) return
     this.emit(session, message)
+  }
+
+  /**
+   * Whether a window is shown this conversation's rows: the one holding it, or one that draws it
+   * from its ledger ({@link lookingAtItsRecord}).
+   */
+  private aWindowSeesIt(session: HostedSession): boolean {
+    return session.sink.alive || this.lookingAtItsRecord.has(session.id)
   }
 
   /** Carry the current projection without querying a ledger on streaming frames. */
@@ -19124,9 +19132,12 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
             },
           }
         : message
-    session.sink.send(
-      transcriptMessageForDisplay(this.withCurrentAgentState(outgoing), session.provider),
+    const shown = transcriptMessageForDisplay(
+      this.withCurrentAgentState(outgoing),
+      session.provider,
     )
+    session.sink.send(shown)
+    this.ledgerWrites.showTheWindowsThatDoNotHoldIt(session.id, session.sink.ownerId, shown)
   }
 
   /**
@@ -32564,9 +32575,12 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
           }
         }
       }
-      return this.recordedHandover(sessionId, sink)
+      const recorded = this.recordedHandover(sessionId, sink)
+      // ⚑ Its page is drawn: the look it replaced is never put back for it.
+      delete thisLook.before
+      return recorded
     } catch (error) {
-      this.stopThisLook(sessionId, thisLook)
+      this.aLookFailed(sessionId, thisLook)
       throw error
     } finally {
       if (waiting !== null) this.ownedWaits.delete(waiting)
@@ -32575,8 +32589,9 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
 
   /** ⚑ The window is shown what this app writes into the conversation's ledger while nothing runs it. */
   private startLooking(sessionId: string, sink: RuntimeEventSink): OneLook {
-    const look: OneLook = { sink }
     const looking = this.lookingAtItsRecord.get(sessionId) ?? new Map<string, OneLook>()
+    const before = looking.get(sink.ownerId)
+    const look: OneLook = before === undefined ? { sink } : { sink, before }
     looking.set(sink.ownerId, look)
     this.lookingAtItsRecord.set(sessionId, looking)
     return look
@@ -32589,6 +32604,26 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
   private stopThisLook(sessionId: string, look: OneLook): void {
     const looking = this.lookingAtItsRecord.get(sessionId)
     if (looking?.get(look.sink.ownerId) !== look) return
+    looking.delete(look.sink.ownerId)
+    if (looking.size === 0) this.lookingAtItsRecord.delete(sessionId)
+  }
+
+  /**
+   * ⚑ A look that fails leaves its window as it was: the newest look it replaced that has not
+   * failed — a page the window still draws, or one still on its way — takes its place again, or
+   * none. ⚑ Only while the place is still its own; one a newer look took is marked failed, so that
+   * look never puts it back.
+   */
+  private aLookFailed(sessionId: string, look: OneLook): void {
+    look.failed = true
+    const looking = this.lookingAtItsRecord.get(sessionId)
+    if (looking?.get(look.sink.ownerId) !== look) return
+    let back = look.before
+    while (back?.failed === true) back = back.before
+    if (back !== undefined) {
+      looking.set(look.sink.ownerId, back)
+      return
+    }
     looking.delete(look.sink.ownerId)
     if (looking.size === 0) this.lookingAtItsRecord.delete(sessionId)
   }
@@ -35777,7 +35812,7 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
     // that *"every `if (!sink.alive) return` in this class takes the branch it already takes for a
     // window that has gone"*, which is true of every line that DELIVERS TO A SURFACE and was never
     // true of that one.
-    if (session.sink.alive) {
+    if (this.aWindowSeesIt(session)) {
       const ancestry = session.workAncestry.delivery(wire, workAncestry)
       this.emit(session, {
         sessionId: session.id,
