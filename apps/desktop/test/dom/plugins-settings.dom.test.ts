@@ -560,6 +560,10 @@ it.each([
     reply: { ok: false, listState: 'fetch-error', reason: 'supervisor-unavailable' },
     message: "Couldn't start the plugin service. Try again.",
   },
+  {
+    reply: { ok: false, listState: 'fetch-error', reason: 'path-too-long' },
+    message: "The plugin folder's path is too long on this computer.",
+  },
 ])('shows the approved list status: $message', async ({ reply, message }) => {
   const f = fictionalPlugins()
   const original = f.client.request

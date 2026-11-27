@@ -53,13 +53,9 @@ export class SupervisorStorage {
     this.stop = join(this.folder, 'owner-stop.json')
     try {
       if (!isMainThread) refuse('unsupported')
-      if (
-        !isAbsolute(root) ||
-        resolve(root) !== root ||
-        realPath(dirname(root)) !== dirname(root) ||
-        (isSocketFile() && Buffer.byteLength(this.socket) > 100)
-      )
+      if (!isAbsolute(root) || resolve(root) !== root || realPath(dirname(root)) !== dirname(root))
         refuse()
+      if (isSocketFile() && Buffer.byteLength(this.socket) > 100) refuse('path-too-long')
       let intended = join(realPath(dirname(root)), basename(root))
       let existingRoot = false
       try {
