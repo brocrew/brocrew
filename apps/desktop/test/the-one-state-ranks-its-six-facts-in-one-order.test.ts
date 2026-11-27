@@ -249,7 +249,7 @@ describe('§1b · workLeftBehind — the plate’s own mark, ranked the same way
   it('🔴 the background wins when both are true, each alone gives its own word, and neither gives none', () => {
     // ⚑ `workLeftBehind` (`agent-state.ts`, replacing the old `theDetails`/`StandingDetails`) has no
     // test of its own anywhere in the suite; `AgentState.vue` is its only caller. It asks
-    // `agentStateArm` the same question `stateHere` does, over the two facets alone.
+    // `agentStateArm` the same question the host's fold does, over the two facets alone.
     expect(workLeftBehind({ detached: true, scheduled: true })).toBe('background')
     expect(workLeftBehind({ detached: true, scheduled: false })).toBe('background')
     expect(workLeftBehind({ detached: false, scheduled: true })).toBe('scheduled')

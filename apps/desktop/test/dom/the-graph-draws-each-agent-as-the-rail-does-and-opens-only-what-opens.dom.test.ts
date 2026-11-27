@@ -14,12 +14,12 @@ import {
   recordFacets,
   standingOf,
   standingWord,
-  stateHere,
   SIZES,
   STANDING_LABEL,
   type AgentFacets,
 } from '../../src/renderer/src/lib/agent-state'
 import { OPEN_THE_CONVERSATION } from '../../src/renderer/src/lib/taking-over'
+import { hostStateOf } from '../lib/host-state'
 import type { ForestView } from '../../src/renderer/src/lib/the-forest'
 import { agentStateWords } from '../../src/shared/agent-state'
 import type { AgentIdentity } from '../../src/shared/runtime-ipc'
@@ -175,7 +175,7 @@ const said = (text: string): TranscriptEvent =>
 /**
  * ⚑ **A conversation this window HOLDS — its rail row and its forest plate, each derived as the
  * product derives it**: `SideRail`'s row for a record it is fed is `recordFacets(record, …)` and
- * `standingWord` of `stateHere`, and `RuntimeScreen.foldTheForest`'s `live` is `recordFacets` of the
+ * `standingWord` of the host's state of it ({@link hostStateOf}), and `RuntimeScreen.foldTheForest`'s `live` is `recordFacets` of the
  * same record — two calls, one derivation (no waits are read here, so `theWaitIn`/`theWorkIn` add
  * nothing). ⛔ Never a host row (`facetsOfState`): that is how the rail draws a conversation it is
  * NOT fed, and those never reach `live`.
@@ -188,7 +188,10 @@ function heldHere(
   held.meta = { ...META, sessionId: conversation }
   const facets = recordFacets(held)
   return {
-    rail: { facets, word: standingWord(facets, stateHere(held, facets, null, [])) },
+    rail: {
+      facets,
+      word: standingWord(facets, hostStateOf(held, { active: facets.doing === 'working' })),
+    },
     live: recordFacets(held),
   }
 }

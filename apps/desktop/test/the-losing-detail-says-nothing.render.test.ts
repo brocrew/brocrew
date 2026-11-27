@@ -3,13 +3,9 @@ import { describe, expect, it, vi } from 'vitest'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import AgentCard from '../src/renderer/src/components/AgentCard.vue'
-import {
-  plateWord,
-  standingWord,
-  stateHere,
-  type AgentFacets,
-} from '../src/renderer/src/lib/agent-state'
+import { plateWord, standingWord, type AgentFacets } from '../src/renderer/src/lib/agent-state'
 import { createSessionRecord } from '../src/renderer/src/lib/session-record'
+import { hostStateOf } from './lib/host-state'
 import { sessionPanel } from '../src/renderer/src/lib/session-panel'
 import {
   applyEvent,
@@ -17,7 +13,7 @@ import {
   type ScheduleRegistry,
 } from '../src/renderer/src/lib/transcript'
 // ⚑ **D-017 · R11 — the one state, its details and its words are `shared/agent-state.ts`'s**, which
-// `main` says in `list_agents`; the window feeds it through `stateHere` and words it the same way.
+// `main` says in `list_agents`; the window words the state the host pushes the same way.
 import {
   agentStateOf,
   inTheBackground,
@@ -35,16 +31,16 @@ import { clockTime } from '../src/shared/clock'
  * at once, so nothing in that suite proves the losing detail is actually thrown away rather than
  * merely never asked for. This file is that case, plus three branches the existing fixtures never
  * happen to reach: cron's OR when BOTH day fields are restricted, a registry that is `dropped`-only
- * (something to report, nothing nameable), and `AgentCard`'s plate fed the one state `stateHere`
- * derives from a REAL record rather than a hand-built state (⚑ D-017 · R11: the card no longer
- * derives it; its callers hand it `stateHere`'s).
+ * (something to report, nothing nameable), and `AgentCard`'s plate fed the host's one state of a
+ * REAL record rather than a hand-built state (⚑ D-017 · R11: the card no longer derives it; its
+ * callers hand it the host's).
  *
  * | § | subject |
  * |---|---|
  * | 1 | cron's day rule — either field matching is enough, when both are restricted |
  * | 2 | a `dropped`-only registry: something to report, nothing nameable |
  * | 3 | background outranks a schedule, and the schedule's own detail is dropped whole |
- * | 4 | the agent card's plate, fed `stateHere` over a real record rather than a built state |
+ * | 4 | the agent card's plate, fed the host's state of a real record rather than a built one |
  */
 
 /** A fixed local moment: 28 Sept 2026, 04:40 — the same instant `one-state-everywhere.test.ts` uses. */
@@ -118,9 +114,8 @@ describe('§4 · the agent card plate, wired to a real transcript', () => {
     renderToString(createSSRApp({ render: () => h(AgentCard as never, props) }))
 
   /**
-   * ⚑ D-017 · R11 — what the card's callers hand it: the transcript, and `stateHere`'s one state
-   * over the SAME record (`ConversationPane`, `SessionPanel`, `SessionDrawer`). ⚑ D-036 · no one
-   * named as holding work it gave out (`stateHere`'s fourth argument): these facets carry no wait.
+   * ⚑ D-017 · R11 — what the card's callers hand it: the transcript, and the host's one state of
+   * the SAME record ({@link hostStateOf}): these facets carry no wait.
    */
   const cardOf = (facets: AgentFacets, ...events: Parameters<typeof applyEvent>[1][]) => {
     const record = createSessionRecord('sess_card')
@@ -131,7 +126,7 @@ describe('§4 · the agent card plate, wired to a real transcript', () => {
       panel: sessionPanel(record.control),
       state: record.control,
 
-      agentState: stateHere(record, facets, null, []),
+      agentState: hostStateOf(record),
     })
   }
 
