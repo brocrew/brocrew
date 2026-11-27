@@ -204,6 +204,23 @@ const has = (events: RuntimeEvent[], pred: (e: RuntimeEvent) => boolean) => () =
 const okThread = (id: string, cwd = '/tmp/x'): Record<string, unknown> =>
   threadStartResponse(id, cwd) as unknown as Record<string, unknown>
 
+/**
+ * A Codex session started on `transport`: `thread/start` answers `thread`, and the launch is the
+ * usual `/tmp/x` with `options` on top.
+ */
+async function startCodexOn(
+  transport: FakeTransport,
+  thread: Record<string, unknown> = okThread('th_1'),
+  options: Partial<Parameters<CodexRuntime['start']>[0]> = {},
+): Promise<Awaited<ReturnType<CodexRuntime['start']>>> {
+  transport.onRequest('thread/start', () => thread)
+  return new CodexRuntime(adopt(transport)).start({
+    cwd: '/tmp/x',
+    providerHome: '/tmp/x/home',
+    ...options,
+  })
+}
+
 async function startCodex(): Promise<{
   transport: FakeTransport
   handle: Awaited<ReturnType<CodexRuntime['start']>>
@@ -211,9 +228,7 @@ async function startCodex(): Promise<{
   consumer: Promise<void>
 }> {
   const transport = new FakeTransport()
-  transport.onRequest('thread/start', () => okThread('th_1'))
-  const runtime = new CodexRuntime(adopt(transport))
-  const handle = await runtime.start({ cwd: '/tmp/x', providerHome: '/tmp/x/home' })
+  const handle = await startCodexOn(transport)
   const events: RuntimeEvent[] = []
   const consumer = collect(handle, events)
   return { transport, handle, events, consumer }
@@ -317,4 +332,5 @@ export {
   scopeOf,
   startCodex,
   startCodexInTurn,
+  startCodexOn,
 }

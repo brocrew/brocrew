@@ -18,6 +18,7 @@ import {
   has,
   okThread,
   startCodex,
+  startCodexOn,
 } from './helpers/fake-codex-transport'
 
 describe('the effective model + reasoning come from the PROVIDER (081)', () => {
@@ -28,11 +29,7 @@ describe('the effective model + reasoning come from the PROVIDER (081)', () => {
     // one, the provider's default among them by name. The adapter contract still allows an absent
     // model, so this case stands; and even a NAMED model is a request, never the report (081).
     const transport = new FakeTransport()
-    transport.onRequest('thread/start', () => ({ ...okThread('th_1'), model: 'gpt-5.1-codex' }))
-    const handle = await new CodexRuntime(adopt(transport)).start({
-      cwd: '/tmp/x',
-      providerHome: '/tmp/x/home',
-    })
+    const handle = await startCodexOn(transport, { ...okThread('th_1'), model: 'gpt-5.1-codex' })
     expect(handle.agentInfo?.model).toBe('gpt-5.1-codex')
     await handle.close()
   })
@@ -42,14 +39,10 @@ describe('the effective model + reasoning come from the PROVIDER (081)', () => {
     // on the server from the first message yet the panel showed `…` until some later
     // `settings/updated` happened to arrive. `ThreadStartResponse.reasoningEffort` is the field.
     const transport = new FakeTransport()
-    transport.onRequest('thread/start', () => ({
+    const handle = await startCodexOn(transport, {
       ...okThread('th_1'),
       model: 'gpt-5.1-codex',
       reasoningEffort: 'high',
-    }))
-    const handle = await new CodexRuntime(adopt(transport)).start({
-      cwd: '/tmp/x',
-      providerHome: '/tmp/x/home',
     })
     expect(handle.agentInfo?.reasoningEffort, 'available at start, not only later').toBe('high')
     expect(handle.agentInfo?.model).toBe('gpt-5.1-codex')
@@ -64,17 +57,12 @@ describe('the effective model + reasoning come from the PROVIDER (081)', () => {
     // thread/resume now carry it too, through the config overlay (`config.model_reasoning_effort`,
     // `CodexSessionHandle.openTheThread`), so the handshake runs at it before the first turn.
     const transport = new FakeTransport()
-    transport.onRequest('thread/start', () => okThread('th_1'))
     const started: unknown[] = []
     transport.onRequest('turn/start', (params) => {
       started.push(params)
       return {}
     })
-    const handle = await new CodexRuntime(adopt(transport)).start({
-      cwd: '/tmp/x',
-      providerHome: '/tmp/x/home',
-      reasoningEffort: 'high',
-    })
+    const handle = await startCodexOn(transport, okThread('th_1'), { reasoningEffort: 'high' })
     await handle.send('think hard about this')
     expect(started).toHaveLength(1)
     expect((started[0] as { effort?: string }).effort).toBe('high')
@@ -86,16 +74,12 @@ describe('the effective model + reasoning come from the PROVIDER (081)', () => {
     // effort the user configured in config.toml, and would then be reported back as if it were
     // theirs.
     const transport = new FakeTransport()
-    transport.onRequest('thread/start', () => okThread('th_1'))
     const started: unknown[] = []
     transport.onRequest('turn/start', (params) => {
       started.push(params)
       return {}
     })
-    const handle = await new CodexRuntime(adopt(transport)).start({
-      cwd: '/tmp/x',
-      providerHome: '/tmp/x/home',
-    })
+    const handle = await startCodexOn(transport)
     await handle.send('anything')
     expect((started[0] as { effort?: string }).effort).toBeUndefined()
     await handle.close()
@@ -103,14 +87,10 @@ describe('the effective model + reasoning come from the PROVIDER (081)', () => {
 
   it('a REPORTED effort is flagged as reported — Codex confirms, so it is fact (024)', async () => {
     const transport = new FakeTransport()
-    transport.onRequest('thread/start', () => ({
+    const handle = await startCodexOn(transport, {
       ...okThread('th_1'),
       model: 'gpt-5.1-codex',
       reasoningEffort: 'high',
-    }))
-    const handle = await new CodexRuntime(adopt(transport)).start({
-      cwd: '/tmp/x',
-      providerHome: '/tmp/x/home',
     })
     expect(handle.agentInfo?.reasoningEffortReported).toBe(true)
     await handle.close()
@@ -118,11 +98,7 @@ describe('the effective model + reasoning come from the PROVIDER (081)', () => {
 
   it('a handshake WITHOUT an effort still reports none — absent, never invented', async () => {
     const transport = new FakeTransport()
-    transport.onRequest('thread/start', () => ({ ...okThread('th_1'), model: 'gpt-5.1-codex' }))
-    const handle = await new CodexRuntime(adopt(transport)).start({
-      cwd: '/tmp/x',
-      providerHome: '/tmp/x/home',
-    })
+    const handle = await startCodexOn(transport, { ...okThread('th_1'), model: 'gpt-5.1-codex' })
     expect(handle.agentInfo?.reasoningEffort).toBeUndefined()
     await handle.close()
   })
@@ -514,13 +490,9 @@ describe('the instruction files Codex reports (158)', () => {
 
   it('⛔ start: the reported sources are retained, in the provider’s own order', async () => {
     const transport = new FakeTransport()
-    transport.onRequest('thread/start', () => ({
+    const handle = await startCodexOn(transport, {
       ...threadStartResponse('th_1'),
       instructionSources: sources,
-    }))
-    const handle = await new CodexRuntime(adopt(transport)).start({
-      cwd: '/tmp/x',
-      providerHome: '/tmp/x/home',
     })
 
     // Order is meaning: global first, then project root-to-cwd, which is the composition order.
@@ -549,11 +521,7 @@ describe('the instruction files Codex reports (158)', () => {
     // The fixture's default. "Reported none" and "reported nothing" are the same to a reader, and
     // a heading over an empty list is the absence 086 rules out in the other direction.
     const transport = new FakeTransport()
-    transport.onRequest('thread/start', () => okThread('th_1'))
-    const handle = await new CodexRuntime(adopt(transport)).start({
-      cwd: '/tmp/x',
-      providerHome: '/tmp/x/home',
-    })
+    const handle = await startCodexOn(transport)
 
     expect(handle.instructionSources).toBeUndefined()
     await handle.close()
@@ -561,13 +529,9 @@ describe('the instruction files Codex reports (158)', () => {
 
   it('🔒 non-string entries are dropped — wire data reaching a surface is filtered', async () => {
     const transport = new FakeTransport()
-    transport.onRequest('thread/start', () => ({
+    const handle = await startCodexOn(transport, {
       ...threadStartResponse('th_1'),
       instructionSources: ['/work/AGENTS.md', 42, null, { path: '/evil' }, ''],
-    }))
-    const handle = await new CodexRuntime(adopt(transport)).start({
-      cwd: '/tmp/x',
-      providerHome: '/tmp/x/home',
     })
 
     expect(handle.instructionSources).toEqual(['/work/AGENTS.md'])

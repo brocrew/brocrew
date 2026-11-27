@@ -21,6 +21,7 @@ import {
   has,
   okThread,
   startCodex,
+  startCodexOn,
 } from './helpers/fake-codex-transport'
 
 it.each(['handshake', 'callback'] as const)(
@@ -209,12 +210,8 @@ describe('CodexRuntime — handshake & message flow', () => {
 
     it('⛔ the handle ASKS, and a user already at the wall hears about it before any frame', async () => {
       const transport = new FakeTransport()
-      transport.onRequest('thread/start', () => okThread('th_1'))
       transport.onRequest('account/rateLimits/read', () => RESPONSE)
-      const handle = await new CodexRuntime(adopt(transport)).start({
-        cwd: '/tmp/x',
-        providerHome: '/tmp/x/home',
-      })
+      const handle = await startCodexOn(transport)
       const events: RuntimeEvent[] = []
       const consumer = collect(handle, events)
 
@@ -255,17 +252,13 @@ describe('CodexRuntime — handshake & message flow', () => {
 
     it('provider follow-ups 1 · a read that says ordinary usage is NOT allowed is asked again before the next turn, never inferred', async () => {
       const transport = new FakeTransport()
-      transport.onRequest('thread/start', () => okThread('th_1'))
       let reads = 0
       transport.onRequest('account/rateLimits/read', () => {
         reads += 1
         // The first read says "not allowed"; the second, before the turn, says it is again.
         return { ...RESPONSE, ordinaryUsageAllowed: reads === 1 ? false : true }
       })
-      const handle = await new CodexRuntime(adopt(transport)).start({
-        cwd: '/tmp/x',
-        providerHome: '/tmp/x/home',
-      })
+      const handle = await startCodexOn(transport)
       const events: RuntimeEvent[] = []
       const consumer = collect(handle, events)
       await vi.waitFor(() => expect(reads).toBe(1))
@@ -277,16 +270,12 @@ describe('CodexRuntime — handshake & message flow', () => {
 
       // ⚑ The paired negative: a read that said nothing about it is not re-asked.
       const quiet = new FakeTransport()
-      quiet.onRequest('thread/start', () => okThread('th_2'))
       let quietReads = 0
       quiet.onRequest('account/rateLimits/read', () => {
         quietReads += 1
         return RESPONSE
       })
-      const other = await new CodexRuntime(adopt(quiet)).start({
-        cwd: '/tmp/x',
-        providerHome: '/tmp/x/home',
-      })
+      const other = await startCodexOn(quiet, okThread('th_2'))
       await vi.waitFor(() => expect(quietReads).toBe(1))
       await other.send('go')
       await new Promise((resolve) => setTimeout(resolve, 20))
@@ -296,12 +285,8 @@ describe('CodexRuntime — handshake & message flow', () => {
 
     it('⚠️ a baseline that cannot be fetched says so, and the session is unharmed', async () => {
       const transport = new FakeTransport()
-      transport.onRequest('thread/start', () => okThread('th_1'))
       transport.failRequest('account/rateLimits/read')
-      const handle = await new CodexRuntime(adopt(transport)).start({
-        cwd: '/tmp/x',
-        providerHome: '/tmp/x/home',
-      })
+      const handle = await startCodexOn(transport)
       const events: RuntimeEvent[] = []
       const consumer = collect(handle, events)
 
@@ -522,11 +507,7 @@ describe('Codex memory is switched on at launch (314 §2)', () => {
     const theirs = 'features = 3\n'
     writeFileSync(config(), theirs)
     const transport = new FakeTransport()
-    transport.onRequest('thread/start', () => okThread('th_1'))
-    const handle = await new CodexRuntime(adopt(transport)).start({
-      cwd: '/tmp/x',
-      providerHome: home,
-    })
+    const handle = await startCodexOn(transport, okThread('th_1'), { providerHome: home })
     expect(handle.ref?.sessionId).toBe('th_1')
     expect(readFileSync(config(), 'utf8')).toBe(theirs)
     await handle.close()
@@ -535,11 +516,7 @@ describe('Codex memory is switched on at launch (314 §2)', () => {
   it('preserves the existing SQLite setting when adding memory settings', async () => {
     writeFileSync(config(), 'sqlite_home = "sub/state"\n')
     const transport = new FakeTransport()
-    transport.onRequest('thread/start', () => okThread('th_1'))
-    const handle = await new CodexRuntime(adopt(transport)).start({
-      cwd: '/tmp/x',
-      providerHome: home,
-    })
+    const handle = await startCodexOn(transport, okThread('th_1'), { providerHome: home })
     const after = readFileSync(config(), 'utf8')
     expect(after).toContain('sqlite_home = "sub/state"')
     expect(after).toContain('memories = true')
@@ -549,11 +526,7 @@ describe('Codex memory is switched on at launch (314 §2)', () => {
   it('preserves an external SQLite setting when adding memory settings', async () => {
     writeFileSync(config(), 'sqlite_home = "/tmp/brobot-escape"\n')
     const transport = new FakeTransport()
-    transport.onRequest('thread/start', () => okThread('th_1'))
-    const handle = await new CodexRuntime(adopt(transport)).start({
-      cwd: '/tmp/x',
-      providerHome: home,
-    })
+    const handle = await startCodexOn(transport, okThread('th_1'), { providerHome: home })
     expect(readFileSync(config(), 'utf8')).toContain('sqlite_home = "/tmp/brobot-escape"')
     await handle.close()
   })
@@ -724,11 +697,7 @@ describe('Codex launch settings stay with the launch', () => {
 
   it('later settings and file changes do not replace or mutate the launch values', async () => {
     const transport = new FakeTransport()
-    transport.onRequest('thread/start', () => okThread('th_1'))
-    const handle = await new CodexRuntime(adopt(transport)).start({
-      cwd: '/tmp/x',
-      providerHome: home,
-    })
+    const handle = await startCodexOn(transport, okThread('th_1'), { providerHome: home })
     try {
       const launched = handle.launchSettings
       const original = JSON.stringify(launched)

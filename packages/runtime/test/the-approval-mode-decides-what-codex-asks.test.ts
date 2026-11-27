@@ -13,6 +13,7 @@ import {
   firstOfType,
   has,
   okThread,
+  startCodexOn,
 } from './helpers/fake-codex-transport'
 
 describe('auto-approve mode — Codex (078)', () => {
@@ -235,11 +236,7 @@ describe('auto-approve mode — Codex (078)', () => {
       const config = join(home, 'config.toml')
       writeFileSync(config, `${STALE}[permissions.deny\nthis = "is not toml\n`)
       const transport = new FakeTransport()
-      transport.onRequest('thread/start', () => okThread('th_1'))
-      const handle = await new CodexRuntime(adopt(transport)).start({
-        cwd: '/tmp/x',
-        providerHome: home,
-      })
+      const handle = await startCodexOn(transport, okThread('th_1'), { providerHome: home })
       expect(handle.ref?.sessionId).toBe('th_1')
       const after = readFileSync(config, 'utf8')
       expect(after, 'the unparseable block is gone, not merely stepped over').not.toContain(
@@ -254,11 +251,7 @@ describe('auto-approve mode — Codex (078)', () => {
       const config = join(home, 'config.toml')
       writeFileSync(config, '[permissions.deny\nthis = "is not toml\n')
       const transport = new FakeTransport()
-      transport.onRequest('thread/start', () => okThread('th_1'))
-      const handle = await new CodexRuntime(adopt(transport)).start({
-        cwd: '/tmp/x',
-        providerHome: home,
-      })
+      const handle = await startCodexOn(transport, okThread('th_1'), { providerHome: home })
       expect(readFileSync(config, 'utf8')).toBe('[permissions.deny\nthis = "is not toml\n')
       await handle.close()
     })
@@ -295,11 +288,7 @@ describe('auto-approve mode — Codex (078)', () => {
         'model = "gpt-5"\n\n[projects."/Users/someone/dev/thing"]\ntrust_level = "trusted"\n'
       writeFileSync(config, theirs)
       const transport = new FakeTransport()
-      transport.onRequest('thread/start', () => okThread('th_1'))
-      const handle = await new CodexRuntime(adopt(transport)).start({
-        cwd: '/tmp/x',
-        providerHome: home,
-      })
+      const handle = await startCodexOn(transport, okThread('th_1'), { providerHome: home })
       const after = readFileSync(config, 'utf8')
       expect(after).toContain('model = "gpt-5"')
       expect(after).toContain('[projects."/Users/someone/dev/thing"]\ntrust_level = "trusted"')
@@ -536,11 +525,7 @@ describe('switching the approval mode mid-conversation — Codex (034)', () => {
     // without a rollback the session would sit there claiming AUTO while the app-server was never
     // told anything and nothing had run unprompted.
     const transport = new FakeTransport()
-    transport.onRequest('thread/start', () => okThread('th_1'))
-    const handle = await new CodexRuntime(adopt(transport)).start({
-      cwd: '/tmp/x',
-      providerHome: '/tmp/x/home',
-    })
+    const handle = await startCodexOn(transport)
     // Rejected, not thrown: the real transport returns a promise on every path — a terminal error
     // rejects, and a failed stdin write is caught and rejected — so a synchronous throw would be a
     // shape only the fake can produce.
@@ -568,11 +553,7 @@ describe('switching the approval mode mid-conversation — Codex (034)', () => {
       excludeSlashTmp: true,
     }
     const transport = new FakeTransport()
-    transport.onRequest('thread/start', () => ({ ...okThread('th_1'), sandbox: echoed }))
-    const handle = await new CodexRuntime(adopt(transport)).start({
-      cwd: '/tmp/x',
-      providerHome: '/tmp/x/home',
-    })
+    const handle = await startCodexOn(transport, { ...okThread('th_1'), sandbox: echoed })
     await handle.send('one')
     expect(turnParams(transport)[0]?.['sandboxPolicy']).toEqual(echoed)
     await handle.close()
