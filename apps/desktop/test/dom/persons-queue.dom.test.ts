@@ -9,7 +9,7 @@ import type {
   RoutedRequest,
   WorkInHand,
 } from '../../src/shared/question-contracts'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { page } from 'vitest/browser'
 import { defineComponent, h, nextTick, type PropType } from 'vue'
 import CapabilitiesSheet from '../../src/renderer/src/components/CapabilitiesSheet.vue'
@@ -371,6 +371,59 @@ afterEach(async () => {
   unmountAll()
   queue.forget()
   await page.viewport(ORIGINAL.width, ORIGINAL.height)
+})
+
+it('switches the Waiting on you questions between oldest and newest first', async () => {
+  const older = asked({ requestId: 'older', askedBy: 'sess_older', escalatedAt: NOW - 2 })
+  const newer = asked({ requestId: 'newer', askedBy: 'sess_newer', escalatedAt: NOW })
+  const middle = asked({ requestId: 'middle', askedBy: 'sess_middle', escalatedAt: NOW - 1 })
+  const sameDate = asked({ ...middle.request, escalatedAt: NOW })
+  const latest = asked({ requestId: 'latest', askedBy: 'sess_latest', escalatedAt: NOW + 1 })
+  const earlier = asked({ requestId: 'earlier', askedBy: 'sess_earlier', escalatedAt: NOW - 3 })
+  supply([newer, middle, older])
+  const home = mount(WaitingOnYou, {}, { width: 1180, height: 808 })
+  await nextTick()
+  const order = () =>
+    Array.from(home.q('waiting-list-questions').children, (card) =>
+      card.querySelector('[data-cy^="persons-queue-row-"]')?.getAttribute('data-cy'),
+    )
+  const keys = (...requests: PersonsQuestion[]) =>
+    requests.map(({ request }) => `persons-queue-row-${request.askedBy}:${request.requestId}`)
+  const select = home.q('waiting-sort') as HTMLSelectElement
+  const pickOrder = async (value: string) => {
+    select.value = value
+    select.dispatchEvent(new Event('change', { bubbles: true }))
+    await nextTick()
+  }
+
+  expect(select.selectedOptions[0]?.textContent).toBe('Oldest first')
+  expect(order()).toEqual(keys(older, middle, newer))
+  await pickOrder('newest')
+  expect(select.selectedOptions[0]?.textContent).toBe('Newest first')
+  expect(order()).toEqual(keys(newer, middle, older))
+
+  // The refresh makes two dates equal. The queue's key order would now put middle first.
+  supply([older, sameDate, newer, latest])
+  await nextTick()
+  expect(order()).toEqual(keys(newer, sameDate, older))
+  home.q('waiting-show-new').click()
+  await nextTick()
+  expect(order()).toEqual(keys(latest, newer, sameDate, older))
+
+  supply([older, sameDate, newer, latest, earlier])
+  await nextTick()
+  const scroll = vi.spyOn(Element.prototype, 'scrollIntoView')
+  try {
+    home.q('waiting-show-new').click()
+    await nextTick()
+    expect(order()).toEqual(keys(latest, newer, sameDate, older, earlier))
+    expect(scroll.mock.contexts).toEqual([home.q('waiting-list-questions').lastElementChild])
+  } finally {
+    scroll.mockRestore()
+  }
+
+  await pickOrder('oldest')
+  expect(order()).toEqual(keys(earlier, older, sameDate, newer, latest))
 })
 
 describe('The waiting queue stays reachable in an overlay', () => {
