@@ -688,6 +688,7 @@ describe('D-017b · a look takes what a press may take, and nothing else', () =>
     function scriptedWindow() {
       let listener: ((message: RuntimeEventMessage) => void) | null = null
       const looks: { sessionId: string; claim: boolean | undefined }[] = []
+      const stoppedLooking: string[] = []
       const gates: { answer: (handed: ResumedSession) => void; refuse: (why: Error) => void }[] = []
       const bridge = {
         attachOpen: async () => [],
@@ -701,6 +702,10 @@ describe('D-017b · a look takes what a press may take, and nothing else', () =>
         },
         onLiveness: () => () => {},
         onChanged: () => () => {},
+        resume: () => Promise.reject(new Error('the host said no')),
+        stopLooking: async (input: { sessionId: string }) => {
+          stoppedLooking.push(input.sessionId)
+        },
         look: (input: { sessionId: string; claim?: boolean }) =>
           new Promise<ResumedSession>((resolve, reject) => {
             let parsed
@@ -722,6 +727,7 @@ describe('D-017b · a look takes what a press may take, and nothing else', () =>
       return {
         store,
         looks,
+        stoppedLooking,
         /** The n-th look's gate, once that look has reached the bridge. */
         async gate(n: number) {
           await waitFor(() => gates.length > n, `look ${n + 1} to reach the bridge`)
@@ -745,6 +751,24 @@ describe('D-017b · a look takes what a press may take, and nothing else', () =>
       stops.push(() => built.store.dispose())
       return built
     }
+
+    it('a reopen refused while a look is out leaves the record to the look, which is shown and can be let go', async () => {
+      const win = aWindow()
+      const looking = win.store.look('sess_a')
+      const gate = await win.gate(0)
+      // The other hand-over fails first: the record it shared with the look is not deleted under it.
+      expect(await win.store.resume('sess_a')).toBeNull()
+      expect(win.store.get('sess_a')).not.toBeNull()
+
+      gate.answer(recordedPage('sess_a'))
+      expect(await looking).toBe('sess_a')
+      // Adopted into the record the window holds: a recorded page, drawn from that record.
+      expect(win.store.get('sess_a')?.meta).not.toBeNull()
+      // The host registered this window on the look, and the window holds the record to let it go.
+      win.store.forget('sess_a')
+      expect(win.store.get('sess_a')).toBeNull()
+      expect(win.stoppedLooking).toEqual(['sess_a'])
+    })
 
     it('a press whose page a held event reaches past looks again once, and that look asks as no press and never chains', async () => {
       const win = aWindow()
