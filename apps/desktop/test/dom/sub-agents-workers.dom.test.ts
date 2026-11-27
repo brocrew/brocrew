@@ -130,6 +130,18 @@ describe('Sub agents: distinct parallel workers and their pieces', () => {
     expect(m.q('cast-tile-piece-ada-worker-2-W90.2').textContent).toBe('Read the menu')
   })
 
+  it('shows the open piece a worker was given when its own root names it without a title', async () => {
+    const rows = panelRows()
+    rows[1] = { ...rows[1]!, named: { label: 'W95', title: null } }
+    listed(rows)
+    const m = await band()
+    expect(m.q('cast-tile-label-ada-worker-2').textContent).toBe('W95')
+    const piece = m.q('cast-tile-piece-ada-worker-2-W90.2')
+    expect(piece.textContent).toBe('Read the menu')
+    assertDrawn(piece, 'the task line of a worker named by its untitled root', m.host)
+    expect(m.all('cast-tile-piece-ada-worker-2-more')).toHaveLength(0)
+  })
+
   it('shows the newest piece once and counts the other open pieces', async () => {
     const work = panelWork()
     const another: WorkEdge = {
