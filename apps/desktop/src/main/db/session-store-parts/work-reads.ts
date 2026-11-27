@@ -89,6 +89,7 @@ type WorkReadsMethods = Pick<
   | 'firstTaskOf'
   | 'defaultConversationTitle'
   | 'rootOf'
+  | 'startedByAPerson'
   | 'workersBorn'
   | 'workerGiverContains'
   | 'workerInItsPlace'
@@ -389,6 +390,16 @@ export function createWorkReadsPart(deps: WorkReadsPartDeps) {
     rootOf(conversation) {
       const row = workSql().rootOwnedBy.get(conversation) as WorkDbRow | undefined
       return row === undefined ? null : workRowFrom(row, [row.number])
+    },
+
+    startedByAPerson() {
+      // A service also owns a root, its standing one, and nobody started it.
+      const services = new Set(this.servicesBorn().map((one) => one.conversation))
+      return new Set(
+        (workSql().rootOwners.all() as { id: string }[])
+          .map((row) => row.id)
+          .filter((id) => !services.has(id)),
+      )
     },
 
     workersBorn,

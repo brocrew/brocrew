@@ -100,7 +100,12 @@ async function rail(
     },
     { width, height: 900 },
   )
-  await expect.poll(() => m.all('conversations-loading').length).toBe(0)
+  // While a first page is drawn the full list is still out, so the rail still says it is loading.
+  if (first === undefined) await expect.poll(() => m.all('conversations-loading').length).toBe(0)
+  else
+    await expect
+      .poll(() => m.all('rail-conversations')[0]?.querySelector('[data-session-id]'))
+      .toBeTruthy()
   return { ...m, selected }
 }
 
@@ -197,6 +202,28 @@ it('opens a recent conversation before its state arrives and then shows the full
   await expect.poll(() => m.all('rail-needs-you').length).toBe(1)
   expect(ids(m, 'needs-you')).toEqual(['recent-approval'])
   expect(m.all('open-session-temporary')).toHaveLength(0)
+})
+
+it("shows BroBot's own conversations from the first page and says the rest is still loading", async () => {
+  const helpers = Array.from({ length: 15 }, (_, i) => row(`helper-${i}`, 'reviewer', i / 100))
+  const brobot = row('brobot-root', 'brobot', 5)
+  let finishFull!: () => void
+  const full = new Promise<void>((resolve) => {
+    finishFull = resolve
+  })
+  const m = await rail([...helpers, brobot], {}, 266, {
+    rows: [...helpers, brobot].map((row) => ({ ...row, identity: null })),
+    until: full,
+  })
+  const brobots = () =>
+    [...m.q('rail-section-brobot').querySelectorAll<HTMLElement>('[data-session-id]')].map(
+      (element) => element.dataset.sessionId,
+    )
+  expect(brobots()).toEqual(['brobot-root'])
+  expect(m.all('conversations-loading')).toHaveLength(1)
+  finishFull()
+  await expect.poll(() => m.all('conversations-loading').length).toBe(0)
+  expect(brobots()).toEqual(['brobot-root'])
 })
 
 it('puts Needs you first, then one Recent list across the existing profiles', async () => {

@@ -813,7 +813,7 @@ const platform = platformHere()
       <!-- Work needing you stays above the paged Recent list. -->
       <div class="rail-section rail-conversations" data-wired="true" data-cy="rail-conversations">
         <p
-          v-if="!looked && !listError && !initialRecent.length"
+          v-if="!looked && !listError"
           class="rail-empty"
           role="status"
           data-cy="conversations-loading"

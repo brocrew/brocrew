@@ -13398,26 +13398,33 @@ export class RuntimeHost implements LiveHost {
     }
   }
 
-  /** The rail can name recent conversations before their work and state are folded. */
+  /**
+   * The rail can name recent conversations, and every one a person started, before their work and
+   * state are folded: with many agents working, none of a person's own conversations may be among
+   * the most recent.
+   */
   listRecentConversations(): readonly RecentConversation[] {
     const { store } = this.deps
     const catalogued = [
       ...store.resumable(),
       ...store.unresumable().filter((row) => !row.foundInUserHome && !row.restoredFromBundle),
     ]
-    return catalogued
       .filter((row) => !this.archived.has(row.sessionId))
       .sort((one, other) => other.updatedAt - one.updatedAt)
-      .slice(0, RECENT_CONVERSATION_PAGE_SIZE)
-      .map(({ sessionId, profileId, provider, cwd, updatedAt }) => ({
-        sessionId,
-        profileId,
-        provider,
-        cwd,
-        updatedAt,
-        running: this.runningStateOf(sessionId),
-        identity: this.readConversationIdentity(sessionId),
-      }))
+    const recent = catalogued.slice(0, RECENT_CONVERSATION_PAGE_SIZE)
+    const started = store.startedByAPerson()
+    const theirs = catalogued
+      .slice(RECENT_CONVERSATION_PAGE_SIZE)
+      .filter((row) => started.has(row.sessionId))
+    return [...recent, ...theirs].map(({ sessionId, profileId, provider, cwd, updatedAt }) => ({
+      sessionId,
+      profileId,
+      provider,
+      cwd,
+      updatedAt,
+      running: this.runningStateOf(sessionId),
+      identity: this.readConversationIdentity(sessionId),
+    }))
   }
 
   /**

@@ -271,6 +271,7 @@ export function createWorkStatementsPart(deps: WorkStatementsPartDeps) {
     rootNumbered: AppStatement
     childNumbered: AppStatement
     rootOwnedBy: AppStatement
+    rootOwners: AppStatement
     firstOwnedBy: AppStatement
     firstNonRootOwnedBy: AppStatement
     children: AppStatement
@@ -323,6 +324,11 @@ export function createWorkStatementsPart(deps: WorkStatementsPartDeps) {
       ),
       rootOwnedBy: db.prepare(
         `SELECT ${WORK_COLUMNS} FROM work WHERE parent_id IS NULL AND owner_session_id = ?`,
+      ),
+      rootOwners: db.prepare(
+        `SELECT w.owner_session_id AS id FROM work AS w
+           JOIN provider_session AS s ON s.id = w.owner_session_id
+          WHERE w.parent_id IS NULL AND s.parent_session_id IS NULL`,
       ),
       // ⚑ Stored order is the row's insertion order (rowid), read in the owner index's own order.
       firstOwnedBy: db.prepare(

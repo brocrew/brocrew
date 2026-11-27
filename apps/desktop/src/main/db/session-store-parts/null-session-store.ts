@@ -167,6 +167,7 @@ export const NULL_SESSION_STORE: SessionStore = {
   firstTaskOf: () => null,
   defaultConversationTitle: () => null,
   rootOf: () => null,
+  startedByAPerson: () => new Set(),
   serviceBorn: () => false,
   servicesBorn: () => [],
   workersBorn: () => [],

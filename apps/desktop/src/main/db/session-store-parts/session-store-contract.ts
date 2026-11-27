@@ -512,6 +512,11 @@ export interface SessionStore extends OwnNotesStore, WorkLedgerRead, ForestStore
   defaultConversationTitle(conversation: string, includeOpening?: boolean): string | null
   /** The root this conversation owns, or `null`: a conversation another one started owns none. */
   rootOf(conversation: string): WorkRow | null
+  /**
+   * The conversations a person started, whichever agent runs them: each owns a root, no other
+   * conversation started it, and it is no service.
+   */
+  startedByAPerson(): ReadonlySet<string>
   serviceBorn(conversation: string): boolean
   servicesBorn(): readonly ServiceBorn[]
   /** Bounded indexed birth evidence; malformed or oversized evidence throws. */
