@@ -31,6 +31,7 @@ import {
   has,
   okThread,
   startCodex,
+  startCodexOn,
 } from './helpers/fake-codex-transport'
 
 describe('CodexRuntime — the credential pre-flight (098)', () => {
@@ -490,11 +491,7 @@ describe('CodexRuntime — the credential pre-flight (098)', () => {
     // A build without these methods must not be reported as "signed out". `FakeTransport` replies
     // `{}` to anything unregistered, which is exactly that shape.
     const transport = new FakeTransport()
-    transport.onRequest('thread/start', () => okThread('th_1'))
-    const handle = await new CodexRuntime(adopt(transport)).start({
-      cwd: '/tmp/x',
-      providerHome: '/tmp/x/home',
-    })
+    const handle = await startCodexOn(transport)
     expect(handle.ref?.sessionId).toBe('th_1')
     await handle.close()
   })
