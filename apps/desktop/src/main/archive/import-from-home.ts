@@ -1,6 +1,7 @@
 import type { Provider } from '@brobot2/shared'
 import type { ChildDescent } from '../adopt/discover-sessions'
 import type { SessionStore } from '../db/session-store'
+import type { LedgerGenerations } from '../database/ledger-generations'
 import { deriveLedger, type ProviderLines } from './derive-ledger'
 import type { ResolveImagePath } from './transcript-types'
 
@@ -37,7 +38,8 @@ export function describeOutcome(outcome: HomeImportOutcome): string {
 }
 
 export interface HomeImportDeps {
-  store: SessionStore
+  store: Pick<SessionStore, 'findByProviderRef' | 'learnDescent' | 'adopt'>
+  generations: LedgerGenerations
   newSessionId(): string
 
   lines(path: string): ProviderLines
@@ -54,7 +56,7 @@ export async function importFromHome(
 
   // Existing ledgers can still learn their parent without being rebuilt.
   if (known !== null) deps.store.learnDescent(known, source.child)
-  if (known !== null && deps.store.ledgerStatus(known).present) return 'up-to-date'
+  if (known !== null && (await deps.generations.hasLedger(known))) return 'up-to-date'
   if (cancelled()) return 'stopped'
 
   let sessionId = known
@@ -75,7 +77,7 @@ export async function importFromHome(
   }
 
   const outcome = await deriveLedger(
-    deps.store,
+    deps.generations,
     sessionId,
     source.provider,
     deps.lines(source.path),

@@ -23,6 +23,7 @@ import {
 import { createLaunchRegistry } from '../src/main/runtime/launch-registry'
 import { gateClose, stillWaiting } from './helpers/provider-close-waits'
 import { deriveLedger } from '../src/main/archive/derive-ledger'
+import { asyncLedgerGenerations } from '../src/main/database/sqlite/ledger/generations'
 import { readLines } from '../src/main/archive/native-file'
 import { DEFAULT_PROFILE_ID } from '../src/shared/runtime-ipc'
 
@@ -503,10 +504,16 @@ describe('a derive never reads a half-written last line (070, from 068 finding 3
     const tally = { eventsWritten: 0, unreadableLines: 0 }
     const before = store.ledgerStatus('sess_tail')
 
-    const outcome = await deriveLedger(store, 'sess_tail', 'codex', fromFile(path), {
-      fallbackAt: 1_000,
-      tally,
-    })
+    const outcome = await deriveLedger(
+      asyncLedgerGenerations(store),
+      'sess_tail',
+      'codex',
+      fromFile(path),
+      {
+        fallbackAt: 1_000,
+        tally,
+      },
+    )
 
     expect(outcome).toBe('still-writing')
     expect(store.ledgerStatus('sess_tail').derivedThrough).toBe(before.derivedThrough)
@@ -519,15 +526,23 @@ describe('a derive never reads a half-written last line (070, from 068 finding 3
 
   it('an ordinary import reads it once the rest of the line lands', async () => {
     const { path, rest } = plantMidWrite()
-    await deriveLedger(store, 'sess_tail', 'codex', fromFile(path), { fallbackAt: 1_000 })
+    await deriveLedger(asyncLedgerGenerations(store), 'sess_tail', 'codex', fromFile(path), {
+      fallbackAt: 1_000,
+    })
 
     // The writer finishes the object it was in the middle of.
     writeFileSync(path, `${readFileSync(path, 'utf8')}${rest}\n`)
     const tally = { eventsWritten: 0, unreadableLines: 0 }
-    const again = await deriveLedger(store, 'sess_tail', 'codex', fromFile(path), {
-      fallbackAt: 1_000,
-      tally,
-    })
+    const again = await deriveLedger(
+      asyncLedgerGenerations(store),
+      'sess_tail',
+      'codex',
+      fromFile(path),
+      {
+        fallbackAt: 1_000,
+        tally,
+      },
+    )
 
     expect(again).toBe('imported')
     expect(store.ledgerStatus('sess_tail').derivedThrough).toBe(3)

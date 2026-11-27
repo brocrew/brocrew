@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { deriveLedger } from '../src/main/archive/derive-ledger'
+import { asyncLedgerGenerations } from '../src/main/database/sqlite/ledger/generations'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { HISTORY_TYPES } from '../src/main/db/event-retention-policy'
 import { applyMigrations } from '../src/main/db/migrate'
@@ -222,7 +223,10 @@ describe("a conversation's title", () => {
       }),
     )
     const derive = (rebuild: boolean) =>
-      deriveLedger(store, 'sess_adopted', 'claude', linesOf(frames), { fallbackAt: AT, rebuild })
+      deriveLedger(asyncLedgerGenerations(store), 'sess_adopted', 'claude', linesOf(frames), {
+        fallbackAt: AT,
+        rebuild,
+      })
     expect(await derive(false)).toBe('imported')
 
     const next = () => store.nextOrdinal('sess_adopted')

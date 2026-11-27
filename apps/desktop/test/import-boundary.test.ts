@@ -8,6 +8,7 @@ import type { SessionStore } from '../src/main/db/session-store'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { CLAUDE_JSONL } from '../src/main/providers/claude/transcripts'
 import { deriveLedger } from '../src/main/archive/derive-ledger'
+import { asyncLedgerGenerations } from '../src/main/database/sqlite/ledger/generations'
 import { linesOf } from './helpers/provider-lines'
 import type { SessionBundle } from '../src/main/archive/export-session'
 
@@ -161,20 +162,32 @@ describe('import has one completion boundary (051)', () => {
       // cancelled, and had to let the exception out. The projection is now built in a generation
       // nothing reads, so a mid-build failure is an ordinary outcome with a name: the previous
       // projection — here, none at all — is exactly as it was, and the reason is on the record.
-      const failed = await deriveLedger(flaky, sessionId, 'claude', fixture, {
-        fallbackAt: 1_700_000_000_000,
-        batchSize: 2,
-      })
+      const failed = await deriveLedger(
+        asyncLedgerGenerations(flaky),
+        sessionId,
+        'claude',
+        fixture,
+        {
+          fallbackAt: 1_700_000_000_000,
+          batchSize: 2,
+        },
+      )
       expect(failed).toBe('failed')
       expect(store.ledgerStatus(sessionId).present).toBe(false)
       expect(store.events(sessionId)).toEqual([])
       expect(store.ledgerStatus(sessionId).failure).toContain('the disk went away')
 
       // ...and because nothing was published, the next pass is let straight in.
-      const outcome = await deriveLedger(store, sessionId, 'claude', fixture, {
-        fallbackAt: 1_700_000_000_000,
-        batchSize: 2,
-      })
+      const outcome = await deriveLedger(
+        asyncLedgerGenerations(store),
+        sessionId,
+        'claude',
+        fixture,
+        {
+          fallbackAt: 1_700_000_000_000,
+          batchSize: 2,
+        },
+      )
       expect(outcome).toBe('imported')
       const after = store.ledgerStatus(sessionId)
       expect(after.present).toBe(true)
@@ -185,7 +198,9 @@ describe('import has one completion boundary (051)', () => {
 
     it('closes an imported conversation with the only honest reason (045)', async () => {
       const sessionId = planted()
-      await deriveLedger(store, sessionId, 'claude', fixture, { fallbackAt: 1_700_000_000_000 })
+      await deriveLedger(asyncLedgerGenerations(store), sessionId, 'claude', fixture, {
+        fallbackAt: 1_700_000_000_000,
+      })
 
       // A provider file records prompts and replies, never turn lifecycle, so every turn an import
       // opens has an ending nobody observed. `unknown` is what that is called.

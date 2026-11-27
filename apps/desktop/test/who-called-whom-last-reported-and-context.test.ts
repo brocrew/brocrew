@@ -9,6 +9,7 @@ import type { Provider } from '@brobot2/shared'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { deriveLedger } from '../src/main/archive/derive-ledger'
+import { asyncLedgerGenerations } from '../src/main/database/sqlite/ledger/generations'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
@@ -314,9 +315,15 @@ describe('20f1a2a0 · what each named conversation last reported', () => {
       providerFile = join(workspace, 'thread-planted.jsonl')
       writeFileSync(providerFile, `${claudeFrames(0, 6).join('\n')}\n`)
       expect(
-        await deriveLedger(store, SESSION, 'claude', linesOf(claudeFrames(0, 6)), {
-          fallbackAt: NOW,
-        }),
+        await deriveLedger(
+          asyncLedgerGenerations(store),
+          SESSION,
+          'claude',
+          linesOf(claudeFrames(0, 6)),
+          {
+            fallbackAt: NOW,
+          },
+        ),
       ).toBe('imported')
       // A reading this app wrote into that ledger — a rebuild from the file does not keep it.
       readingAt(SESSION, 555, NOW + 60_000)
