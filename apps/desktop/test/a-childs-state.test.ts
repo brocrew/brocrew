@@ -428,14 +428,14 @@ describe('§3 · what RuntimeScreen asks, and what it keeps', () => {
       .replace(/^\s*\/\/.*$/gm, '')
 
   const screen = codeOf(
-    readFileSync(join(here, '../src/renderer/src/components/RuntimeScreen.vue'), 'utf8'),
+    readFileSync(join(here, '../src/renderer/src/composables/useRuntimeScreenReadings.ts'), 'utf8'),
   )
   /** ⛔ `readTheCast`'s body alone, ending at the next declaration whatever keyword opens it. */
   const readTheCast = ((): string => {
     const opens = screen.indexOf('async function readTheCast(')
     expect(opens, 'readTheCast was renamed or removed').toBeGreaterThan(0)
     const rest = screen.slice(opens + 1)
-    const next = rest.search(/\n(?:async )?function |\nwatch\(/)
+    const next = rest.search(/\n {2}(?:async )?function |\n {2}watch\(/)
     return rest.slice(0, next < 0 ? undefined : next)
   })()
 
