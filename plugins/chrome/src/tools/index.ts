@@ -46,6 +46,7 @@ import {
   withNotes,
 } from './common.js'
 import type { ToolDef, ToolDeps } from './common.js'
+import { clickElement } from './clickInput.js'
 import { openTab } from './openTab.js'
 import { buildProfileToolDefs } from './profileTools.js'
 import { buildShowTabDefs } from './showTab.js'
@@ -249,7 +250,7 @@ export function buildToolDefs(): ToolDef[] {
         required: ['tabId'],
       },
       async run(a, deps) {
-        const { notes } = await onTab(deps, a.tabId as string, async ({ page }) => {
+        const { notes } = await onTab(deps, a, async ({ page }) => {
           await page.close()
         })
         return withNotes({ ok: true }, notes)
@@ -277,7 +278,7 @@ export function buildToolDefs(): ToolDef[] {
           throw new ToolError('give exactly one of url and action')
         const target = a.url === undefined ? undefined : checkUrl(a.url as string)
         const ms = timeoutOf(a)
-        const { value, notes } = await onTab(deps, a.tabId as string, async ({ tab, page }) => {
+        const { value, notes } = await onTab(deps, a, async ({ tab, page }) => {
           const opts = {
             waitUntil: 'domcontentloaded' as const,
             timeout: ms,
@@ -345,7 +346,7 @@ export function buildToolDefs(): ToolDef[] {
         const max = (a.maxChars as number | undefined) ?? MAX_TEXT
         const { value, notes } = await onTab(
           deps,
-          a.tabId as string,
+          a,
           async ({ tab, page }) => {
             const head = async (extra = ''): Promise<string> =>
               `url: ${page.url()}\ntitle: ${tab.title ?? ''}\n${offset ? `offset: ${offset}\n` : ''}${extra}\n`
@@ -418,16 +419,17 @@ export function buildToolDefs(): ToolDef[] {
         required: ['tabId', 'ref'],
       },
       async run(a, deps) {
-        const ms = timeoutOf(a)
-        const { notes } = await onTab(deps, a.tabId as string, async ({ tab, page }) => {
-          const loc = locate(tab, page, a.ref as string)
-          const opts = {
-            button: (a.button as 'left' | 'right' | 'middle' | undefined) ?? 'left',
-            timeout: ms,
-          }
-          if (a.double === true) await loc.dblclick(opts)
-          else await loc.click(opts)
-        })
+        const { notes } = await onTab(deps, a, ({ tab, page }) =>
+          clickElement(
+            deps,
+            locate(tab, page, a.ref as string),
+            {
+              button: (a.button as 'left' | 'right' | 'middle' | undefined) ?? 'left',
+              clickCount: a.double === true ? 2 : 1,
+            },
+            timeoutOf(a),
+          ),
+        )
         return withNotes({ ok: true }, notes)
       },
     },
@@ -454,7 +456,7 @@ export function buildToolDefs(): ToolDef[] {
       },
       async run(a, deps) {
         const ms = timeoutOf(a)
-        const { notes } = await onTab(deps, a.tabId as string, async ({ tab, page }) => {
+        const { notes } = await onTab(deps, a, async ({ tab, page }) => {
           const loc = locate(tab, page, a.ref as string)
           await loc.fill(a.text as string, { timeout: ms })
           if (a.submit === true) await loc.press('Enter', { timeout: ms })
@@ -488,7 +490,7 @@ export function buildToolDefs(): ToolDef[] {
       },
       async run(a, deps) {
         const ms = timeoutOf(a)
-        const { notes } = await onTab(deps, a.tabId as string, async ({ tab, page }) => {
+        const { notes } = await onTab(deps, a, async ({ tab, page }) => {
           await locate(tab, page, a.ref as string).pressSequentially(a.text as string, {
             delay: (a.delayMs as number | undefined) ?? 0,
             timeout: ms,
@@ -516,7 +518,7 @@ export function buildToolDefs(): ToolDef[] {
       },
       async run(a, deps) {
         const ms = timeoutOf(a)
-        const { notes } = await onTab(deps, a.tabId as string, async ({ tab, page }) => {
+        const { notes } = await onTab(deps, a, async ({ tab, page }) => {
           if (a.ref !== undefined)
             await locate(tab, page, a.ref as string).press(a.key as string, {
               timeout: ms,
@@ -547,7 +549,7 @@ export function buildToolDefs(): ToolDef[] {
       },
       async run(a, deps) {
         const ms = timeoutOf(a)
-        const { value, notes } = await onTab(deps, a.tabId as string, ({ tab, page }) =>
+        const { value, notes } = await onTab(deps, a, ({ tab, page }) =>
           locate(tab, page, a.ref as string).selectOption(a.values as string[], { timeout: ms }),
         )
         return withNotes({ selected: value }, notes)
@@ -562,7 +564,7 @@ export function buildToolDefs(): ToolDef[] {
       },
       async run(a, deps) {
         const ms = timeoutOf(a)
-        const { notes } = await onTab(deps, a.tabId as string, ({ tab, page }) =>
+        const { notes } = await onTab(deps, a, ({ tab, page }) =>
           locate(tab, page, a.ref as string).hover({ timeout: ms }),
         )
         return withNotes({ ok: true }, notes)
@@ -589,7 +591,7 @@ export function buildToolDefs(): ToolDef[] {
       async run(a, deps) {
         if (a.ref === undefined && a.dy === undefined) throw new ToolError('give ref, dy or both')
         const ms = timeoutOf(a)
-        const { notes } = await onTab(deps, a.tabId as string, async ({ tab, page }) => {
+        const { notes } = await onTab(deps, a, async ({ tab, page }) => {
           if (a.ref !== undefined)
             await locate(tab, page, a.ref as string).scrollIntoViewIfNeeded({
               timeout: ms,
@@ -619,7 +621,7 @@ export function buildToolDefs(): ToolDef[] {
         const ms = timeoutOf(a)
         if ((a.scope === 'element') !== (a.ref !== undefined))
           throw new ToolError('scope "element" needs ref, and the other scopes take none')
-        const { value, notes } = await onTab(deps, a.tabId as string, async ({ tab, page }) => {
+        const { value, notes } = await onTab(deps, a, async ({ tab, page }) => {
           const png =
             a.scope === 'element'
               ? await locate(tab, page, a.ref as string).screenshot({
@@ -665,7 +667,7 @@ export function buildToolDefs(): ToolDef[] {
       },
       async run(a, deps) {
         const ms = timeoutOf(a)
-        const { value, notes } = await onTab(deps, a.tabId as string, async ({ page }) =>
+        const { value, notes } = await onTab(deps, a, async ({ page }) =>
           jsonValue(
             await raceTimeout(
               page.evaluate(
@@ -727,7 +729,7 @@ export function buildToolDefs(): ToolDef[] {
           throw new ToolError('give text, ref, urlIncludes or loadState')
         const total = timeoutOf(a)
         const state = (a.state as 'visible' | 'hidden' | undefined) ?? 'visible'
-        const { notes } = await onTab(deps, a.tabId as string, async ({ tab, page }) => {
+        const { notes } = await onTab(deps, a, async ({ tab, page }) => {
           const deadline = Date.now() + total
           const left = (): number => Math.max(1, deadline - Date.now())
           if (a.urlIncludes !== undefined)
@@ -772,7 +774,7 @@ export function buildToolDefs(): ToolDef[] {
         required: ['tabId', 'accept'],
       },
       async run(a, deps) {
-        const tab = await useTab(deps, a.tabId as string)
+        const tab = await useTab(deps, a)
         deps.tabs.resolve(a.tabId as string, generationOf(deps))
         usableProfile(deps, tab.profile)
         const applied = await answerDialog(tab, {
@@ -824,7 +826,7 @@ export function buildToolDefs(): ToolDef[] {
             file.close()
           }
         }
-        const { notes } = await onTab(deps, a.tabId as string, ({ tab, page }) =>
+        const { notes } = await onTab(deps, a, ({ tab, page }) =>
           locate(tab, page, a.ref as string).setInputFiles(files, {
             timeout: ms,
           }),
@@ -845,7 +847,7 @@ export function buildToolDefs(): ToolDef[] {
           throw new ToolError('give exactly one of ref or url')
         const target = a.url === undefined ? undefined : checkUrl(a.url as string)
         const ms = timeoutOf(a)
-        const { value, notes } = await onTab(deps, a.tabId as string, async ({ tab, page }) => {
+        const { value, notes } = await onTab(deps, a, async ({ tab, page }) => {
           const loc = target === undefined ? locate(tab, page, a.ref as string) : null
           if (target !== undefined) tab.refs = null
           let savedFile: string | undefined
@@ -907,7 +909,7 @@ export function buildToolDefs(): ToolDef[] {
       },
       async run(a, deps) {
         const ms = timeoutOf(a)
-        const tab = await useTab(deps, a.tabId as string)
+        const tab = await useTab(deps, a)
         deps.tabs.resolve(a.tabId as string, generationOf(deps))
         usableProfile(deps, tab.profile)
         const now = Date.now()
@@ -1068,7 +1070,7 @@ export function buildToolDefs(): ToolDef[] {
         )
           throw new ToolError('button is only for click, double_click and drag')
         const button = (a.button as 'left' | 'right' | 'middle' | undefined) ?? 'left'
-        const { notes } = await onTab(deps, a.tabId as string, async ({ page }) => {
+        const { notes } = await onTab(deps, a, async ({ page }) => {
           const run = async (): Promise<void> => {
             if (action === 'move') await page.mouse.move(x, y)
             else if (action === 'click') await page.mouse.click(x, y, { button })
@@ -1099,7 +1101,7 @@ export function buildToolDefs(): ToolDef[] {
         required: ['tabId'],
       },
       async run(a, deps) {
-        const tab = await useTab(deps, a.tabId as string)
+        const tab = await useTab(deps, a)
         deps.tabs.resolve(a.tabId as string, generationOf(deps))
         usableProfile(deps, tab.profile)
         return {
@@ -1124,7 +1126,7 @@ export function buildToolDefs(): ToolDef[] {
         required: ['tabId'],
       },
       async run(a, deps) {
-        const tab = await useTab(deps, a.tabId as string)
+        const tab = await useTab(deps, a)
         deps.tabs.resolve(a.tabId as string, generationOf(deps))
         usableProfile(deps, tab.profile)
         const type = typeof a.type === 'string' ? a.type.toLowerCase() : null

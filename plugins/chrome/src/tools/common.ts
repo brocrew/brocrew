@@ -141,14 +141,43 @@ export function jsonValue(value: unknown): string {
 export function describeError(e: unknown): string {
   return e instanceof Error ? e.message : String(e)
 }
+/**
+ * The wait before a tab action ends within the tool's own timeout or when the call is cancelled.
+ * Nothing has been sent to the page at that point, so the agent can safely call again.
+ */
+function readiness(deps: ToolDeps, timeoutMs: number) {
+  const signal = AbortSignal.any([
+    ...(deps.signal ? [deps.signal] : []),
+    AbortSignal.timeout(timeoutMs),
+  ])
+  const notReady = (id: string, waiting: 'tab' | 'browser'): ToolError =>
+    new ToolError(
+      deps.signal?.aborted
+        ? `cancelled before tab ${id} was ready; nothing was sent`
+        : `tab ${id} was not ready within ${Math.ceil(timeoutMs / 1000)} s (${
+            waiting === 'tab'
+              ? 'an earlier call on this tab is still running'
+              : 'the browser did not answer'
+          }); nothing was sent`,
+    )
+  return { signal, notReady }
+}
 /** Page-tool use which is not routed through onTab still updates context window preference. */
-export async function useTab(deps: ToolDeps, id: string): Promise<TabState> {
+export async function useTab(deps: ToolDeps, args: Record<string, unknown>): Promise<TabState> {
+  const id = args.tabId as string
+  const timeoutMs = timeoutOf(args)
   const tab = deps.tabs.resolve(id, generationOf(deps))
   usableProfile(deps, tab.profile)
+  const ready = readiness(deps, timeoutMs)
   await deps.browser.operate(tab.profile, async () => {
     deps.tabs.resolve(id, generationOf(deps))
     usableProfile(deps, tab.profile)
-    await deps.browser.usePage(tab.profile, tab.page, deps.signal)
+    try {
+      await deps.browser.usePage(tab.profile, tab.page, ready.signal)
+    } catch (error) {
+      if (ready.signal.aborted) throw ready.notReady(id, 'browser')
+      throw error
+    }
     deps.tabs.resolve(id, generationOf(deps))
     usableProfile(deps, tab.profile)
   })
@@ -169,32 +198,48 @@ function requireNoDialog(tab: TabState): void {
 }
 export async function onTab<T>(
   deps: ToolDeps,
-  id: string,
+  args: Record<string, unknown>,
   fn: (c: TabCall) => Promise<T>,
   waitForWindow = true,
 ): Promise<{
   value: T
   notes: string[]
 }> {
+  const id = args.tabId as string
+  const timeoutMs = timeoutOf(args)
   const tab = deps.tabs.resolve(id, generationOf(deps))
   usableProfile(deps, tab.profile)
   requireNoDialog(tab)
-  const value = await deps.browser.operate(tab.profile, () =>
-    deps.serializer.runExclusive(tab.id, async () => {
+  const ready = readiness(deps, timeoutMs)
+  let waiting: 'tab' | 'browser' = 'tab'
+  let acting = false
+  const value = await deps.browser.operate(tab.profile, () => {
+    const run = deps.serializer.runExclusive(tab.id, async () => {
+      // A caller that stopped waiting must never have its action run later.
+      if (ready.signal.aborted) throw ready.notReady(id, waiting)
+      waiting = 'browser'
       deps.tabs.resolve(id, generationOf(deps))
       usableProfile(deps, tab.profile)
       requireNoDialog(tab)
-      if (waitForWindow) await deps.browser.usePage(tab.profile, tab.page, deps.signal)
+      if (waitForWindow)
+        try {
+          await deps.browser.usePage(tab.profile, tab.page, ready.signal)
+        } catch (error) {
+          if (ready.signal.aborted) throw ready.notReady(id, waiting)
+          throw error
+        }
       else {
         const notes = tab.notes
         void deps.browser.usePage(tab.profile, tab.page).catch((error: unknown) => {
           notes.push(describeError(error))
         })
       }
-      deps.activity?.('page-ready')
       deps.tabs.resolve(id, generationOf(deps))
       usableProfile(deps, tab.profile)
       requireNoDialog(tab)
+      if (ready.signal.aborted) throw ready.notReady(id, waiting)
+      acting = true
+      deps.activity?.('page-ready')
       try {
         return await fn({ tab, page: tab.page })
       } catch (error) {
@@ -203,8 +248,17 @@ export async function onTab<T>(
           throw new TabError(`${note}. The action's completion is unknown; do not replay it.`)
         throw error
       }
-    }),
-  )
+    })
+    const gaveUp = new Promise<never>((_resolve, reject) => {
+      const stop = () => {
+        if (!acting) reject(ready.notReady(id, waiting))
+      }
+      if (ready.signal.aborted) stop()
+      else ready.signal.addEventListener('abort', stop, { once: true })
+      void run.finally(() => ready.signal.removeEventListener('abort', stop)).catch(() => {})
+    })
+    return Promise.race([run, gaveUp])
+  })
   const notes = tab.notes.splice(0)
   const dialog = openDialogNote(tab)
   if (dialog) notes.push(dialog)
