@@ -15,7 +15,7 @@ import {
 } from './event-retention-policy'
 import type { AppDatabase } from './connection'
 import { committedChangesOf } from './committed-changes'
-import { THE_ROWS_A_REFUSED_TURN_IS_READ_IN } from '../runtime/refused-turn-window'
+import { THE_ROWS_A_REFUSED_TURN_IS_READ_IN } from '../../shared/refused-turn-window'
 
 const KEEP_DAYS = 3
 const BATCH_ROWS = 200
