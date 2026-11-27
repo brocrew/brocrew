@@ -115,7 +115,7 @@ describe('canonical window worker folds and independent live-store reads', () =>
     let routedRows = 0
     vi.spyOn(connection, 'prepare').mockImplementation((sql: string) => {
       const statement = prepare(sql)
-      if (!sql.includes("json_remove(payload, '$.sent', '$.given')")) return statement
+      if (!sql.includes('SELECT rowid AS row, ordinal FROM events')) return statement
       return new Proxy(statement, {
         get(native, key) {
           if (key === 'iterate')

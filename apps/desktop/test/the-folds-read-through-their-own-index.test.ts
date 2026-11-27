@@ -73,9 +73,13 @@ describe('F071 · the ledger folds read through their own index', () => {
       // The keyed schedule read joins the fourteen existing type-index reads.
       expect(kindReads.filter(isOwnerSchedule)).toHaveLength(1)
       expect(kindReads.filter((sql) => !isOwnerSchedule(sql))).toHaveLength(14)
+      // The routed read sorts row ids through the index and reads each payload by row id (card
+      // 397), so only the read after a kept fold strips the payload through the index.
       expect(
         kindReads.filter((sql) => sql.includes("json_remove(payload, '$.sent', '$.given')")),
-      ).toHaveLength(2)
+      ).toHaveLength(1)
+      const keyed = kindReads.filter((sql) => sql.includes('SELECT rowid AS row, ordinal'))
+      expect(keyed).toHaveLength(1)
       // The waiting messages, and whether a window's kept messages moved.
       expect(
         kindReads.filter((sql) => sql.includes("type IN ('message_queued', 'message_unqueued')")),
