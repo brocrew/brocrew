@@ -17,16 +17,11 @@ import { usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
 import { useOverlays } from '../../src/renderer/src/lib/overlay-store'
 import { applyEvent, createTranscript } from '../../src/renderer/src/lib/transcript'
 import type { AttentionRequest } from '../../src/renderer/src/lib/attention'
-import {
-  NOTHING_NAMED_THE_WORK,
-  aPersonsSince,
-  chainReading,
-  chainSentence,
-  escalationChain,
-} from '../../src/shared/questions'
+import { NOTHING_NAMED_THE_WORK } from '../../src/shared/questions'
 import type { StalledWork } from '../../src/shared/stalled-work'
 
 import { mount, unmountAll, visible } from './harness'
+import { routedProviderQuestion } from '../helpers/queue-fixtures'
 
 /**
  * # 🔴 672 §1 · One task, one name — on a real screen
@@ -166,19 +161,7 @@ describe('§2 · the person’s queue', () => {
       endedAt: null,
       escalatedAt: 31_000,
     } as RoutedRequest
-    const chain = escalationChain(request, () => null)
-    return {
-      request,
-      aPersonsSince: aPersonsSince(request),
-      chain,
-      reading: chainReading(chain, NAME),
-      sentence: chainSentence(chain, NAME),
-      work,
-      about,
-      raisedBy: 'this-app',
-      offered: null,
-      asked: null,
-    } as unknown as PersonsQuestion
+    return routedProviderQuestion(request, NAME, undefined, { work, about, raisedBy: 'this-app' })
   }
 
   const WALK = <Row>(rows: readonly Row[]): LedgerWalk<Row> =>

@@ -7,16 +7,7 @@ import type {
   RoutedRequest,
 } from '../src/shared/question-contracts'
 import { describe, expect, it } from 'vitest'
-import {
-  CHAIN_HOP_LIMIT,
-  NOTHING_NAMED_THE_WORK,
-  aPersonsSince,
-  chainReading,
-  chainSentence,
-  decisionReading,
-  escalationChain,
-  readingSentence,
-} from '../src/shared/questions'
+import { CHAIN_HOP_LIMIT, decisionReading, readingSentence } from '../src/shared/questions'
 import {
   DID_WORDS,
   KIND_WORDS,
@@ -27,21 +18,14 @@ import {
   type PersonsQueueWorld,
 } from '../src/renderer/src/lib/persons-queue'
 import type { AttentionRequest } from '../src/renderer/src/lib/attention'
+import { askedOfTheParent, routedProviderQuestion } from './helpers/queue-fixtures'
 
 const NAME = (id: string): string => id.replace('sess_', '')
 
 function routed(
   over: Partial<RoutedRequest> & { requestId: string; askedBy: string },
 ): RoutedRequest {
-  return {
-    parent: 'sess_Ada',
-    went: { is: 'the-parent', to: 'the-parent' },
-    at: 1_000,
-    state: 'open',
-    endedAt: null,
-    escalatedAt: 31_000,
-    ...over,
-  }
+  return askedOfTheParent({ parent: 'sess_Ada', ...over })
 }
 
 /** One `PersonsQuestion` exactly as `RuntimeHost.questionsForAPerson` builds one. */
@@ -50,22 +34,7 @@ function asked(
   openQuestionOf: (sessionId: string) => RoutedRequest | null = () => null,
 ): PersonsQuestion {
   const request = routed(over)
-  const chain = escalationChain(request, openQuestionOf)
-  return {
-    request,
-    // ⚑ **611 · when it became a person's** — every row of this fixture is escalated, which is
-    // what `routed`'s default stamps. See `PersonsQuestion.aPersonsSince`.
-    aPersonsSince: aPersonsSince(request),
-    chain,
-    reading: chainReading(chain, NAME),
-    sentence: chainSentence(chain, NAME),
-    work: [],
-    about: NOTHING_NAMED_THE_WORK,
-    raisedBy: 'the-provider',
-    // ⚑ **619 · a provider-raised question is answered on its card** — see `whatTheAskerOffered`.
-    offered: null,
-    asked: null,
-  }
+  return routedProviderQuestion(request, NAME, openQuestionOf)
 }
 
 /** ⛔ `403`'s population: a request the CHANNEL refused, so it never travelled. */

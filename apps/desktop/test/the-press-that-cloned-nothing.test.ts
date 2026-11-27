@@ -4,6 +4,7 @@ import type {
   PersonsQuestion,
   RoutedRequest,
 } from '../src/shared/question-contracts'
+import { routedProviderQuestion } from './helpers/queue-fixtures'
 import type { PersistedEventInfo } from '../src/shared/conversation-events'
 import { describe, expect, it } from 'vitest'
 import { isProxy, nextTick } from 'vue'
@@ -25,13 +26,6 @@ import {
 } from '../src/renderer/src/lib/session-store'
 import type { SessionRecord } from '../src/renderer/src/lib/session-record'
 import { isAwaitingAnswer, type PermissionOutcome } from '../src/renderer/src/lib/transcript'
-import {
-  NOTHING_NAMED_THE_WORK,
-  chainReading,
-  chainSentence,
-  escalationChain,
-  aPersonsSince,
-} from '../src/shared/questions'
 import type {
   AnswerAck,
   ResumedSession,
@@ -171,25 +165,7 @@ function walkOver(requestIds: readonly string[]): LedgerWalk<PersonsQuestion> {
         endedAt: null,
         escalatedAt: NOW - 500,
       }
-      const chain = escalationChain(request, () => null)
-      return {
-        request,
-        // ⚑ **611 · when it became a person's** — see PersonsQuestion.aPersonsSince.
-        aPersonsSince: aPersonsSince(request),
-        chain,
-        reading: chainReading(chain, NAME),
-        sentence: chainSentence(chain, NAME),
-        work: [],
-        // ⚑ **474 · no `taskId` on these rows, so no work is named** — see the same note in
-        // `every-answer-through-the-persons-queue.test.ts`.
-        about: NOTHING_NAMED_THE_WORK,
-        // ⚑ **602 · provider-raised, which is what a row with a live card in this window is** —
-        // see `HowItWasRaised`.
-        raisedBy: 'the-provider',
-        // ⚑ **619 · a provider-raised question is answered on its card.**
-        offered: null,
-        asked: null,
-      }
+      return routedProviderQuestion(request, NAME)
     }),
     walk: 'every-conversation-that-routed',
     ledgers: 1,

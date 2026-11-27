@@ -4,21 +4,14 @@ import type {
   OfferedAnswer,
   PersonsDecision,
   PersonsQuestion,
-  RoutedRequest,
 } from '../../src/shared/question-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import PersonsQueue from '../../src/renderer/src/components/PersonsQueue.vue'
 import { usePersonsQueue, type PersonsQueueRow } from '../../src/renderer/src/lib/persons-queue'
 import type { AttentionDecision, AttentionRequest } from '../../src/renderer/src/lib/attention'
 import type { UserInputResponse } from '../../src/shared/runtime-ipc'
-import {
-  NOTHING_NAMED_THE_WORK,
-  aPersonsSince,
-  chainReading,
-  chainSentence,
-  escalationChain,
-} from '../../src/shared/questions'
 import { mount, unmountAll } from './harness'
+import { askedOfAPerson, routedProviderQuestion } from '../helpers/queue-fixtures'
 
 /**
  * 🔴 **619 · what a person actually reads on a question with no card** — `HO-093` §3.1.
@@ -59,29 +52,8 @@ function asked(
   offered: OfferedAnswer | null,
   raisedBy: HowItWasRaised = 'this-app',
 ): PersonsQuestion {
-  const request: RoutedRequest = {
-    requestId: 'req_1',
-    askedBy: SESSION,
-    parent: 'sess_pm',
-    went: { is: 'the-person-the-asker-named', to: 'a-person' },
-    at: NOW - 900_000,
-    state: 'open',
-    endedAt: null,
-    escalatedAt: null,
-  }
-  const chain = escalationChain(request, () => null)
-  return {
-    request,
-    aPersonsSince: aPersonsSince(request),
-    chain,
-    reading: chainReading(chain, NAME),
-    sentence: chainSentence(chain, NAME),
-    work: [],
-    about: NOTHING_NAMED_THE_WORK,
-    raisedBy,
-    offered,
-    asked: null,
-  }
+  const request = askedOfAPerson({ requestId: 'req_1', askedBy: SESSION, at: NOW - 900_000 })
+  return routedProviderQuestion(request, NAME, undefined, { raisedBy, offered })
 }
 
 const walk = <Row>(rows: readonly Row[]): LedgerWalk<Row> => ({

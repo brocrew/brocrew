@@ -4,7 +4,6 @@ import type {
   PersonsDecision,
   PersonsQuestion,
   RequestOnlyAPersonCanSettle,
-  RoutedRequest,
   WorkInHand,
 } from '../../src/shared/question-contracts'
 import type { McpServerRequestForAPerson } from '../../src/shared/conversation-events'
@@ -23,11 +22,7 @@ import {
 import type { InstructionAskWaiting } from '../../src/shared/own-instructions'
 import {
   NOTHING_NAMED_THE_WORK,
-  aPersonsSince,
-  chainReading,
-  chainSentence,
   decisionReading,
-  escalationChain,
   readingSentence,
 } from '../../src/shared/questions'
 
@@ -36,6 +31,7 @@ import type { StoppedWorkForAPerson } from '../../src/shared/stopped-work'
 import type { WaitingOnWhoWrote } from '../../src/shared/waiting-on-who-wrote'
 import type { WorkIncident } from '../../src/shared/work-incidents'
 import { mount, type Mounted } from './harness'
+import { askedOfAPerson, routedProviderQuestion } from '../helpers/queue-fixtures'
 
 /**
  * *Waiting on you* with a card of every kind it lays out in its grid: two providers' usage, a piece
@@ -175,33 +171,16 @@ function question(
   asked: AskedQuestion | null,
   action?: PersonsQuestion['action'],
 ): PersonsQuestion {
-  const request: RoutedRequest = {
-    requestId,
-    askedBy,
-    parent: null,
-    went: { is: 'the-person-the-asker-named', to: 'a-person' },
-    at,
-    state: 'open',
-    endedAt: null,
-    escalatedAt: null,
-  }
-  const chain = escalationChain(request, () => null)
+  const request = askedOfAPerson({ requestId, askedBy, parent: null, at })
   const nameIt = (id: string): string => (id === askedBy ? name : id)
-  return {
-    request,
-    aPersonsSince: aPersonsSince(request),
-    chain,
-    reading: chainReading(chain, nameIt),
-    sentence: chainSentence(chain, nameIt),
-    work: [],
+  return routedProviderQuestion(request, nameIt, undefined, {
     about: action
       ? { is: 'the-asker-named-it', work: { label: 'W5.1' } as WorkInHand }
       : NOTHING_NAMED_THE_WORK,
     raisedBy: 'this-app',
-    offered: null,
     asked,
     ...(action ? { action } : {}),
-  }
+  })
 }
 
 const QUESTIONS: readonly PersonsQuestion[] = [

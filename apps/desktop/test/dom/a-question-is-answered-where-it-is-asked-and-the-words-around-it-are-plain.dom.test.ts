@@ -7,7 +7,6 @@ import type {
   OfferedAnswer,
   PersonsDecision,
   PersonsQuestion,
-  RoutedRequest,
 } from '../../src/shared/question-contracts'
 import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { expandAgentCards } from './harness'
@@ -36,13 +35,6 @@ import {
 import { usageSays } from '../../src/renderer/src/lib/usage-limit'
 
 import type { ProviderCondition, ProviderLimitMeaning } from '../../src/shared/provider-limit'
-import {
-  NOTHING_NAMED_THE_WORK,
-  aPersonsSince,
-  chainReading,
-  chainSentence,
-  escalationChain,
-} from '../../src/shared/questions'
 // Ordinary rows here run as a non-BroBot agent.
 import type {
   ResumableSessionInfo,
@@ -51,6 +43,7 @@ import type {
 } from '../../src/shared/runtime-ipc'
 import { drawnReady, inkRects, lineCount } from './drawn'
 import { mount, paneProps, record, unmountAll, visible, type Mounted } from './harness'
+import { askedOfAPerson, routedProviderQuestion } from '../helpers/queue-fixtures'
 
 /**
  * **UI-008 to UI-011, the words around a question and the places it is answered — the half of the
@@ -926,29 +919,12 @@ function queued(
   offered: OfferedAnswer | null,
   words: AskedQuestion | null = null,
 ): PersonsQuestion {
-  const request: RoutedRequest = {
-    requestId: 'req_1',
-    askedBy: SESSION,
-    parent: 'sess_pm',
-    went: { is: 'the-person-the-asker-named', to: 'a-person' },
-    at: QUEUE_NOW - 900_000,
-    state: 'open',
-    endedAt: null,
-    escalatedAt: null,
-  }
-  const chain = escalationChain(request, () => null)
-  return {
-    request,
-    aPersonsSince: aPersonsSince(request),
-    chain,
-    reading: chainReading(chain, NAME),
-    sentence: chainSentence(chain, NAME),
-    work: [],
-    about: NOTHING_NAMED_THE_WORK,
+  const request = askedOfAPerson({ requestId: 'req_1', askedBy: SESSION, at: QUEUE_NOW - 900_000 })
+  return routedProviderQuestion(request, NAME, undefined, {
     raisedBy: 'this-app',
     offered,
     asked: words,
-  }
+  })
 }
 
 const walked = <Row>(rows: readonly Row[]): LedgerWalk<Row> => ({
