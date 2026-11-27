@@ -6,6 +6,8 @@ import { readableError } from '../lib/session-record'
 export interface TaskPageSource {
   readonly read: RuntimeBridge['readConversationTasks']
   readonly readAll?: RuntimeBridge['readAllConversationTasks']
+  /** A person's edit or delete of a conversation's current rules; absent where none can be made. */
+  readonly setRules?: RuntimeBridge['setCurrentRules']
   readonly revision: number
 }
 

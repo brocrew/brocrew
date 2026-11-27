@@ -3030,6 +3030,10 @@ const readAllTasks: NonNullable<TaskPageSource['readAll']> = (input) =>
   appClosing.value
     ? Promise.resolve({ ok: false, reason: 'unknown-conversation' })
     : runtime().readAllConversationTasks(input)
+const setRules: NonNullable<TaskPageSource['setRules']> = (input) =>
+  appClosing.value
+    ? Promise.resolve({ ok: false, reason: 'The app is closing.' })
+    : runtime().setCurrentRules(input)
 let identityRead = 0
 let identitySelection = 0
 
@@ -3990,6 +3994,7 @@ onUnmounted(() => {
             :task-page-source="{
               read: readTaskPage,
               readAll: readAllTasks,
+              setRules,
               revision: workRevision,
             }"
             :rename="renameConversation"

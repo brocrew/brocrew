@@ -7,13 +7,15 @@ import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { TURN_BLOCK_WORDS } from '../src/main/runtime/what-this-app-adds-to-a-turn'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
 
-const HEADING = TURN_BLOCK_WORDS.currentRules
+// Every turn here runs within a minute of the rules being set.
+const HEADING = TURN_BLOCK_WORDS.currentRules('agent', 'just now')
+const PERSONS_HEADING = TURN_BLOCK_WORDS.currentRules('person', 'just now')
 const SENTENCE = TURN_BLOCK_WORDS.keepCurrentRules
 
 /** The current rules a footer prints, from the heading through the fixed sentence, or `''`. */
 function rulesIn(words: string): string {
   const footer = whatThisAppAdded(words)
-  const at = footer.indexOf(HEADING)
+  const at = footer.indexOf('Your current rules')
   if (at < 0) return ''
   const end = footer.indexOf(SENTENCE, at)
   return end < 0 ? footer.slice(at) : footer.slice(at, end + SENTENCE.length)
@@ -62,17 +64,17 @@ describe.each(['claude', 'codex'] as const)('current rules on %s', (provider: Pr
     expect(await update(me, { current_rules: THREE.join('\n') })).toMatchObject({
       outcome: 'ok',
     })
-    // The window's right panel reads them with the conversation's tasks, as the agent wrote them.
+    // The window's right panel reads them with the conversation's tasks, with who set them.
     expect(host.readConversationTasks({ sessionId: me })).toMatchObject({
       ok: true,
-      currentRules: THREE.join('\n'),
+      currentRules: { text: THREE.join('\n'), by: 'agent', at: expect.any(Number) },
     })
     expect(host.readConversationTasks({ sessionId: other })).not.toHaveProperty('currentRules')
     const expected = [HEADING, ...THREE.map((line) => `- ${line}`), SENTENCE].join('\n')
     const first = await turn(me, 'Next.')
     expect(rulesIn(first)).toBe(expected)
-    // The words three typical lines cost each turn: heading 3, lines 29, the sentence 15.
-    expect(wordsOf(rulesIn(first))).toBe(47)
+    // The words three typical lines cost each turn: heading 8, lines 29, the sentence 15.
+    expect(wordsOf(rulesIn(first))).toBe(52)
     // Every turn, not once: an unchanged turn prints them again.
     expect(rulesIn(await turn(me, 'Again.'))).toBe(expected)
     // Only the conversation whose agent wrote them.
@@ -112,7 +114,7 @@ describe.each(['claude', 'codex'] as const)('current rules on %s', (provider: Pr
     // The status line is the task page's to show; the footer says the rules.
     expect(host.readConversationTasks({ sessionId: me })).toMatchObject({
       current: { statusLine: { text: 'Working through the list.' } },
-      currentRules: THREE[0],
+      currentRules: { text: THREE[0], by: 'agent' },
     })
     const both = await turn(me, 'Next.')
     expect(rulesIn(both)).toBe([HEADING, `- ${THREE[0]}`, SENTENCE].join('\n'))
@@ -122,6 +124,44 @@ describe.each(['claude', 'codex'] as const)('current rules on %s', (provider: Pr
     expect(rulesIn(await turn(me, 'After compacting.'))).toBe(
       [HEADING, `- ${THREE[0]}`, SENTENCE].join('\n'),
     )
+  })
+
+  it('a person edits and deletes them, and the footer says the person set them', async () => {
+    const me = await world.open(host, provider, 'lark')
+    await turn(me, 'Hello.')
+    await update(me, { current_rules: THREE.join('\n') })
+    expect(await host.setCurrentRulesForAPerson({ conversation: me, text: THREE[1] })).toEqual({
+      ok: true,
+    })
+    expect(host.readConversationTasks({ sessionId: me })).toMatchObject({
+      currentRules: { text: THREE[1], by: 'person' },
+    })
+    const edited = await turn(me, 'After the edit.')
+    expect(rulesIn(edited)).toBe([PERSONS_HEADING, `- ${THREE[1]}`, SENTENCE].join('\n'))
+    expect(whatThisAppAdded(edited)).not.toContain('ask the person')
+    // Heading 9, the line 11 with its mark, the sentence 15.
+    expect(wordsOf(rulesIn(edited))).toBe(35)
+
+    // The agent's next change makes them its own again.
+    await update(me, { current_rules: THREE[2] })
+    expect(rulesIn(await turn(me, 'Agent again.'))).toBe(
+      [HEADING, `- ${THREE[2]}`, SENTENCE].join('\n'),
+    )
+
+    // Too long is refused and changes nothing; an unknown conversation is said so.
+    expect(
+      await host.setCurrentRulesForAPerson({ conversation: me, text: 'x'.repeat(1281) }),
+    ).toEqual({ ok: false, reason: 'Too long: 1,280 characters at most.' })
+    expect(
+      await host.setCurrentRulesForAPerson({ conversation: 'no-such-conversation', text: 'x' }),
+    ).toEqual({ ok: false, reason: 'Conversation not found.' })
+
+    // Deleting leaves the footer and the panel with nothing.
+    expect(await host.setCurrentRulesForAPerson({ conversation: me, text: '' })).toEqual({
+      ok: true,
+    })
+    expect(host.readConversationTasks({ sessionId: me })).not.toHaveProperty('currentRules')
+    expect(rulesIn(await turn(me, 'After deleting.'))).toBe('')
   })
 
   it('says what is wrong with text over the status line’s bound, and keeps the old lines', async () => {

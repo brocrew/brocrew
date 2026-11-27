@@ -1,4 +1,5 @@
 import { MAX_INSTANT, clockTimeFrom } from '../../shared/clock'
+import type { CurrentRules } from '../../shared/conversation-title'
 import { localFields, localFormat } from '../../shared/local-time'
 import type { PieceRow } from '../../shared/task-contracts'
 import { WORK_BRIEF_CHARS } from '../../shared/work-fields'
@@ -58,7 +59,8 @@ export const TURN_BLOCK_WORDS = {
   updateGivenWork: 'Check this work and make any needed updates.',
   current: (label: string, title: string, conversation: string): string =>
     `Your current work: task ${label} · ${title}, in ${conversation}${conversation.endsWith('.') ? '' : '.'}`,
-  currentRules: 'Your current rules:',
+  currentRules: (by: 'agent' | 'person', ago: string): string =>
+    `Your current rules, set by ${by === 'person' ? 'the person' : 'you'} ${ago}:`,
   keepCurrentRules:
     'Keep these up to date with update_work current_rules, and remove any that no longer apply.',
 } as const
@@ -149,20 +151,23 @@ export interface ExtraTurnFacts {
   readonly nobodyWaiting?: boolean
   readonly replyQuestion?: boolean
   readonly currentWork?: CurrentWorkInTheTurn
-  /** The conversation's current rules as its agent wrote them, said on every turn they exist. */
-  readonly currentRules?: string
+  /** The conversation's current rules and who set them last, said on every turn they exist. */
+  readonly currentRules?: CurrentRules | null
   readonly openHeldCount?: number
 }
 
-/** Current rules as the footer lists them: one per non-blank line, each as a list item. */
-function currentRulesLines(text: string): string[] {
-  const rules = text
+/**
+ * Current rules as the footer lists them: who set them last and when, one item per non-blank line,
+ * then what to do with them.
+ */
+function currentRulesLines(current: CurrentRules | null | undefined, now: number): string[] {
+  const rules = (current?.text ?? '')
     .split(/\r\n|\r|\n/)
     .map((line) => line.trim().replace(/^[-*•]\s+/, ''))
     .filter((line) => line !== '')
-  if (rules.length === 0) return []
+  if (current == null || rules.length === 0) return []
   return [
-    TURN_BLOCK_WORDS.currentRules,
+    TURN_BLOCK_WORDS.currentRules(current.by, howLongAgo(current.at, now)),
     ...rules.map((rule) => `- ${rule}`),
     TURN_BLOCK_WORDS.keepCurrentRules,
   ]
@@ -251,7 +256,7 @@ function extraLines(facts: ExtraTurnFacts, now: number): string[] {
             : TURN_BLOCK_WORDS.currentUnavailable,
       )
   }
-  lines.push(...currentRulesLines(facts.currentRules ?? ''))
+  lines.push(...currentRulesLines(facts.currentRules, now))
   const count = facts.openHeldCount ?? 0
   if (count > 0) lines.push(TURN_BLOCK_WORDS.openHeld(count))
   const context = facts.currentContext ?? null

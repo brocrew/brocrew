@@ -127,11 +127,13 @@ function boundPendingCompaction(event: TranscriptEvent): TranscriptEvent {
   }
 }
 
-/** Stored current rules are text, or the row is skipped and noted. */
+/** Stored current rules are text, or the row is skipped and noted; only a person is named as who set them. */
 function boundCurrentRules(event: TranscriptEvent): TranscriptEvent {
   if (event.type !== 'current_rules_set') return event
   if (typeof event.text !== 'string') throw new Error('stored current rules could not be read')
-  return { type: 'current_rules_set', text: event.text }
+  return event.by === 'person'
+    ? { type: 'current_rules_set', text: event.text, by: 'person' }
+    : { type: 'current_rules_set', text: event.text }
 }
 
 /** A stored title is read whole or not at all: a row that is not one is skipped, and noted. */

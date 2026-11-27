@@ -10,6 +10,7 @@ import type {
   ConversationTaskPageRow,
 } from '../../shared/conversation-task-page'
 import type { SessionStore } from '../db/session-store'
+import type { CurrentRules } from '../../shared/conversation-title'
 import type { WorkEdge } from '../../shared/who-called-whom'
 import { rowsUnreadOnce } from '../db/rows-unread'
 import { describeConversationForRead, resolveConversationAddress } from './conversation-address'
@@ -22,15 +23,16 @@ const cursorShape = z.object({
 })
 
 /**
- * A conversation's current rules as its agent last wrote them with `update_work`: the newest
- * `current_rules_set` row in its own ledger, `''` when it has none or they were cleared.
+ * A conversation's current rules as they were last written, by its agent or a person: the newest
+ * `current_rules_set` row in its own ledger, `null` when it has none or they were cleared.
  */
 export function currentRulesIn(
   store: Pick<SessionStore, 'newestOfType'>,
   conversation: string,
-): string {
-  const newest = store.newestOfType?.(conversation, 'current_rules_set')?.event
-  return newest?.type === 'current_rules_set' ? newest.text : ''
+): CurrentRules | null {
+  const newest = store.newestOfType?.(conversation, 'current_rules_set')
+  if (newest?.event.type !== 'current_rules_set' || newest.event.text.trim() === '') return null
+  return { text: newest.event.text, by: newest.event.by ?? 'agent', at: newest.at }
 }
 
 const panelCursorShape = cursorShape
@@ -364,6 +366,6 @@ export function readConversationTasks(
           ).toString('base64url'),
     rowsUnread: unread.count,
     ledgersSkipped: unread.ledgersSkipped,
-    ...(currentRules === '' ? {} : { currentRules }),
+    ...(currentRules === null ? {} : { currentRules }),
   }
 }
