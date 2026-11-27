@@ -72,7 +72,7 @@ function fixture(fail, { corrupt = false, snapshotFails = false, missingRoute = 
       toolRead: true,
       titleReturned: true,
       toolClosed: providerClosed,
-      calls: providerClosed ? 3 : 2,
+      calls: providerClosed ? 4 : 3,
       navigations: 1,
       evaluations: 4,
       closedTabs: providerClosed ? 1 : 0,
