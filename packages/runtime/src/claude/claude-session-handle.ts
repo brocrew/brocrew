@@ -1474,11 +1474,11 @@ export class ClaudeSessionHandle implements SessionHandle {
     return true
   }
 
-  close(): Promise<void> {
-    return (this.closing ??= this.doClose())
+  close(reason?: 'app-quit'): Promise<void> {
+    return (this.closing ??= this.doClose(reason === 'app-quit' && process.platform === 'win32'))
   }
 
-  private async doClose(): Promise<void> {
+  private async doClose(stopBackgroundCommands: boolean): Promise<void> {
     if (!this.machine.beginClose()) {
       await this.detachQueryAwaitingExit()
       this.input.close()
@@ -1488,14 +1488,25 @@ export class ClaudeSessionHandle implements SessionHandle {
     }
     this.settleRequests()
 
-    if (this.machine.hasProviderWork) {
+    const hadTurn = this.machine.hasProviderWork
+    const query = this.query
+    const stopTask = stopBackgroundCommands ? query?.stopTask?.bind(query) : undefined
+    // Windows has no Claude process group to reap after the CLI exits. Give its own
+    // Stop requests the same deadline as the foreground interrupt, while the query is live.
+    const stops = stopTask
+      ? this.backgroundTasks
+          .snapshot()
+          .filter(({ run }) => run?.kind === 'command')
+          .map(async ({ id }) => stopTask(id))
+      : []
+    if (hadTurn) {
       this.machine.requestInterrupt()
-      if (this.query) {
-        await withTimeout(Promise.resolve(this.query.interrupt()), CLOSE_INTERRUPT_TIMEOUT_MS)
-      }
-
-      this.machine.forceEnd()
+      if (query) stops.push(Promise.resolve(query.interrupt()).then(() => undefined))
     }
+    if (stops.length > 0) {
+      await withTimeout(Promise.allSettled(stops), CLOSE_INTERRUPT_TIMEOUT_MS)
+    }
+    if (hadTurn) this.machine.forceEnd()
 
     await this.detachQueryAwaitingExit()
     this.input.close()

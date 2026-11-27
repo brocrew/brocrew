@@ -27564,7 +27564,10 @@ ${this.whatThisAppAddsAtItsEnd(session, currentPiece)}`
   private async doStopProvider(session: HostedSession): Promise<boolean> {
     // An async wrapper, so an adapter that throws SYNCHRONOUSLY out of `close()` becomes a rejection
     // this can catch rather than an exception that escapes teardown entirely.
-    const closing = (async () => session.handle.close())().catch((error: unknown) => {
+    const closing = (async () => {
+      if (this.quitRecorded) await session.handle.close('app-quit')
+      else await session.handle.close()
+    })().catch((error: unknown) => {
       const home = this.homeLaunches.get(session.launch)
       if (home !== undefined) home.uncertain = true
       console.warn(`runtime session ${session.id} failed to close: ${errorMessage(error)}`)
