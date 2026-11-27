@@ -74,6 +74,12 @@ for (const [name, importer, target, rule] of [
     null,
   ],
   ['neutral interface', 'apps/desktop/src/main/work.ts', 'packages/runtime/src/index.ts', null],
+  [
+    'storage to engine',
+    'apps/desktop/src/main/db/session-store.ts',
+    'apps/desktop/src/main/runtime/reply-rails.ts',
+    'storage-not-to-engine',
+  ],
 ]) {
   test(`provider import policy: ${name}`, () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'provider-boundary-'))

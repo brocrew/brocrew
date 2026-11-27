@@ -50,6 +50,7 @@ module.exports = {
     layer('preload-not-to-main-or-renderer', 'preload', 'main|renderer'),
     layer('renderer-not-to-main-or-preload', 'renderer', 'main|preload'),
     layer('shared-not-to-app-layers', 'shared', 'main|preload|renderer'),
+    layer('storage-not-to-engine', 'main/db', 'main/runtime'),
     {
       name: 'packages-not-to-apps-or-plugins',
       severity: 'error',
