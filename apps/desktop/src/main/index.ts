@@ -111,7 +111,7 @@ import {
   createSpawnedReader,
   totalBytes,
 } from './process-tree'
-import { openDatabase, type AppDatabase } from './db/connection'
+import type { AppDatabase } from './db/connection'
 import { workspaceListFile } from './workspaces'
 import { samePath } from './same-folder'
 import {
@@ -121,8 +121,8 @@ import {
   type DockLabelHost,
 } from './dock-label'
 import { DOCK_LABEL_CHANNELS, isDockLabelChange } from '../shared/dock-label'
-import { applyMigrations } from './db/migrate'
-import { NewerDatabaseError, openOrRefuse, UnreadableDatabaseError } from './db/newer-database'
+import { MigrationFailed, openWorkspaceDatabase } from './db/open-workspace-database'
+import { NewerDatabaseError, UnreadableDatabaseError } from './db/newer-database'
 import type { RecoveryService, StartupVerdict } from '../shared/recovery'
 import {
   createRecoveryService,
@@ -149,10 +149,6 @@ import { openRecoveryWindow, registerRecoveryIpc, tellTheWindow } from './recove
 import { aCommandsKind, registerRuntimeIpc, webContentsSink } from './runtime/ipc'
 import { sinkOwnerId } from './runtime/window-caller'
 import { providerHomesRoot } from './connections/homes'
-import { importProviderUsageFile } from './provider-usage-file'
-import { importScheduleAttemptsFile } from './schedule-attempts-file'
-import { importProfileExecutionFile } from './profile-execution-file'
-import { importTurnsTheAppCutFile } from './turns-the-app-cut-file'
 import { ASSET_SCHEME_PRIVILEGES, installAssetProtocol } from './asset-protocol'
 import { THEME_SCHEME_PRIVILEGES, installThemeProtocol } from './themes/asset-protocol'
 import {
@@ -172,7 +168,7 @@ import { RuntimeHost } from './runtime/runtime-host'
 import { appMenuTemplate } from './app-menu'
 import { nativeTitleBarOptions, updateNativeTitleBar } from './native-title-bar'
 import type { DraftStorage } from './database/drafts'
-import { createSqliteDraftStorage, importDraftsFile } from './database/sqlite/workspace/drafts'
+import { createSqliteDraftStorage } from './database/sqlite/workspace/drafts'
 import { createDraftWriter, requestLastDraftSaves, type DraftWriter } from './drafts-file'
 import { restoreSavedDrafts } from './saved-drafts'
 import { LAST_DRAFT_SAVE_CHANNEL } from '../shared/saved-drafts'
@@ -189,8 +185,6 @@ import { startUpdates } from './updates-in-the-app'
 import { startWorkspaces } from './workspaces-in-the-app'
 import { takeUpdateWorkspaces, updateSettingsOf, updateWorkspacesToReopen } from './update-settings'
 import { startProviderSnapshots } from './provider-snapshots'
-import { importSignInChangesFile } from './sign-in-changes'
-import { importArchivedFile } from './archived-file'
 import {
   defaultDataFolder,
   nameTheAppToWindows,
@@ -385,50 +379,27 @@ async function theLastDraftSaves(): Promise<void> {
   if (outcome === 'failed') throw new Error('the last unsent drafts could not be written to disk')
 }
 
-class MigrationFailed extends Error {}
-
 function initDatabase(): AppDatabase {
   const existing = workspaceStartup(app)
   existing?.assertDatabase()
-  const dbPath = join(app.getPath('userData'), 'brobot2.sqlite')
-  const migrationsFolder = resolveMigrationsFolder()
-  const database = (() => {
-    try {
-      return openDatabase(dbPath, existing ? { fileMustExist: true } : undefined)
-    } catch (error) {
-      existing?.assertDatabase()
-      if (existing) throw new WorkspaceUnavailable(dbPath, error)
-      throw error
-    }
-  })()
-  openOrRefuse(database, theBuildsMigrations(), {
+  const database = openWorkspaceDatabase({
+    file: join(app.getPath('userData'), 'brobot2.sqlite'),
     folder: app.getPath('userData'),
+    existing: existing !== undefined,
+    migrationsFolder: resolveMigrationsFolder(),
+    build: theBuildsMigrations(),
+    openFailed: () => existing?.assertDatabase(),
+    migrate: (apply) => {
+      const finishMigration = pluginStartupTrace.begin('database-migration', 'startup')
+      try {
+        mainThreadWork.timed('database migrations before the window', apply)
+        finishMigration()
+      } catch (error) {
+        finishMigration(error)
+        throw error
+      }
+    },
   })
-  const finishMigration = pluginStartupTrace.begin('database-migration', 'startup')
-  try {
-    mainThreadWork.timed('database migrations before the window', () =>
-      applyMigrations(database, migrationsFolder),
-    )
-    finishMigration()
-  } catch (error) {
-    finishMigration(error)
-    try {
-      database.close()
-    } catch {
-      // Closed as the process ends.
-    }
-    throw new MigrationFailed(
-      `BroCrew could not update this workspace's data: ${error instanceof Error ? error.message : String(error)}`,
-      { cause: error },
-    )
-  }
-  importArchivedFile(database, app.getPath('userData'))
-  importSignInChangesFile(database, app.getPath('userData'))
-  importProviderUsageFile(database, app.getPath('userData'))
-  importScheduleAttemptsFile(database, app.getPath('userData'))
-  importTurnsTheAppCutFile(database, app.getPath('userData'))
-  importDraftsFile(database, app.getPath('userData'))
-  importProfileExecutionFile(database, app.getPath('userData'))
   db = database
   recoveryStartRecorded = withRecoveryCopies(() =>
     recordSuccessfulStart(app.getPath('userData'), theBuildsMigrations(), {
