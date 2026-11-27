@@ -127,6 +127,8 @@ const listMessage = computed(() => {
     case 'empty':
       return 'No plugins are available for this version yet.'
     case 'fetch-error':
+      if (listFailureReason.value === 'path-too-long')
+        return pluginUnavailableNotice('path-too-long')
       if (listFailureReason.value === 'supervisor-unavailable')
         return "Couldn't start the plugin service. Try again."
       return "Couldn't load the plugin catalogue. Try again."

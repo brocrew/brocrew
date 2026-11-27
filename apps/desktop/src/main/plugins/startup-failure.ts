@@ -205,6 +205,7 @@ export function pluginStartupReason(
     if (one.code === 'runtime') return 'runtime'
     if (one.code === 'busy' || one.code === 'cleanup-pending') return 'cleanup-pending'
     if (one.code === 'incompatible') return 'service-version'
+    if (one.code === 'path-too-long') return 'path-too-long'
     error = one.cause
   }
   return fallback
