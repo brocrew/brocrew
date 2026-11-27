@@ -61,6 +61,7 @@ export const TURN_BLOCK_WORDS = {
     `Your current rules, set by ${by === 'person' ? 'the person' : 'you'} ${ago}:`,
   keepCurrentRules:
     'Keep these up to date with update_work current_rules, and remove any that no longer apply.',
+  currentRulesCut: `The rest is cut: current rules hold at most ${String(CURRENT_RULES_CHARS)} characters.`,
 } as const
 
 export interface AHelperInTheTurn {
@@ -156,26 +157,36 @@ export interface ExtraTurnFacts {
 
 /**
  * Current rules as the footer lists them: who set them last and when, one item per non-blank line,
- * then what to do with them. Rules stored before the bound was lowered are cut to it, marked with
- * an ellipsis, until they are written again.
+ * then what to do with them. Rules stored before the bound was lowered keep only the whole lines
+ * that fit within it, then a line saying the rest is cut, until they are written again.
  */
 function currentRulesLines(current: CurrentRules | null | undefined, now: number): string[] {
-  const text = (current?.text ?? '').trim()
-  const kept =
-    text.length <= CURRENT_RULES_CHARS
-      ? text
-      : `${text
-          .slice(0, CURRENT_RULES_CHARS)
-          .replace(/[\uD800-\uDBFF]$/u, '')
-          .trimEnd()}…`
-  const rules = kept
+  const rules = (current?.text ?? '')
     .split(/\r\n|\r|\n/)
     .map((line) => line.trim().replace(/^[-*•]\s+/, ''))
     .filter((line) => line !== '')
   if (current == null || rules.length === 0) return []
+  const kept: string[] = []
+  let used = 0
+  for (const rule of rules) {
+    used += rule.length + (kept.length === 0 ? 0 : 1)
+    if (used > CURRENT_RULES_CHARS) break
+    kept.push(rule)
+  }
+  // A first line alone over the bound is cut at the bound, the one place a rule is cut inside.
+  if (kept.length === 0)
+    kept.push(
+      `${rules[0]!
+        .slice(0, CURRENT_RULES_CHARS)
+        .replace(/[\uD800-\uDBFF]$/u, '')
+        .trimEnd()}…`,
+    )
   return [
     TURN_BLOCK_WORDS.currentRules(current.by, howLongAgo(current.at, now)),
-    ...rules.map((rule) => `- ${rule}`),
+    ...kept.map((rule) => `- ${rule}`),
+    ...(kept.length < rules.length || kept[0] !== rules[0]
+      ? [TURN_BLOCK_WORDS.currentRulesCut]
+      : []),
     TURN_BLOCK_WORDS.keepCurrentRules,
   ]
 }

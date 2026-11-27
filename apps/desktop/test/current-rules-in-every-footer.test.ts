@@ -214,18 +214,29 @@ describe.each(['claude', 'codex'] as const)('current rules on %s', (provider: Pr
     expect(rulesIn(await turn(me, 'Next.'))).toContain(THREE[2])
 
     // Rules stored before the bound came down, here four pace paragraphs (1,123 characters and
-    // 235 words a turn), are printed cut to the bound until they are written again.
+    // 235 words a turn), keep the whole lines that fit, then say the rest is cut.
     host.setCurrentRules([PACE, PACE, PACE, PACE].join('\n'), { ownerId: `agent:${me}` })
     const cut = rulesIn(await turn(me, 'With older rules.'))
-    expect(cut).toBe(
-      [HEADING, `- ${PACE}`, `- ${PACE.slice(0, 320 - PACE.length - 1).trimEnd()}…`, SENTENCE].join(
-        '\n',
-      ),
+    expect(cut).toBe([HEADING, `- ${PACE}`, TURN_BLOCK_WORDS.currentRulesCut, SENTENCE].join('\n'))
+    expect(TURN_BLOCK_WORDS.currentRulesCut).toBe(
+      'The rest is cut: current rules hold at most 320 characters.',
     )
-    expect(wordsOf(cut)).toBe(85)
+    expect(wordsOf(cut)).toBe(87)
     // The panel keeps the whole text, so the person can see it is over and shorten it.
     expect(host.readConversationTasks({ sessionId: me })).toMatchObject({
       currentRules: { text: [PACE, PACE, PACE, PACE].join('\n') },
     })
+
+    // Only a first line alone over the bound is cut inside it.
+    const oneLong = `${PACE} ${PACE}`
+    host.setCurrentRules(oneLong, { ownerId: `agent:${me}` })
+    expect(rulesIn(await turn(me, 'With one long line.'))).toBe(
+      [
+        HEADING,
+        `- ${oneLong.slice(0, 320).trimEnd()}…`,
+        TURN_BLOCK_WORDS.currentRulesCut,
+        SENTENCE,
+      ].join('\n'),
+    )
   })
 })
