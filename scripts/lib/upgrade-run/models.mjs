@@ -110,54 +110,40 @@ const claudeRepeatsAt = new Date(Date.now() + 4 * 60 * 60 * 1000)
 const claudeCancelledAt = new Date(Date.now() + 5 * 60 * 60 * 1000)
 const claudeSeen = []
 
+/** One one-shot job: find CronCreate first if it is deferred, then make the job once. */
+function oneShotJobReply(body, answered, at, call, prompt) {
+  if (
+    !answered.has(CLAUDE_SEARCH_ID) &&
+    !answered.has(call) &&
+    !offersTool(body, 'CronCreate') &&
+    offersTool(body, 'ToolSearch')
+  ) {
+    return {
+      kind: 'tool_use',
+      id: CLAUDE_SEARCH_ID,
+      name: 'ToolSearch',
+      input: { query: 'select:CronCreate', max_results: 1 },
+    }
+  }
+  if (answered.has(call)) return null
+  return {
+    kind: 'tool_use',
+    id: call,
+    name: 'CronCreate',
+    input: { cron: oneShotCron(at), prompt, recurring: false },
+  }
+}
+
 function claudeReply(body, id) {
   if ((body?.tools ?? []).length === 0) return { kind: 'text', text: 'Fictional.' }
   const answered = toolResultsIn(body)
-  if (claudeDueAt !== null && userTextsIn(body).some((one) => one.includes(DUE_FIRST_TEXT))) {
-    if (
-      !answered.has(CLAUDE_SEARCH_ID) &&
-      !answered.has(DUE_JOB_CALL) &&
-      !offersTool(body, 'CronCreate') &&
-      offersTool(body, 'ToolSearch')
-    ) {
-      return {
-        kind: 'tool_use',
-        id: CLAUDE_SEARCH_ID,
-        name: 'ToolSearch',
-        input: { query: 'select:CronCreate', max_results: 1 },
-      }
-    }
-    if (!answered.has(DUE_JOB_CALL)) {
-      return {
-        kind: 'tool_use',
-        id: DUE_JOB_CALL,
-        name: 'CronCreate',
-        input: { cron: oneShotCron(claudeDueAt), prompt: DUE_JOB_PROMPT, recurring: false },
-      }
-    }
-  }
-  if (crashJobAt !== null && userTextsIn(body).some((one) => one.includes(CRASH_FIRST_TEXT))) {
-    if (
-      !answered.has(CLAUDE_SEARCH_ID) &&
-      !answered.has(CRASH_JOB_CALL) &&
-      !offersTool(body, 'CronCreate') &&
-      offersTool(body, 'ToolSearch')
-    ) {
-      return {
-        kind: 'tool_use',
-        id: CLAUDE_SEARCH_ID,
-        name: 'ToolSearch',
-        input: { query: 'select:CronCreate', max_results: 1 },
-      }
-    }
-    if (!answered.has(CRASH_JOB_CALL)) {
-      return {
-        kind: 'tool_use',
-        id: CRASH_JOB_CALL,
-        name: 'CronCreate',
-        input: { cron: oneShotCron(crashJobAt), prompt: CRASH_JOB_PROMPT, recurring: false },
-      }
-    }
+  for (const [at, first, call, prompt] of [
+    [claudeDueAt, DUE_FIRST_TEXT, DUE_JOB_CALL, DUE_JOB_PROMPT],
+    [crashJobAt, CRASH_FIRST_TEXT, CRASH_JOB_CALL, CRASH_JOB_PROMPT],
+  ]) {
+    if (at === null || !userTextsIn(body).some((one) => one.includes(first))) continue
+    const reply = oneShotJobReply(body, answered, at, call, prompt)
+    if (reply !== null) return reply
   }
   if (userTextsIn(body).some((one) => one.includes(CLAUDE_FIRST_TEXT))) {
     if (
