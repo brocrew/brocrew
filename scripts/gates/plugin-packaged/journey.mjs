@@ -19,6 +19,7 @@ import { observeApp, probeStep, waitDevtools } from './probe.mjs'
 import { failureFor, printFailure, stepFailure, printAppStderr } from './diagnostics.mjs'
 import { pageStateSnapshot, printPageState } from './page-state.mjs'
 import { pluginStateSnapshot, printPluginState, unknownPluginState } from './plugin-state.mjs'
+import { startInstallTrace, printInstallTrace } from './install-trace.mjs'
 import { openPlugins, enabledProfile, pluginPage, switchOnProfile, waitFor } from './cdp.mjs'
 import { requireSelection } from './matrix.mjs'
 import { serveFixture, createProviderTurn, browserEvidence, waitTabs } from './browser-journey.mjs'
@@ -138,9 +139,10 @@ async function startApp(root, plan, workspace, global, processes, diagnose = fal
 async function plugins(run, signal) {
   await openPlugins(run.cdp, { signal })
 }
-async function installed(run, wanted) {
+async function installed(run, wanted, trace = null) {
   await waitFor(async () => {
     const answer = await run.cdp.evaluate(`return await window.api.plugins.request({kind:'list'})`)
+    trace?.note(answer)
     const card = answer?.ok && answer.cards?.find((card) => card.id === 'chrome')
     return (
       card &&
@@ -271,7 +273,7 @@ export async function journey(root) {
   const workspaceA = privateFolder(path.join(root, 'wa')),
     workspaceB = privateFolder(path.join(root, 'wb'))
   let step = 'packaged'
-  let fixtureServer, providerTurn
+  let fixtureServer, providerTurn, installTrace
   try {
     const resources = path.join(plan.app, 'Contents/Resources')
     requireCheck(
@@ -342,9 +344,23 @@ export async function journey(root) {
         'return Boolean(document.querySelector(\'[data-cy="settings-tab-plugins"]\'))',
       ),
     )
+    try {
+      // The copy the app installs from, as stageRelease wrote it.
+      const staged = path.join(plan.appData, 'repo-fixture')
+      const expected = JSON.parse(readOwned(path.join(staged, 'catalogue.json'))).entries[0]
+        .targets[0].sha256
+      if (!/^[0-9a-f]{64}$/.test(expected)) throw new Error('Unexpected staged pin')
+      const stagedDigest = digest(
+        readOwned(path.join(staged, 'archives', expected + '.tar.gz'), 128 * 1024 * 1024),
+      )
+      installTrace = startInstallTrace(stagedDigest, stagedDigest === expected)
+    } catch {
+      // A diagnostic that cannot be observed never changes the journey.
+    }
     // Exactly one install press. No bridge install call is used for the successful path.
     await press(a.cdp, '[data-plugin="chrome"] [data-cy="plugin-install"]')
-    await installed(a, true)
+    await installed(a, true, installTrace)
+    printInstallTrace(installTrace)
     requireCheck(summary, 'installed', true)
     step = 'profile-create'
     let view = await configure(a)
@@ -499,6 +515,7 @@ export async function journey(root) {
         : 'assertion',
     )
     printFailure(summary.failure)
+    if (step === 'install') printInstallTrace(installTrace)
     if (
       [
         'provider-start',
@@ -536,7 +553,7 @@ export async function journey(root) {
       summary.pageState = { readyState: 'unknown', routeCategory: 'other', markers: [] }
     }
     printPageState(summary.pageState)
-    if (['restart-installed', 'reinstall'].includes(step)) {
+    if (['install', 'restart-installed', 'reinstall'].includes(step)) {
       summary.pluginState = unknownPluginState()
       try {
         summary.pluginState = await pluginStateSnapshot(root, global, workspaceA, active?.port)
