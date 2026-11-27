@@ -113,7 +113,8 @@ describe.skipIf(process.platform === 'win32')('bounded durable configuration led
     expect(await ledger.revision(id)).toBe(4097)
     expect((await readdir(paths(f.root).intents)).length).toBeLessThanOrEqual(64)
     expect(JSON.parse(await readFile(floor, 'utf8'))).toMatchObject({ format: 2, revision: 4097 })
-  }, 30_000)
+    // Slow only under full-suite load (2.35 s alone, up to 31 s loaded), like the cases below.
+  }, 360_000)
 
   it.each(['chrome', 'whatsapp'])(
     'keeps %s person applies available beyond the old lifetime ceiling',
