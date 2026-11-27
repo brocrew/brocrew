@@ -417,6 +417,7 @@ const PATHS = [
           form: 'markdown',
           resourceId: 'res_4d2c3b1a5e6f4a7b8c9d0e1f2a3b4c5d',
           name: '004-response.md',
+          path: '/fictional/kept/004-response.md',
           text: `# the answer\n\n${'a'.repeat(300)}\n`,
           bytes: 320,
         },

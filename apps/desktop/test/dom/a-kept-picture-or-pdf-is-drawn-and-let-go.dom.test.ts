@@ -85,6 +85,7 @@ const reading = (
   ok: true,
   resourceId,
   name,
+  path: `/fictional/kept/${name}`,
   form,
   text: form === 'markdown' ? '# notes\n' : null,
   bytes,

@@ -69,6 +69,7 @@ const OPENS = async (resourceId: string): Promise<ResourceReading> => ({
   form: 'markdown',
   resourceId,
   name: `${resourceId.slice(4, 8)}-response.md`,
+  path: '/fictional/kept/file',
   text: '# The answer\n\nIt is 42.',
   bytes: 24,
 })

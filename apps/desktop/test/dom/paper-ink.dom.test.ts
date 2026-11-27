@@ -152,6 +152,7 @@ const SURFACES = [
         ok: true,
         documentId: 'doc:default:4:response',
         name: '004-response.md',
+        path: '/fictional/kept/004-response.md',
         // ⚑ **635 · the FORM, and this surface is a REPORT** — `CanonicalDocumentViewer` hides the
         // Markdown chip for a form that is not Markdown, so a fixture without one would measure a
         // paper that has no chip to focus. ⛔ Which is exactly how the gate found this line.

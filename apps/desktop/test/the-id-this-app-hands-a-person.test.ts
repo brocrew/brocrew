@@ -249,9 +249,9 @@ describe('510 · the id this app hands a person', () => {
       if (!seen.ok) return
       expect(seen.text).toBe('# the answer\n\nall of it\n')
       expect(seen.resourceId).toBe(resource)
-      // ⛔ **The FILE's name and never its path** — `380`'s rule: the name it was handed in with.
+      // The FILE's name, as it was handed in; its kept place is only for Copy path.
       expect(seen.name).toBe('the-answer.md')
-      expect(JSON.stringify(seen)).not.toContain(kept())
+      expect(seen.path.startsWith(kept())).toBe(true)
     })
 
     it('⚑ 549 · neither door asks an entitlement now, and what differs is the VOCABULARY', async () => {

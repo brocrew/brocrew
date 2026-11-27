@@ -36,6 +36,7 @@ const A_DOCUMENT: ResourceReading = {
   form: 'markdown',
   resourceId: A_RESOURCE_ID,
   name: 'response.md',
+  path: '/fictional/kept/response.md',
   text: '# the answer\n',
   bytes: 14,
 }

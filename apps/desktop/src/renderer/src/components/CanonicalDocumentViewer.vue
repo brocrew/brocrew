@@ -12,6 +12,9 @@ import { clockTime } from '../../../shared/clock'
 import { fullTime } from '../lib/clock'
 import { FORM_WORD, sizeWords, whereFrom } from '../lib/files-kept'
 import type { ResourceRevealer } from '../lib/opening-a-document'
+import { copyPressed } from '../composables/useMessagePaths'
+import { escaped } from '../lib/named-in-a-reply'
+import { copyPathMarkup } from '../lib/the-paths-a-message-names'
 import DocumentBody from './DocumentBody.vue'
 import KeptFileDrawing from './KeptFileDrawing.vue'
 
@@ -33,7 +36,8 @@ import KeptFileDrawing from './KeptFileDrawing.vue'
  * ⛔ **A page is shown as SOURCE and by one mechanism**: the only text renderer this panel mounts is
  * {@link DocumentBody}, whose markdown module is configured `html: false` — its own note calls that
  * *"the whole security story"* — so every tag in an agent-written page arrives as escaped text.
- * ⚠️ **No `webview`, no `v-html` and no `srcdoc` on this path**, and
+ * ⚠️ **No `webview`, no `v-html` and no `srcdoc` for the file's contents** (the one `v-html` is
+ * the shared Copy path control, its path escaped), and
  * `a-conversation-a-person-can-read`'s own suite is not the only thing that says so: `635`'s plants
  * a hostile document and measures that nothing ran.
  *
@@ -185,6 +189,16 @@ async function showInFinder(): Promise<void> {
       : null
   } else revealSaid.value = REVEAL_SAYS[said.reason]
 }
+
+/** The message paths' own Copy control and "Copied" check; the path itself is never drawn. */
+const copyControl = computed(() =>
+  props.result.ok ? copyPathMarkup(escaped(props.result.path), 'canonical-document-copy-path') : '',
+)
+
+async function copyPath(event: MouseEvent): Promise<void> {
+  revealSaid.value = null
+  if ((await copyPressed(event)) !== null) revealSaid.value = "That path didn't copy. Try again."
+}
 </script>
 
 <template>
@@ -195,9 +209,8 @@ async function showInFinder(): Promise<void> {
         <strong v-if="told" class="title" data-cy="canonical-document-title" :title="told.title">{{
           told.title
         }}</strong>
-        <!-- ⚑ **The FILE's name, its kind and size, and the id.** ⛔ Never the path: `380`'s rule,
-             and the id is what a person can quote back into a conversation — it is the string the
-             row's own body already names. -->
+        <!-- ⚑ **The FILE's name, its kind and size, and the id.** The path is not drawn, only
+             copied by Copy path; the id is what a person can quote back into a conversation. -->
         <p v-if="result.ok" class="facts">
           <strong class="name" data-cy="canonical-document-name">{{ result.name }}</strong>
           <span data-cy="canonical-document-kind"
@@ -212,7 +225,9 @@ async function showInFinder(): Promise<void> {
           <span :title="fullTime(told.keptAt)">{{ clockTime(told.keptAt) }}</span>
         </p>
       </div>
-      <!-- ⚑ D-032 · Show in the file manager, for any kept file: the id goes to main, and no path comes back. -->
+      <!-- eslint-disable-next-line vue/no-v-html -- the shared Copy path control; the path is escaped. -->
+      <span v-if="result.ok" class="copy-path" @click="copyPath" v-html="copyControl"></span>
+      <!-- ⚑ D-032 · Show in the file manager, for any kept file: the id goes to main. -->
       <button
         v-if="finderOffered"
         class="finder"
@@ -363,7 +378,15 @@ async function showInFinder(): Promise<void> {
   margin-left: auto;
 }
 
-.finder + .icon-button {
+.copy-path {
+  display: inline-flex;
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
+.copy-path + .finder,
+.finder + .icon-button,
+.copy-path + .icon-button {
   margin-left: 0;
 }
 

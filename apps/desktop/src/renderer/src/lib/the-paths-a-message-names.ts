@@ -174,13 +174,24 @@ function pathText(display: string, absolute: string, label?: string): string {
     : `<span class="message-path-label" role="group" title="${absolute}" aria-label="${absolute}">${label}</span>`
 }
 
+/**
+ * The Copy path control, wherever a path is copied. The path arrives escaped; a carriage return is
+ * written as a reference, because the HTML parser would turn a literal one into a line feed.
+ */
+export function copyPathMarkup(absolute: string, cy = 'message-path-copy'): string {
+  const exact = absolute.replace(/\r/g, '&#13;')
+  return (
+    `<button type="button" class="message-path-icon" data-cy="${cy}" ` +
+    `${COPY_ATTRIBUTE}="${exact}" title="Copy path" aria-label="Copy path">${icon('#i-copy')}</button>`
+  )
+}
+
 /** The path as text a person can read and select, then its Copy control. Values arrive escaped. */
 function pathAndCopy(kind: string, display: string, absolute: string, label?: string): string {
   return (
     `<span class="message-path" data-kind="${kind}">` +
     pathText(display, absolute, label) +
-    `<button type="button" class="message-path-icon" data-cy="message-path-copy" ` +
-    `${COPY_ATTRIBUTE}="${absolute}" title="Copy path" aria-label="Copy path">${icon('#i-copy')}</button>`
+    copyPathMarkup(absolute)
   )
 }
 

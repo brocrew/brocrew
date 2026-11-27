@@ -40,6 +40,7 @@ const shown = (over: Partial<ResourceReading & { ok: true }> = {}): ResourceRead
     ok: true,
     resourceId: 'res_1d2c3b1a5e6f4a7b8c9d0e1f2a3b4c5d',
     name: '001-response.html',
+    path: '/fictional/kept/001-response.html',
     form: 'page',
     text: HOSTILE,
     bytes: HOSTILE.length,

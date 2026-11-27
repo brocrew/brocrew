@@ -167,6 +167,7 @@ const OPENS = async (resourceId: string): Promise<ResourceReading> => ({
   form: 'markdown',
   resourceId,
   name: `${resourceId}.md`,
+  path: '/fictional/kept/file',
   text: '# A file',
   bytes: 8,
 })

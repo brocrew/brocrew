@@ -585,6 +585,7 @@ function fakeBridge() {
         form: 'markdown',
         resourceId,
         name: 'response.md',
+        path: '/fictional/kept/file',
         text: `bytes for ${resourceId}`,
         bytes: 9,
       }

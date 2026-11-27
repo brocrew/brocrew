@@ -68,6 +68,11 @@ export type ResourceReading =
       /** `report.md` — the FILE's name as it was handed in, never a path. */
       name: string
       /**
+       * Where the app keeps the file, for the preview's Copy path: a person needs its location to
+       * paste elsewhere. It is copied, never drawn.
+       */
+      path: string
+      /**
        * 🔴 **635 · what the bytes ARE** (`HO-097` §1.3: *"show each type the way a person expects"*).
        *
        * ⛔ **Derived from the kept name** and never from a column, so the window and the file cannot
@@ -165,8 +170,8 @@ export type ResourceDrawing =
 /**
  * 🔴 **D-032 · whether a kept file was shown in Finder, by its id** — or why not.
  *
- * ⚠️ **`ok: true` means the OS was asked**, as {@link RevealResult}'s does. ⛔ **No path comes
- * back**: a kept file is reached by its id, and the window has no use for where this app keeps it.
+ * ⚠️ **`ok: true` means the OS was asked**, as {@link RevealResult}'s does. No path comes
+ * back: a kept file is reached by its id, and {@link ResourceReading} already carries its path.
  *
  *  - `no-such-resource` and `no-store` — as {@link ResourceReading}.
  *  - ⚠️ **`gone`** — its row is here and nothing is where this app keeps its file.

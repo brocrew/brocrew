@@ -36,6 +36,7 @@ function stage(dense = false, over?: LibraryApi) {
       resourceId,
       form: keep.form ?? 'markdown',
       name: keep.name,
+      path: '/fictional/kept/file',
       bytes: keep.bytes,
       text:
         keep.form === 'image'
@@ -380,6 +381,7 @@ it('uses latest-open-wins through slow reads and refuses an old workspace popup'
     resourceId,
     form: 'markdown',
     name: `${resourceId}.md`,
+    path: '/fictional/kept/file',
     bytes: 1,
     text: '# Fictional slow read',
   })

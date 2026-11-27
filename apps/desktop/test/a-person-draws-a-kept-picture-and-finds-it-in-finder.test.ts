@@ -263,6 +263,13 @@ describe('D-032 · a person draws a kept picture or PDF, and finds any kept file
       expect(JSON.stringify(shown)).not.toContain(userData)
     })
 
+    it('the preview’s Copy path is the place Finder is shown', async () => {
+      const resource = await mustKeep('NEXT-INSTALL.md', '# install\n')
+      host.revealResource(resource)
+      const read = host.readResourceForAPerson(resource)
+      expect(read.ok && read.path).toBe(revealed[0])
+    })
+
     it('shows a locally edited file at the same path without a hash-change warning', async () => {
       const resource = await mustKeep('chart.png', png(1, 1))
       writeFileSync(whereItIs(resource), 'somebody edited it\n')

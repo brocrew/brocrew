@@ -206,6 +206,7 @@ describe('510 · the row opens the document it names', () => {
       form: 'markdown',
       resourceId: DOCUMENT,
       name: 'response.md',
+      path: '/fictional/kept/file',
       text: '# the answer\n\nall of it\n',
       bytes: 24,
     })

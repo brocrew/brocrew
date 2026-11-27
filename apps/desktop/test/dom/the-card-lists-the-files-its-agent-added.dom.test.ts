@@ -241,6 +241,7 @@ describe('the agent card lists the files its agent added', () => {
       form: 'markdown',
       resourceId,
       name: `${resourceId}.md`,
+      path: '/fictional/kept/file',
       text: '# Open findings',
       bytes: 15,
     })

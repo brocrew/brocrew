@@ -59,6 +59,7 @@ const RESULT: ResourceReading = {
   ok: true,
   resourceId: 'res_findings',
   name: 'open-findings.md',
+  path: '/fictional/kept/dddd/open-findings.md',
   form: 'markdown',
   text: '# Open findings\n\n| ID | Title |',
   bytes: 2_048,
@@ -238,6 +239,25 @@ describe('the viewer says what a file is', () => {
     expect(read(bare.q('canonical-document-name'))).toBe('open-findings.md')
     expect(bare.all('canonical-document-title')).toHaveLength(0)
     expect(bare.all('canonical-document-from')).toHaveLength(0)
+  })
+
+  it('Copy path puts the kept path on the clipboard with the message paths’ Copied check, and never draws it', async () => {
+    const copied: string[] = []
+    vi.spyOn(navigator.clipboard, 'writeText').mockImplementation(async (text) => {
+      copied.push(text)
+    })
+    // A Mac file name may hold a carriage return; the copy keeps it.
+    const path = '/fictional/kept/dddd/open\rfindings.md'
+    const m = viewer({ result: { ...RESULT, path } })
+    await drawnReady()
+    const copy = m.q('canonical-document-copy-path')
+    expect(copy.classList.contains('message-path-icon')).toBe(true)
+    expect(copy.getAttribute('title')).toBe('Copy path')
+    copy.click()
+    await vi.waitFor(() => expect(copy.getAttribute('title')).toBe('Copied'))
+    expect(copied).toEqual([path])
+    expect(read(m.q('canonical-document-viewer'))).not.toContain('/fictional/kept')
+    vi.restoreAllMocks()
   })
 
   it('🔴 a title longer than the panel is wide is cut, and told whole', async () => {

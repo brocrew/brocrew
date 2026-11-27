@@ -696,6 +696,7 @@ describe('406 · the work report, on a real screen', () => {
         form: 'markdown',
         resourceId: RESOURCE,
         name: 'response.md',
+        path: '/fictional/kept/file',
         text: '# the answer\n',
         bytes: 14,
       })

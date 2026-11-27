@@ -24,6 +24,7 @@ scene('workspace-files', async (stage) => {
       ok: true,
       resourceId,
       name: file.name,
+      path: `/fictional/kept/${file.name}`,
       form: file.form ?? 'markdown',
       bytes: file.bytes,
       text: file.form === 'image' || file.form === 'pdf' ? null : body,

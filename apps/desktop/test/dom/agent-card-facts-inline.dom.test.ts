@@ -247,6 +247,7 @@ describe('durable card facts in the conversation', () => {
             form: 'markdown',
             resourceId,
             name: 'bakery.md',
+            path: '/fictional/kept/file',
             text: '# Bakery menu',
             bytes: 13,
           }

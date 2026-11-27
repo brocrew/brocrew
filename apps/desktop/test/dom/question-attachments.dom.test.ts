@@ -63,6 +63,7 @@ it.each(['structured', 'legacy'] as const)(
       form: 'markdown' as const,
       resourceId,
       name,
+      path: `/fictional/kept/${name}`,
       text: '# Draft',
       bytes: 7,
     }))

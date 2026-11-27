@@ -696,15 +696,14 @@ export function keptFileToShow(
   | { readonly ok: true; readonly path: string; readonly changed: boolean }
   | { readonly ok: false; readonly reason: 'gone' | 'unreadable' } {
   const read = resourceBytes(root, row)
-  if (!read.ok && read.refusal.rail === 'resource-bytes-missing') {
-    return { ok: false, reason: 'gone' }
-  }
-  if (!read.ok) {
-    return { ok: false, reason: 'unreadable' }
-  }
-  // ⚑ The path {@link resourceBytes} has just placed, spelled as it spells it.
-  return { ok: true, path: join(resolve(root), row.sha256, row.name), changed: false }
+  const missing = !read.ok && read.refusal.rail === 'resource-bytes-missing'
+  if (!read.ok) return { ok: false, reason: missing ? 'gone' : 'unreadable' }
+  return { ok: true, path: keptFilePath(root, row), changed: false }
 }
+
+/** Where a kept file sits, spelled as {@link resourceBytes} places it. */
+export const keptFilePath = (root: string, row: KeptResource): string =>
+  join(resolve(root), row.sha256, row.name)
 
 /** Inline text stays within the text bound; every form names its kept path, type and size. */
 function contentOf(form: DocumentForm, bytes: Buffer, path: string): DocumentContent {

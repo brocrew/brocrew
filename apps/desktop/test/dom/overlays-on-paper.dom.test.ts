@@ -190,6 +190,7 @@ const OVERLAYS: readonly Overlay[] = [
         ok: true,
         documentId: 'doc:default:4:response',
         name: '004-response.md',
+        path: '/fictional/kept/004-response.md',
         text: '# The answer\n\nAll of it, on paper.\n',
         bytes: 36,
       },

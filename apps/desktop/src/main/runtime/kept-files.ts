@@ -34,6 +34,7 @@ import {
 import {
   MOST_BYTES_A_WINDOW_DRAWS,
   MOST_PIXELS_A_WINDOW_DRAWS,
+  keptFilePath,
   keptFileToShow,
   keptPictureOrPdf,
   refuseResource,
@@ -406,8 +407,10 @@ export class KeptFiles {
     return {
       ok: true,
       resourceId: row.resource,
-      // ⚑ **The name a person reads is the FILE's** — the name it was handed in with, never a path.
+      // ⚑ **The name a person reads is the FILE's** — the name it was handed in with.
       name: row.name,
+      // The preview's Copy path copies this; the window never draws it.
+      path: keptFilePath(root, row),
       // 🔴 **635 · the FORM, so the window knows which viewer to be** (`HO-097` §1.3).
       form: read.form,
       // ⛔ **The TEXT for a text form and `null` otherwise** — a `''` here would draw an empty page
@@ -450,8 +453,7 @@ export class KeptFiles {
   /**
    * 🔴 **D-032 · a kept file, shown in Finder by its id** — {@link revealPath}'s act, on a resource.
    * ⛔ **The path is found from the row by {@link keptFileToShow}**, which holds it inside the
-   * resources tree and says when nothing is to be shown. ⚑ Nothing is opened either way, and the
-   * path never reaches the window.
+   * resources tree and says when nothing is to be shown. ⚑ Nothing is opened either way.
    */
   revealResource(resourceId: string): ResourceReveal {
     const found = this.keptForAPerson(resourceId)

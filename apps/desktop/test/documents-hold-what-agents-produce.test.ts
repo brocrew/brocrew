@@ -420,9 +420,9 @@ describe('635 · the store widens, and viewing never executes', () => {
         const shown = host.readResourceForAPerson(resource)
         if (!shown.ok) throw new Error('the fixture was not kept')
         expect(shown.name).toBe(tagged)
-        // ⛔ **One segment and never a path** (`380`): nothing about where it is kept crosses.
+        // One segment: the name is data, and only `path` says where it is kept.
         expect(shown.name).not.toContain('/')
-        expect(JSON.stringify(shown)).not.toContain(userData)
+        expect(JSON.stringify({ ...shown, path: '' })).not.toContain(userData)
       },
     )
   })

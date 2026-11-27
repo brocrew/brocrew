@@ -103,6 +103,7 @@ const A_DOCUMENT: ResourceReading = {
   form: 'markdown',
   resourceId: 'res_results',
   name: 'results.md',
+  path: '/fictional/kept/file',
   text: '# the results\n',
   bytes: 14,
 }

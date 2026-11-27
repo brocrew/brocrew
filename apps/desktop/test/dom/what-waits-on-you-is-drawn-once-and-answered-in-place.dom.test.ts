@@ -868,6 +868,7 @@ describe('popups are drawn in the order they open, under one layer', () => {
                 ok: true,
                 resourceId: id,
                 name: 'italian-game.md',
+                path: '/fictional/kept/italian-game.md',
                 form: 'markdown',
                 text: '# The Italian Game\n',
                 bytes: 20,

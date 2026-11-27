@@ -177,6 +177,23 @@ function showCopied(target: EventTarget | null): void {
 }
 
 /**
+ * A press on a Copy control: copies what it carries and shows "Copied" on it. Resolves to the line
+ * to show when it did not copy; null when the press was not on a Copy control.
+ */
+export function copyPressed(event: MouseEvent): Promise<string | null> | null {
+  const hit = pathClicked(event.target)
+  if (hit?.pressed !== 'copy') return null
+  const what = hit.link ? 'link' : 'path'
+  return navigator.clipboard.writeText(hit.text).then(
+    () => {
+      showCopied(event.target)
+      return null
+    },
+    () => `That ${what} didn't copy. Select its text and copy it instead.`,
+  )
+}
+
+/**
  * Asks about one message's paths once it has settled, and only again if its texts change.
  *
  * @param htmls the message's rendered HTML pieces, or an empty list while it is still streaming.
@@ -220,13 +237,9 @@ export function usePathsIn(
       event.preventDefault()
       failure.value = null
       if (hit.pressed === 'copy') {
-        const what = hit.link ? 'link' : 'path'
-        navigator.clipboard.writeText(hit.text).then(
-          () => showCopied(event.target),
-          () => {
-            failure.value = `That ${what} didn't copy. Select its text and copy it instead.`
-          },
-        )
+        void copyPressed(event)?.then((said) => {
+          if (said !== null) failure.value = said
+        })
         return
       }
       if (hit.link) {
