@@ -18,7 +18,7 @@ import {
   ancestrySeekSql,
   ancestryResetBeforeSql,
   ancestryResetsInPageSql,
-} from '../src/main/db/work-ancestry-reader'
+} from '../src/main/database/sqlite/ledger/ancestry-read'
 import { ANCESTRY_ACCESS } from '../src/main/db/work-ancestry-index'
 import { RuntimeHost, type RuntimeEventSink } from '../src/main/runtime/runtime-host'
 import {

@@ -31,7 +31,7 @@ import {
 } from '@brobot2/runtime/claude'
 import { ApiKeyUnreadableError } from '../api-key-error'
 import { prepareStateHome } from '../home'
-import type { LoginRenewalOperations, LoginRenewalOutcome } from '../auth-types'
+import type { LoginRenewalOperations, LoginRenewalOutcome } from '@brobot2/runtime/provider-module'
 import type {
   HomeAuthOperations,
   ProviderHomePaths,

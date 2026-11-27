@@ -7,7 +7,7 @@ import {
   readCodexDiscovery,
   readCodexRolloutPath,
   readCodexRolloutPaths,
-} from '../src/main/database/codex-records'
+} from '../src/main/database/sqlite/evidence/codex'
 
 let root: string
 let state: string

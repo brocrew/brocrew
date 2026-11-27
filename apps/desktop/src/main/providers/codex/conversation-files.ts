@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 
 import { ownsRecord, newestStateDatabase } from './native-record'
-import { readCodexRolloutPaths } from '../../database/codex-records'
+import { readCodexRolloutPaths } from '../../database/sqlite/evidence/codex'
 import type { ProviderSessionOf } from '../../db/conversation-tree'
 import {
   entryAt,

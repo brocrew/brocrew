@@ -140,7 +140,7 @@ export const providerDefinitions: Readonly<Record<Provider, ProviderDefinition>>
   },
 }
 
-import type { KeptRulePolicy } from './kept-rule-policy'
+import type { KeptRulePolicy } from '@brobot2/runtime/provider-module'
 import { keptRules as claudeKeptRules } from './claude/kept-rules'
 import { keptRules as codexKeptRules } from './codex/kept-rules'
 import type { InstructionPolicy } from './knowledge-policy'

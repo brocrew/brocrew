@@ -1,7 +1,7 @@
 import { A_CHECK_NOT_ANSWERED_SAYS, signInNotCheckedInTime } from '@brobot2/runtime'
 import { type Provider } from '@brobot2/shared'
 import { signInKey } from '../../providers/sign-in-reservation-facts'
-import type { ProviderSignIn } from '../../providers/auth-types'
+import type { ProviderSignIn } from '@brobot2/runtime/provider-module'
 
 /**
  * How long a sign-in may stay open before the host gives up on it (098).

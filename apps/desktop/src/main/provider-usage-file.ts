@@ -3,7 +3,7 @@ import { providerRecord, SUPPORTED_PROVIDERS, type Provider } from '@brobot2/sha
 import { MAX_INSTANT } from '../shared/clock'
 import type { ProviderUsageReading, UsageWindowSeen } from '../shared/runtime-ipc'
 import type { AppDatabase } from './db/connection'
-import { importSideFile, objectIn } from './db/side-file-import'
+import { importSideFile, objectIn } from './database/sqlite/workspace/side-file-import'
 import { isRecordedAccountTag } from './providers/index'
 
 /** Existing opaque identities plus legacy tags, which remain distinct from new namespaces. */

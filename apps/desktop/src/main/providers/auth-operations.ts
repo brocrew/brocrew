@@ -1,6 +1,10 @@
 import type { AuthState, ReprovisionOutcome } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
-import type { LoginRenewalOperations, ProviderSignIn, SignInCopySource } from './auth-types'
+import type {
+  LoginRenewalOperations,
+  ProviderSignIn,
+  SignInCopySource,
+} from '@brobot2/runtime/provider-module'
 
 /**
  * The three credential gestures a person can make about a profile home (098), composed here for the

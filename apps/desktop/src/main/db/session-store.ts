@@ -2,10 +2,16 @@ export type { ResumableSession, LiveSessionRow, RecordedSession } from './sessio
 export type { DigestRow, EventRow, PersistedEvent } from './ledger-row-types'
 export { toPersistedEvents } from './stored-event-codec'
 export type { WorkRow } from './work-ledger-read'
-export { parseModelChoice, modelChoiceWritten } from './session-store-parts/model-choice-storage'
-export { THREAD_LEAD_EVENT_TYPES, type ThreadLeadRow } from './thread-lead-reader'
+export {
+  parseModelChoice,
+  modelChoiceWritten,
+} from '../database/sqlite/agents/model-choice-storage'
+export {
+  THREAD_LEAD_EVENT_TYPES,
+  type ThreadLeadRow,
+} from '../database/sqlite/ledger/thread-lead-reader'
 import { createSqliteSessionModels } from '../database/sqlite/agents/session-models'
-import { createOwnNotesStore } from './own-notes'
+import { createOwnNotesStore } from '../database/sqlite/agents/own-notes-store'
 import { createMemoryRecoveryStore } from './memory-recovery'
 export { createMemoryAmendmentObserver } from './memory-recovery'
 import { createMethodChangeStore } from './method-changes'

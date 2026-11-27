@@ -41,7 +41,11 @@ import { createMethodChangeStore } from '../method-changes'
 import type { RowsUnread } from '../rows-unread'
 import { noteUnreadRow } from '../stored-event-codec'
 import { createWorkerRecordsRead } from '../worker-records-read'
-import { modelChoiceWritten, parseModelChoice, parseProvider } from './model-choice-storage'
+import {
+  modelChoiceWritten,
+  parseModelChoice,
+  parseProvider,
+} from '../../database/sqlite/agents/model-choice-storage'
 import type { SessionStore } from './session-store-contract'
 import type { NewSessionRecord } from './session-store-rows'
 import { parseStrings, theFoldIndexHolds } from './store-helpers'

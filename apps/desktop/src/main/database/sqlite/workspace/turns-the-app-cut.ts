@@ -2,7 +2,7 @@ import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { providerSchema, type Provider } from '@brobot2/shared'
 import type { AppDatabase } from '../../../db/connection'
-import { importSideFile, objectIn } from '../../../db/side-file-import'
+import { importSideFile, objectIn } from './side-file-import'
 
 /**
  * The turns that were cut while they ran — by this app's own quit, a crash, the provider's program
