@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { scratchFolders } from './helpers/scratch-folders'
 import { REQUEST_MARKER } from '../src/main/providers/codex/codex-injected'
 import { deriveLedger } from '../src/main/archive/derive-ledger'
+import { asyncLedgerGenerations } from '../src/main/database/sqlite/ledger/generations'
 import { importCodexRollout } from '../src/main/providers/codex/import-transcript'
 import { readingATurn, type TurnAsked } from '../src/main/archive/turn-as-sent'
 import { openDatabase } from '../src/main/db/connection'
@@ -161,7 +162,10 @@ describe('a Codex ledger re-derived from its rollout', () => {
     const { db, store } = aStore()
     try {
       const derive = (rebuild: boolean) =>
-        deriveLedger(store, SESSION, 'codex', heldLines(rollout), { fallbackAt: NOW, rebuild })
+        deriveLedger(asyncLedgerGenerations(store), SESSION, 'codex', heldLines(rollout), {
+          fallbackAt: NOW,
+          rebuild,
+        })
       expect(await derive(false)).toBe('imported')
       expect(await derive(true)).toBe('imported')
 

@@ -7,6 +7,7 @@ import type { Provider } from '@brobot2/shared'
 import type { SessionStore } from '../src/main/db/session-store'
 import { nativeTranscriptPath } from '../src/main/archive/native-file'
 import { deriveLedger } from '../src/main/archive/derive-ledger'
+import { asyncLedgerGenerations } from '../src/main/database/sqlite/ledger/generations'
 import { linesOf } from './helpers/provider-lines'
 import type { RuntimeHost, RuntimeHostDeps } from '../src/main/runtime/runtime-host'
 import type { ImportedRecording } from '../src/shared/runtime-ipc'
@@ -142,17 +143,23 @@ describe('one ledger, two hosts, one import', () => {
     const lines = readFileSync(CLAUDE_FIXTURE, 'utf8')
       .split('\n')
       .filter((line) => line !== '')
-    const outcome = await deriveLedger(store, ID, 'claude', linesOf(lines), {
-      fallbackAt: 1_000,
-      rebuild: true,
-      cancelled: () => {
-        if (!replaced && store.ledgerStatus(ID).derived === 'rebuilding') {
-          replaced = true
-          store.beginGeneration(ID) // somebody else's derive, opening its own
-        }
-        return false
+    const outcome = await deriveLedger(
+      asyncLedgerGenerations(store),
+      ID,
+      'claude',
+      linesOf(lines),
+      {
+        fallbackAt: 1_000,
+        rebuild: true,
+        cancelled: () => {
+          if (!replaced && store.ledgerStatus(ID).derived === 'rebuilding') {
+            replaced = true
+            store.beginGeneration(ID) // somebody else's derive, opening its own
+          }
+          return false
+        },
       },
-    })
+    )
 
     expect(replaced, 'the marker was never replaced — the derive promoted its own generation').toBe(
       true,

@@ -12,6 +12,8 @@ import {
 import { errorMessage } from '../session-disclosures'
 import type { ResumableSession, SessionStore } from '../../db/session-store'
 import { type DeriveOutcome, deriveLedger } from '../../archive/derive-ledger'
+import type { LedgerGenerations } from '../../database/ledger-generations'
+import { asyncLedgerGenerations } from '../../database/sqlite/ledger/generations'
 import { DEFAULT_PROFILE_ID } from '../../connections/homes'
 import type { Provider } from '@brobot2/shared'
 import { readLines } from '../../archive/native-file'
@@ -63,6 +65,8 @@ export class LibraryImport {
   /** The pause before a slice that found the write lock taken is tried again. */
   private copyBusyWait: number = COPY_BUSY_WAIT_MS.least
   private readonly copiesFilled = { visited: 0, matched: 0, saidAt: Number.NEGATIVE_INFINITY }
+  /** The generations every import and rebuild builds into. */
+  private readonly generations: LedgerGenerations
 
   constructor(
     private readonly deps: { readonly store: SessionStore } & Pick<
@@ -75,7 +79,9 @@ export class LibraryImport {
       | 'userHomeSessions'
     >,
     private readonly host: LibraryImportHost,
-  ) {}
+  ) {
+    this.generations = asyncLedgerGenerations(deps.store)
+  }
 
   /**
    * Record a pointer to every conversation found in the provider homes that we have never seen
@@ -440,7 +446,7 @@ export class LibraryImport {
       row === null ? undefined : this.imageResolver(provider, row.ref.sessionId, homeProfileOf(row))
     return this.host.whileBuilding(sessionId, () =>
       deriveLedger(
-        this.deps.store,
+        this.generations,
         sessionId,
         provider,
         (from, maxLines) => readLines(path, from, maxLines),
@@ -585,6 +591,7 @@ export class LibraryImport {
           importFromHome(
             {
               store: this.deps.store,
+              generations: this.generations,
               newSessionId: () => this.deps.newSessionId(),
               lines: (path) => (from, maxLines) => readLines(path, from, maxLines),
               // A `saved_path` may only be believed against the home this conversation ran in.
@@ -688,7 +695,7 @@ export class LibraryImport {
     const outcome = await this.host.whileBuilding(sessionId, () =>
       this.archives.background((cancelled) =>
         deriveLedger(
-          this.deps.store,
+          this.generations,
           sessionId,
           row.provider,
           (from, maxLines) => readLines(path, from, maxLines),

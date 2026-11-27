@@ -1,5 +1,5 @@
 import { type Provider } from '@brobot2/shared'
-import type { SessionStore } from '../db/session-store'
+import type { LedgerGenerations } from '../database/ledger-generations'
 import { isConversation } from './transcript-types'
 import type { ResolveImagePath } from './transcript-types'
 import { providerDefinitions } from '../providers/index'
@@ -120,7 +120,7 @@ export interface DeriveOptions {
   rebuild?: boolean
 }
 
-/** How many rows one bounded collection step deletes. See {@link SessionStore.discardGeneration}. */
+/** How many rows one bounded collection step deletes. See {@link LedgerGenerations.discardGeneration}. */
 const DISCARD_BATCH = 2_000
 const DEFAULT_DERIVE_BATCH = 2_000
 
@@ -137,7 +137,7 @@ function errorMessage(error: unknown): string {
 }
 
 export async function deriveLedger(
-  store: SessionStore,
+  generations: LedgerGenerations,
   sessionId: string,
   provider: Provider,
   read: ProviderLines,
@@ -145,16 +145,16 @@ export async function deriveLedger(
 ): Promise<DeriveOutcome> {
   // Two producers writing one ledger would show the conversation twice, which is worse than not
   // importing at all — so a session with a projection is left alone unless a rebuild was asked for.
-  if (options.rebuild !== true && store.ledgerStatus(sessionId).present) return 'skipped'
+  if (options.rebuild !== true && (await generations.hasLedger(sessionId))) return 'skipped'
 
   const batchSize = options.batchSize ?? DEFAULT_DERIVE_BATCH
   const tally = options.tally ?? { eventsWritten: 0, unreadableLines: 0 }
 
   // Clear what an earlier attempt abandoned BEFORE starting, in bounded steps that yield, so a
   // session that fails repeatedly does not accumulate a projection's worth of dead rows per attempt.
-  await collectDeadGenerations(store, sessionId, options.cancelled)
+  await collectDeadGenerations(generations, sessionId, options.cancelled)
 
-  const generation = store.beginGeneration(sessionId)
+  const generation = await generations.beginGeneration(sessionId)
   let carriedAt = options.fallbackAt
   // The file edits still awaiting a result, carried across batches exactly like `carriedAt`: a
   // `file_change` spans two records, so a batch boundary between them must not drop it.
@@ -168,7 +168,7 @@ export async function deriveLedger(
       // Asked BEFORE the batch, so a derive that fits in one batch is still asked.
       if (options.cancelled?.() === true) {
         // Null, not a message: being asked to stop during a quit is not a fault.
-        store.abandonGeneration(sessionId, generation, null)
+        await generations.abandonGeneration(sessionId, generation, null)
         return 'stopped'
       }
       const chunk = read(from, batchSize)
@@ -176,7 +176,7 @@ export async function deriveLedger(
       // Both providers terminate finished records. An observed unfinished tail leaves this
       // attempt unpublished, so the next import can read the completed record too.
       if (chunk.done && chunk.partial) {
-        store.abandonGeneration(sessionId, generation, null)
+        await generations.abandonGeneration(sessionId, generation, null)
         return 'still-writing'
       }
       const lines = chunk.lines
@@ -202,12 +202,12 @@ export async function deriveLedger(
           if (start > 0) {
             await yieldToLoop()
             if (options.cancelled?.() === true) {
-              store.abandonGeneration(sessionId, generation, null)
+              await generations.abandonGeneration(sessionId, generation, null)
               return 'stopped'
             }
           }
           const slice = parsed.entries.slice(start, start + batchSize)
-          store.appendGeneration(
+          await generations.appendGeneration(
             sessionId,
             generation,
             slice.map((entry) => ({
@@ -226,25 +226,25 @@ export async function deriveLedger(
       await yieldToLoop()
     }
   } catch (error) {
-    store.abandonGeneration(sessionId, generation, errorMessage(error))
+    await generations.abandonGeneration(sessionId, generation, errorMessage(error))
     return 'failed'
   }
 
   if (!sawConversation) {
     // A ledger of nothing but the file's own bookkeeping is not a transcript, and promoting it would
     // leave the row claiming a conversation it cannot show.
-    store.abandonGeneration(sessionId, generation, null)
+    await generations.abandonGeneration(sessionId, generation, null)
     return 'nothing-readable'
   }
 
-  const promoted = store.promoteGeneration(sessionId, generation, {
+  const promoted = await generations.promoteGeneration(sessionId, generation, {
     normalizerVersion: NORMALIZER_VERSION,
     derivedThrough: linesRead,
   })
   // ⛔ **Collected either way, and the outcome is the flip's answer.** A generation that was not
   // promoted is unreachable by construction, so it is exactly what {@link collectDeadGenerations}
   // exists to delete.
-  await collectDeadGenerations(store, sessionId, options.cancelled)
+  await collectDeadGenerations(generations, sessionId, options.cancelled)
   return promoted ? 'imported' : 'superseded'
 }
 
@@ -260,14 +260,14 @@ export async function deriveLedger(
  * and not a reason to tell the caller their conversation did not import.
  */
 async function collectDeadGenerations(
-  store: SessionStore,
+  generations: LedgerGenerations,
   sessionId: string,
   cancelled?: () => boolean,
 ): Promise<void> {
   try {
-    for (const dead of store.deadGenerations(sessionId)) {
+    for (const dead of await generations.deadGenerations(sessionId)) {
       for (;;) {
-        if (store.discardGeneration(sessionId, dead, DISCARD_BATCH) === 0) break
+        if ((await generations.discardGeneration(sessionId, dead, DISCARD_BATCH)) === 0) break
         await yieldToLoop()
         if (cancelled?.() === true) return
       }

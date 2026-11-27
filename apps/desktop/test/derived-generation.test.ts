@@ -6,6 +6,7 @@ import type { AppDatabase } from '../src/main/db/connection'
 import type { SessionStore } from '../src/main/db/session-store'
 import type { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { deriveLedger } from '../src/main/archive/derive-ledger'
+import { asyncLedgerGenerations } from '../src/main/database/sqlite/ledger/generations'
 import { NORMALIZER_VERSION } from '../src/main/archive/normalizer'
 import { importCodexRollout } from '../src/main/providers/codex/import-transcript'
 import { linesOf } from './helpers/provider-lines'
@@ -74,7 +75,7 @@ describe('the derived-generation contract (065)', () => {
 
   type Options = Parameters<typeof deriveLedger>[4]
   const derive = (options: Partial<Options> = {}) =>
-    deriveLedger(store, SESSION, 'claude', linesOf(held), {
+    deriveLedger(asyncLedgerGenerations(store), SESSION, 'claude', linesOf(held), {
       fallbackAt: 1_700_000_000_000,
       ...options,
     })
@@ -122,7 +123,7 @@ describe('the derived-generation contract (065)', () => {
       let reads = 0
       expect(
         await deriveLedger(
-          store,
+          asyncLedgerGenerations(store),
           SESSION,
           'claude',
           () => {
@@ -250,7 +251,7 @@ describe('the derived-generation contract (065)', () => {
         },
       }
 
-      await deriveLedger(watched, SESSION, 'claude', linesOf(held), {
+      await deriveLedger(asyncLedgerGenerations(watched), SESSION, 'claude', linesOf(held), {
         fallbackAt: 1_700_000_000_000,
         batchSize: 4,
         cancelled: () => {
@@ -296,13 +297,13 @@ describe('the derived-generation contract (065)', () => {
       const batches: number[] = []
 
       const outcome = await deriveLedger(
-        {
+        asyncLedgerGenerations({
           ...store,
           appendGeneration: (id, generation, entries) => {
             batches.push(entries.length)
             store.appendGeneration(id, generation, entries)
           },
-        },
+        }),
         SESSION,
         'claude',
         linesOf(held),
@@ -327,13 +328,13 @@ describe('the derived-generation contract (065)', () => {
       let asks = 0
 
       const outcome = await deriveLedger(
-        {
+        asyncLedgerGenerations({
           ...store,
           appendGeneration: (id, generation, entries) => {
             batches.push(entries.length)
             store.appendGeneration(id, generation, entries)
           },
-        },
+        }),
         SESSION,
         'claude',
         linesOf(held),
@@ -347,6 +348,34 @@ describe('the derived-generation contract (065)', () => {
       expect(store.ledgerStatus(SESSION).present).toBe(false)
     })
 
+    it('honours a stop that lands while an append is still being written', async () => {
+      // Appends are awaited, so a quit can arrive between an append starting and finishing. The
+      // next slice still asks, and nothing of the half-built generation becomes readable.
+      planted(1, [fanOutFrame(12)])
+      const generations = asyncLedgerGenerations(store)
+      let quitting = false
+      const written: number[] = []
+      const outcome = await deriveLedger(
+        {
+          ...generations,
+          async appendGeneration(id, generation, entries) {
+            await new Promise((resolve) => setImmediate(resolve))
+            quitting = true
+            written.push(entries.length)
+            await generations.appendGeneration(id, generation, entries)
+          },
+        },
+        SESSION,
+        'claude',
+        linesOf(held),
+        { fallbackAt: 1_700_000_000_000, batchSize: 4, cancelled: () => quitting },
+      )
+
+      expect(outcome).toBe('stopped')
+      expect(written).toEqual([4])
+      expect(store.ledgerStatus(SESSION).present).toBe(false)
+    })
+
     it('is asked before the FIRST batch, so a small derive is cancellable at all', async () => {
       // 068 read the ask as being at the wrong boundary; measuring it showed the boundary was also
       // the wrong SIDE. Asked only after a batch, a derive that fits in one — which at the default
@@ -355,13 +384,13 @@ describe('the derived-generation contract (065)', () => {
       planted(2)
       const batches: number[] = []
       const outcome = await deriveLedger(
-        {
+        asyncLedgerGenerations({
           ...store,
           appendGeneration: (id, generation, entries) => {
             batches.push(entries.length)
             store.appendGeneration(id, generation, entries)
           },
-        },
+        }),
         SESSION,
         'claude',
         linesOf(held),
@@ -392,11 +421,17 @@ describe('the derived-generation contract (065)', () => {
         },
       }
 
-      const outcome = await deriveLedger(flaky, SESSION, 'claude', linesOf(held), {
-        fallbackAt: 1_700_000_000_000,
-        batchSize: 2,
-        rebuild: true,
-      })
+      const outcome = await deriveLedger(
+        asyncLedgerGenerations(flaky),
+        SESSION,
+        'claude',
+        linesOf(held),
+        {
+          fallbackAt: 1_700_000_000_000,
+          batchSize: 2,
+          rebuild: true,
+        },
+      )
 
       expect(outcome).toBe('failed')
       expect(batches).toBeGreaterThan(1)
@@ -416,13 +451,13 @@ describe('the derived-generation contract (065)', () => {
 
       let batches = 0
       await deriveLedger(
-        {
+        asyncLedgerGenerations({
           ...store,
           appendGeneration: (id, generation, entries) => {
             if (++batches === 2) throw new Error('mid-rebuild')
             store.appendGeneration(id, generation, entries)
           },
-        },
+        }),
         SESSION,
         'claude',
         linesOf(held),
@@ -455,13 +490,13 @@ describe('the derived-generation contract (065)', () => {
       let asks = 0
       const batches: number[] = []
       const outcome = await deriveLedger(
-        {
+        asyncLedgerGenerations({
           ...store,
           appendGeneration: (id, generation, entries) => {
             batches.push(entries.length)
             store.appendGeneration(id, generation, entries)
           },
-        },
+        }),
         SESSION,
         'claude',
         linesOf(held),
@@ -498,7 +533,7 @@ describe('the derived-generation contract (065)', () => {
 
       const seen: number[] = []
       await deriveLedger(
-        {
+        asyncLedgerGenerations({
           ...store,
           appendGeneration: (id, generation, entries) => {
             store.appendGeneration(id, generation, entries)
@@ -506,7 +541,7 @@ describe('the derived-generation contract (065)', () => {
             // must answer with the old projection every time, because that is what is still active.
             seen.push(store.events(SESSION).length)
           },
-        },
+        }),
         SESSION,
         'claude',
         linesOf(held),
@@ -566,7 +601,7 @@ describe('the derived-generation contract (065)', () => {
       )?.active
 
     const rebuild = (overrides: Partial<Options> = {}, target: SessionStore = store) =>
-      deriveLedger(target, BUNDLE, 'claude', linesOf(claudeFrames(0, 6)), {
+      deriveLedger(asyncLedgerGenerations(target), BUNDLE, 'claude', linesOf(claudeFrames(0, 6)), {
         fallbackAt: 1_700_000_000_000,
         rebuild: true,
         ...overrides,
@@ -787,7 +822,7 @@ describe('the derived-generation contract (065)', () => {
       ]
 
       expect(
-        await deriveLedger(store, SESSION, 'codex', linesOf(rollout), {
+        await deriveLedger(asyncLedgerGenerations(store), SESSION, 'codex', linesOf(rollout), {
           fallbackAt: 1_700_000_000_000,
           resolveImage: () => '/served/generated_images/t/call_abc.png',
         }),

@@ -13,6 +13,7 @@ import {
   type HomeImportDeps,
 } from '../src/main/archive/import-from-home'
 import { deriveLedger } from '../src/main/archive/derive-ledger'
+import { asyncLedgerGenerations } from '../src/main/database/sqlite/ledger/generations'
 import { importClaudeTranscript } from '../src/main/providers/claude/import-transcript'
 import { importCodexRollout } from '../src/main/providers/codex/import-transcript'
 
@@ -70,6 +71,7 @@ describe('importing one conversation from its file', () => {
   function deps(overrides: Partial<HomeImportDeps> = {}): HomeImportDeps {
     return {
       store,
+      generations: asyncLedgerGenerations(store),
       newSessionId: () => `sess_${++issued}`,
       lines: (path) => (from, maxLines) => readLines(path, from, maxLines),
       ...overrides,
@@ -142,13 +144,13 @@ describe('importing one conversation from its file', () => {
       const path = plant('claude.jsonl', CLAUDE_FIXTURE)
       let derailed = false
       const outcome = await run(source({ path }), () => false, {
-        store: {
+        generations: asyncLedgerGenerations({
           ...store,
           appendGeneration: () => {
             derailed = true
             throw new Error('killed mid-derive')
           },
-        },
+        }),
       })
       expect(derailed).toBe(true)
       expect(outcome).toBe('unreadable')
@@ -195,10 +197,16 @@ describe('importing one conversation from its file', () => {
     const text = readFileSync(path, 'utf8')
     writeFileSync(path, text + '{"type":"user","message":{"content":"the next question')
     const rebuild = () =>
-      deriveLedger(store, 'sess_1', 'claude', (offset, max) => readLines(path, offset, max), {
-        fallbackAt: 1,
-        rebuild: true,
-      })
+      deriveLedger(
+        asyncLedgerGenerations(store),
+        'sess_1',
+        'claude',
+        (offset, max) => readLines(path, offset, max),
+        {
+          fallbackAt: 1,
+          rebuild: true,
+        },
+      )
     expect(await rebuild()).toBe('still-writing')
     expect(store.events('sess_1')).toEqual(before)
     writeFileSync(path, text + '{"type":"user","message":{"content":"the next question"}}\n')
@@ -246,7 +254,7 @@ describe('importing one conversation from its file', () => {
         },
       }
       const outcome = await deriveLedger(
-        failing,
+        asyncLedgerGenerations(failing),
         'sess_1',
         'claude',
         (from, max) => readLines(path, from, max),
@@ -302,10 +310,16 @@ describe('importing one conversation from its file', () => {
         createdAt: 1,
       })
 
-      await deriveLedger(store, 'sess_late', 'claude', (from, max) => readLines(path, from, max), {
-        fallbackAt: 1,
-        batchSize: 5,
-      })
+      await deriveLedger(
+        asyncLedgerGenerations(store),
+        'sess_late',
+        'claude',
+        (from, max) => readLines(path, from, max),
+        {
+          fallbackAt: 1,
+          batchSize: 5,
+        },
+      )
 
       const events = store.events('sess_late')
       // Every entry, from ordinal 0 — the chatter that preceded it included, in order.
@@ -388,7 +402,7 @@ describe('importing one conversation from its file', () => {
         createdAt: 1,
       })
       await deriveLedger(
-        store,
+        asyncLedgerGenerations(store),
         'sess_batched',
         provider,
         (from, max) => readLines(path, from, max),
