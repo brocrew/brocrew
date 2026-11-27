@@ -1,7 +1,5 @@
 import ts from 'typescript'
 import { combinedPersonsQueue } from './helpers/combined-persons-queue'
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
 import { runInNewContext } from 'node:vm'
 import { describe, expect, it, vi } from 'vitest'
 import type { LimitsDisplayAnswer, LimitsDisplayReading } from '../src/shared/limits-display'
@@ -13,6 +11,7 @@ import {
 import { providerLimitsView } from '../src/renderer/src/lib/persons-queue'
 import { oneReadAtATime } from '../src/renderer/src/lib/one-read-at-a-time'
 import { readProviderLimit } from '../src/shared/provider-limit'
+import { readScreenModules } from './lib/runtime-screen-source'
 
 const NOW = Date.UTC(2026, 9, 8, 22)
 function answer(operation = 1, signInEpoch = 1): LimitsDisplayAnswer {
@@ -166,10 +165,7 @@ describe('the limits display retains dated evidence without current-state author
 
 describe('the actual screen publishes actionables without awaiting the limits lane', () => {
   it('keeps ready answers live during a slow limits read, and an older round never lands over a newer one', async () => {
-    const source = readFileSync(
-      fileURLToPath(new URL('../src/renderer/src/components/RuntimeScreen.vue', import.meta.url)),
-      'utf8',
-    )
+    const source = readScreenModules('useRuntimeAttention')
     const start = source.indexOf('async function lookForWhatIsYours(')
     const end = source.indexOf('\n}\n', start)
     if (start < 0 || end < start) throw new Error('screen look missing')

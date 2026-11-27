@@ -1,8 +1,6 @@
 import ts from 'typescript'
 import { combinedPersonsQueue } from './helpers/combined-persons-queue'
 import type { LedgerWalk } from '../src/shared/question-contracts'
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
 import { runInNewContext } from 'node:vm'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
@@ -13,11 +11,9 @@ import {
 import { limitsDisplayLane, type LimitsDisplayState } from '../src/renderer/src/lib/limits-display'
 import { readProviderLimit, type ProviderLimitSeen } from '../src/shared/provider-limit'
 import { oneReadAtATime } from '../src/renderer/src/lib/one-read-at-a-time'
+import { readScreenModules } from './lib/runtime-screen-source'
 
-const screen = readFileSync(
-  fileURLToPath(new URL('../src/renderer/src/components/RuntimeScreen.vue', import.meta.url)),
-  'utf8',
-)
+const screen = readScreenModules('useRuntimeAttention', 'useRuntimeScreenReadings')
 const NOW = Date.UTC(2026, 9, 8, 9)
 const actionable = [
   'questionsForAPerson',

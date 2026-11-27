@@ -235,3 +235,22 @@ export function proseSpans(filename: string, source: string): ProseSpan[] {
   if (template?.ast) fromTemplate(template.ast, filename, out)
   return out
 }
+
+/**
+ * Every comment blanked, newlines kept, so a docblock quoting the code cannot stand in for it.
+ * ⚠️ Blanked line by line, where each span says it starts: a run of `//` lines is one span joined
+ * WITHOUT the indentation between them.
+ */
+export function codeWithoutProse(file: string, source: string): string {
+  const lines = source.split('\n')
+  for (const span of proseSpans(file, source)) {
+    span.text.split('\n').forEach((said, offset) => {
+      const at = span.line - 1 + offset
+      const line = lines[at] ?? ''
+      const from = line.indexOf(said)
+      if (from < 0) throw new Error(`${file}:${String(at + 1)} does not hold the comment ${said}`)
+      lines[at] = line.slice(0, from) + ' '.repeat(said.length) + line.slice(from + said.length)
+    })
+  }
+  return lines.join('\n')
+}

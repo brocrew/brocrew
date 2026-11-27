@@ -1,11 +1,10 @@
-import { readFileSync } from 'node:fs'
-import { fileURLToPath } from 'node:url'
 import { runInNewContext } from 'node:vm'
 import ts from 'typescript'
 import { describe, expect, it, vi } from 'vitest'
 import { oneReadAtATime } from '../src/renderer/src/lib/one-read-at-a-time'
 import { limitsReadCadence } from '../src/renderer/src/lib/persons-queue'
 import type { AnswerAck } from '../src/shared/runtime-ipc'
+import { readScreenModules } from './lib/runtime-screen-source'
 
 /**
  * 352 · *Waiting on you* keeps the last good asks when its look is refused. An ask that was ended
@@ -14,10 +13,7 @@ import type { AnswerAck } from '../src/shared/runtime-ipc'
  * These run the screen's own look and decision against a look that is refused after the first.
  */
 
-const SCREEN = readFileSync(
-  fileURLToPath(new URL('../src/renderer/src/components/RuntimeScreen.vue', import.meta.url)),
-  'utf8',
-)
+const SCREEN = readScreenModules('useRuntimeAttention', 'useRuntimeQueueActions')
 
 function slice(from: string, to: string): string {
   const start = SCREEN.indexOf(from)
