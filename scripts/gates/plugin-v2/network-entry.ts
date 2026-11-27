@@ -5,6 +5,7 @@ import { downloadPluginBytes } from '../../../apps/desktop/src/main/plugins/cata
 import { loadRepoPluginList } from '../../../apps/desktop/src/main/plugins/catalogue/repo-list'
 import { createRepoAwarePluginVerifier } from '../../../apps/desktop/src/main/plugins/package-verifier'
 import { pluginSha256 } from '../../../apps/desktop/src/main/plugins/package-digests'
+import { releaseDisclosure } from '../../../apps/desktop/src/main/plugins/mutation-disclosure'
 
 export async function networkProof(root: string, appVersion: string) {
   const target =
@@ -74,14 +75,12 @@ export async function networkProof(root: string, appVersion: string) {
         bytes: bytes.length,
         sha256: pluginSha256(bytes),
       })
-      const verified = admitted.verifyPackage(release.id, release.version, bytes)
-      expected[release.id] = {
-        version: verified.manifest.version,
-        authors: verified.manifest.authors,
-        permissions: verified.manifest.permissions,
-        digest: a.sha256,
-        manifestSha256: release.manifestSha256,
-      }
+      // What the Review must show is the app's own disclosure of this verified package, so a
+      // resource the app adds to the manifest's own (shared plugin data) is expected as well.
+      const details = releaseDisclosure(admitted.verifyPackage(release.id, release.version, bytes))
+      if (details.digest !== a.sha256 || details.manifestSha256 !== release.manifestSha256)
+        throw new Error('Disclosed package identity changed')
+      expected[release.id] = details
     }
     if (Object.keys(expected).sort().join(',') !== 'chrome,whatsapp')
       throw new Error('Missing target archives')
