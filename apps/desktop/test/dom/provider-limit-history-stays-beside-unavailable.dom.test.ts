@@ -17,6 +17,8 @@ describe('historical provider stops are visible as history', () => {
   it('both real surfaces retain current unavailable and explicitly remove a retired historical line', async () => {
     const one = reactive(record([]))
     one.meta = { ...META, providerBlockStatus: 'unavailable', providerBlockLastKnown: original }
+    // 501 · the host's state of a quiet conversation, as the store holds it once seeded.
+    one.agentState = { is: 'idle' }
     const page = mount(
       ConversationPane,
       paneProps({ record: one, cwd: META.cwd, drawerOpen: true }),

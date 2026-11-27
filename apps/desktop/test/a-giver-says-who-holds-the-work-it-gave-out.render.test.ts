@@ -13,7 +13,7 @@ import type {
   PieceRow,
   WhatEachConversationIsWaitingOn,
 } from '../src/shared/task-contracts'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -55,11 +55,10 @@ import {
   plateWord,
   standingOf,
   standingWord,
-  stateHere,
   STANDING_LABEL,
   type AgentFacets,
 } from '../src/renderer/src/lib/agent-state'
-import { theWaitIn, whoseWorkIn } from '../src/renderer/src/lib/conversation-waits'
+import { theWaitIn } from '../src/renderer/src/lib/conversation-waits'
 import { sessionPanel } from '../src/renderer/src/lib/session-panel'
 import { createSessionRecord } from '../src/renderer/src/lib/session-record'
 import { applyEvent } from '../src/renderer/src/lib/transcript'
@@ -77,7 +76,6 @@ import {
   type SessionLiveness,
   type UnresumableSessionInfo,
 } from '../src/shared/runtime-ipc'
-import { proseSpans } from './lib/prose-spans'
 import {
   RecordingSink,
   syntheticProviderHome,
@@ -103,13 +101,11 @@ beforeAll(answerTheCatalogue)
  * by cause and added no test that names a holder, so this file measures the arm in four stretches,
  * each from the reader that says it:
  *
- *  - **the pure derivation** (§1 to §4): the one state's ladder and its words, the window's
- *    `stateHere` and `facetsOfState` over it, and the host's verdict deciding which wait a window
- *    draws (`theWaitIn`, `whoseWorkIn`). Nothing is mounted and nothing runs;
+ *  - **the pure derivation** (§1, §3, §4): the one state's ladder and its words, `facetsOfState`
+ *    over it, and the host's verdict deciding which wait a window draws (`theWaitIn`). Nothing is
+ *    mounted and nothing runs;
  *  - **the window's surfaces** (§5, §6): the rail row, the pane's header and plate and the agent
  *    card, in server-rendered markup, each fed the host's names;
- *  - **the screen's wiring** (§7): `RuntimeScreen.vue` hands the pane and the palette those names.
- *    This is a SOURCE read, with every comment blanked first;
  *  - **the host** (§8 to §15): a real `RuntimeHost` over a real SQLite ledger and a provider double,
  *    reading who holds the work at every door, naming each holder once, moving the pushed word when
  *    the fact moves (a give, a reply, a take-back, a close, a retitle, a rename, a replacement),
@@ -134,7 +130,6 @@ beforeAll(answerTheCatalogue)
 
 const here = dirname(fileURLToPath(import.meta.url))
 const migrationsFolder = join(here, '../src/main/db/migrations')
-const SRC = join(here, '../src')
 
 /** The sentences the cases below expect BroBot's child, its grandchild and a third agent to be called by. */
 const ADA = 'Ada (the owner of W1.1 · Build the pages)'
@@ -207,35 +202,6 @@ describe('§1 · the one state names who holds the work, and ranks it below ever
   })
 })
 
-// ─── §2 · the window derives no worker wait of its own ───────────────────────────────────────────
-
-describe('§2 · the window derives no worker wait of its own: stateHere takes the host’s names only on the worker wait', () => {
-  const record = createSessionRecord('sess_g')
-  const waitingOnAWorker: AgentFacets = { doing: 'idle', waiting: 'waiting-on-a-worker' }
-
-  it('🔴 the names reach the state only under the worker wait, and no name is no arm', () => {
-    // The positive, which the negatives below are one fact over from.
-    const named = stateHere(record, waitingOnAWorker, null, [ADA])
-    expect(named).toEqual({ is: 'waiting-on-a-worker', on: [ADA] })
-    expect(agentStateWords(named)).toBe(WAITING_ON_ADA)
-
-    // ⛔ The wait with no names says nothing it can name: an arm is never reached with no holder.
-    expect(stateHere(record, waitingOnAWorker, null, [])).toEqual({ is: 'idle' })
-
-    // ⛔ Names alone derive nothing: a conversation whose facets hold no wait is idle whoever the
-    // host happens to have named.
-    expect(stateHere(record, { doing: 'idle' }, null, [ADA])).toEqual({ is: 'idle' })
-  })
-
-  it('⚑ an answer owed outranks work out, and the state carries the answerer and not the holders', () => {
-    const answered = stateHere(record, { doing: 'idle', waiting: 'waiting-on-an-answer' }, ADA, [
-      ALI,
-    ])
-    expect(answered).toEqual({ is: 'waiting-on-an-answer', from: ADA })
-    expect(agentStateWords(answered)).toBe(`waiting on an answer from ${ADA}`)
-  })
-})
-
 // ─── §3 · a conversation this window is not fed ──────────────────────────────────────────────────
 
 describe('§3 · a conversation this window is not fed is drawn as another agent’s wait, in the one state’s words', () => {
@@ -283,10 +249,9 @@ describe('§4 · the host’s verdict decides the wait the window draws', () => 
   } as const
 
   it('🔴 the names decide the worker wait, whatever the composition’s own wait says', () => {
-    // (A) The host names a holder and the composition says nothing: a worker wait, and the name.
+    // (A) The host names a holder and the composition says nothing: a worker wait.
     const named = reading(row({ ...verdict, waiting: null }))
     expect(theWaitIn(named, 'sess_a')).toBe('waiting-on-a-worker')
-    expect(whoseWorkIn(named, 'sess_a')).toEqual([ALI])
 
     // (B) An open question the host does not count as owed makes the composition say *an answer*:
     // the verdict hides no work.
@@ -299,25 +264,12 @@ describe('§4 · the host’s verdict decides the wait the window draws', () => 
       row({ ...verdict, waitingOnTheWorkOf: [], waiting: 'waiting-on-a-worker' }),
     )
     expect(theWaitIn(nobody, 'sess_a')).toBeUndefined()
-    expect(whoseWorkIn(nobody, 'sess_a')).toEqual([])
 
     // (D) The two waits above it in the verdict's order win over the same names.
     const answerOwed = reading(row({ ...verdict, waitingOnTheAnswerOf: ADA }))
     expect(theWaitIn(answerOwed, 'sess_a')).toBe('waiting-on-an-answer')
     const personOwed = reading(row({ ...verdict, needsYou: true }))
     expect(theWaitIn(personOwed, 'sess_a')).toBe('waiting-on-a-person')
-    // …and the names are still the host's, whichever wait wins.
-    expect(whoseWorkIn(personOwed, 'sess_a')).toEqual([ALI])
-  })
-
-  it('⚑ a reading that covers nobody, or a row without the field, names nobody', () => {
-    // The positive: the reader does name holders where it can.
-    expect(whoseWorkIn(reading(row({ ...verdict })), 'sess_a')).toEqual([ALI])
-    // (E) No reading at all, a conversation the reading does not cover, and a hand-made row that
-    // carries no verdict: three absences, each an empty list.
-    expect(whoseWorkIn(null, 'sess_a')).toEqual([])
-    expect(whoseWorkIn(reading(row({ ...verdict })), 'sess_other')).toEqual([])
-    expect(whoseWorkIn(reading(row({ waiting: 'waiting-on-a-worker' })), 'sess_a')).toEqual([])
   })
 
   it('⚑ a hand-made row with no verdict is read as its own wait, and a verdict row with no names reads none', () => {
@@ -414,9 +366,13 @@ const markup = (component: unknown, props: Record<string, unknown>): Promise<str
 const visible = (html: string): string => html.replace(/<!--[\s\S]*?-->/g, '')
 
 describe('§5 · the rail row of a conversation this window is fed says who holds the work', () => {
-  const rail = (waiting?: WhatEachConversationIsWaitingOn | null): Promise<string> =>
+  // 501 · a fed record's state is the host's, which names the holder (D-036's `on`).
+  const rail = (
+    waiting?: WhatEachConversationIsWaitingOn | null,
+    agentState?: AgentState,
+  ): Promise<string> =>
     markup(SideRail, {
-      open: [openRecord()],
+      open: [Object.assign(openRecord(), agentState === undefined ? {} : { agentState })],
       activeId: 'sess_brobot',
       place: null,
       ...(waiting === undefined ? {} : { waiting }),
@@ -430,7 +386,9 @@ describe('§5 · the rail row of a conversation this window is fed says who hold
   }
 
   it('🔴 names the holder, draws it as another agent’s wait, and says idle when the verdict names nobody', async () => {
-    const told = visible(await rail(aReading(hostRow([ADA]))))
+    const told = visible(
+      await rail(aReading(hostRow([ADA])), { is: 'waiting-on-a-worker', on: [ADA] }),
+    )
     const word = rowWord(told)
     expect(word).toContain(WAITING_ON_ADA)
     expect(told).toContain('data-standing="elsewhere"')
@@ -440,7 +398,7 @@ describe('§5 · the rail row of a conversation this window is fed says who hold
 
     // ⛔ THE PAIR — the same record and the same component, the host naming nobody: a row that
     // really is drawn, saying idle, with none of the words above.
-    const nobody = visible(await rail(aReading(hostRow([]))))
+    const nobody = visible(await rail(aReading(hostRow([])), { is: 'idle' }))
     expect(rowWord(nobody)).toContain('Claude · idle')
     expect(nobody).toContain('data-standing="idle"')
     expect(nobody).not.toContain('waiting on')
@@ -467,7 +425,14 @@ describe('§6 · the pane’s header and plate say who holds the work, and the c
     })
 
   it('🔴 the header and the plate name the holder the screen handed it', async () => {
-    const told = visible(await pane({ workWith: [ADA] }))
+    // 501 · the host's state names the holder; the pane names nobody itself.
+    const told = visible(
+      await pane({
+        record: Object.assign(openRecord(), {
+          agentState: { is: 'waiting-on-a-worker', on: [ADA] } as AgentState,
+        }),
+      }),
+    )
     expect(told).toContain(WAITING_ON_ADA)
     expect(told).toContain(STANDING_LABEL.elsewhere)
     expect(told).toContain('data-standing="elsewhere"')
@@ -522,76 +487,6 @@ describe('§6 · the pane’s header and plate say who holds the work, and the c
         expect(shown).toContain('data-cy="schedule-open-j1"')
       }
     })
-  })
-})
-
-// ─── §7 · the screen's wiring ────────────────────────────────────────────────────────────────────
-
-/**
- * Every comment blanked, newlines kept, so a docblock quoting the code cannot stand in for it.
- * ⚠️ Blanked line by line, where each span says it starts: a run of `//` lines is one span joined
- * WITHOUT the indentation between them.
- */
-function code(file: string, source: string): string {
-  const lines = source.split('\n')
-  for (const span of proseSpans(file, source)) {
-    span.text.split('\n').forEach((said, offset) => {
-      const at = span.line - 1 + offset
-      const line = lines[at] ?? ''
-      const from = line.indexOf(said)
-      if (from < 0) throw new Error(`${file}:${String(at + 1)} does not hold the comment ${said}`)
-      lines[at] = line.slice(0, from) + ' '.repeat(said.length) + line.slice(from + said.length)
-    })
-  }
-  return lines.join('\n')
-}
-
-/** How many times a pattern matches, so a census can say it found exactly the call it reads. */
-const countOf = (pattern: RegExp, source: string): number =>
-  [...source.matchAll(new RegExp(pattern.source, 'g'))].length
-
-describe('§7 · the screen hands the names to the pane and to the palette’s word', () => {
-  const FILE = join(SRC, 'renderer/src/components/RuntimeScreen.vue')
-  const source = code(FILE, readFileSync(FILE, 'utf8'))
-
-  /** The pane's own tag, from its opening to the first `/>`. */
-  const paneTag = (text: string): string => {
-    expect(countOf(/<ConversationPane\b/, text), 'one pane is mounted').toBe(1)
-    const at = text.indexOf('<ConversationPane')
-    const end = text.indexOf('/>', at)
-    expect(end).toBeGreaterThan(at)
-    return text.slice(at, end)
-  }
-  /** The palette's call, as four arguments: the record, its facets, the answerer and the holders. */
-  const PALETTE_CALL =
-    /stateHere\(\s*record,\s*facets,\s*whoseAnswerIn\(conversationWaits\.value, record\.sessionId\),\s*whoseWorkIn\(conversationWaits\.value, record\.sessionId\),\s*\{\},\s*stoppedWorkIn\(conversationWaits\.value, record\.sessionId\),?\s*\)/
-  const THE_PANE_GETS_THE_HOLDERS = ':work-with="whoseWorkIn(conversationWaits, active.sessionId)"'
-  const THE_PANE_GETS_THE_ANSWERER =
-    ':answer-from="whoseAnswerIn(conversationWaits, active.sessionId)"'
-
-  it('🔴 the pane is handed the holders and the palette’s stateHere gets them as its fourth argument', () => {
-    // ⚑ The pairs first: the same slices carry the answerer, the third argument of the same call,
-    // so each slice is known to find real text before the holders are asked of it.
-    expect(paneTag(source)).toContain(THE_PANE_GETS_THE_ANSWERER)
-    expect(countOf(/stateHere\(/, source), 'one palette call').toBe(1)
-    expect(countOf(/whoseAnswerIn\(conversationWaits\.value, record\.sessionId\)/, source)).toBe(1)
-
-    expect(paneTag(source)).toContain(THE_PANE_GETS_THE_HOLDERS)
-    expect(source).toMatch(PALETTE_CALL)
-  })
-
-  it('⚑ the predicates can fail: a copy without the holders, in either place, is not accepted', () => {
-    const withoutThePaneProp = source.replace(THE_PANE_GETS_THE_HOLDERS, '')
-    expect(withoutThePaneProp).not.toBe(source)
-    expect(paneTag(withoutThePaneProp)).not.toContain(THE_PANE_GETS_THE_HOLDERS)
-    expect(paneTag(withoutThePaneProp)).toContain(THE_PANE_GETS_THE_ANSWERER)
-
-    const withoutTheFourthArgument = source.replace(
-      /,\s*whoseWorkIn\(conversationWaits\.value, record\.sessionId\)/,
-      '',
-    )
-    expect(withoutTheFourthArgument).not.toBe(source)
-    expect(withoutTheFourthArgument).not.toMatch(PALETTE_CALL)
   })
 })
 

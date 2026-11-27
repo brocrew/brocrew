@@ -49,7 +49,7 @@ const props = defineProps<{
   profile?: string | null
   /**
    * ⚑ **F023 · when it next wakes and what it left running** — ⚑ **D-017 · R11: the ONE state**
-   * (`stateHere`, `shared/agent-state.ts`), with whose answer it waits on (R19), for the transcript
+   * (the host's, `shared/agent-state.ts`), with whose answer it waits on (R19), for the transcript
    * this window holds — so the word under the plate is the rail row's word, and `list_agents`'.
    * Absent, the plate says the arm's plain word.
    */

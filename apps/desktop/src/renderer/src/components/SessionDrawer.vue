@@ -92,7 +92,7 @@ const props = defineProps<{
    */
   facets: AgentFacets
   providerLimit?: ProviderLimitDisplay | null
-  /** ⚑ **D-017 · R11 — its ONE state** (`stateHere`), derived once by the pane beside the facets. */
+  /** ⚑ **D-017 · R11 — its ONE state**, the host's, handed on by the pane beside the facets. */
   agentState?: AgentState
   /** While this conversation holds a piece with a typed wait: that wait, in place of its state. */
   ownWait?: OwnWait | null

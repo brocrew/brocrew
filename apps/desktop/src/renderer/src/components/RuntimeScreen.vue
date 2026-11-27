@@ -159,7 +159,7 @@ import {
   usePersistentChoice,
   usePersistentToggle,
 } from '../composables/usePersistentToggle'
-import { recordFacets, standingWord, stateHere, stateForRecord } from '../lib/agent-state'
+import { recordFacets, standingWord, stateForRecord } from '../lib/agent-state'
 import {
   answeredFromHere,
   answerFor,
@@ -198,16 +198,7 @@ import { THE_BRIEF_IS_FURTHER_BACK } from '../lib/outgoing-card'
 // 🔴 **636 · the reading `621` built and left with no reader** — see {@link readWhatIsWaiting}.
 // ⚠️ **This file is `631`'s and the edit is deliberately four small ones**; the response document
 // names every line so the merge can be sequenced rather than discovered.
-import {
-  theWaitIn,
-  theWorkIn,
-  whenItOwedIn,
-  whenItsWaitsBeganIn,
-  whoItOwesIn,
-  whoseAnswerIn,
-  whoseWorkIn,
-  stoppedWorkIn,
-} from '../lib/conversation-waits'
+import { theWaitIn, theWorkIn, whoItOwesIn } from '../lib/conversation-waits'
 
 import type { WhatIsBeingDone } from '../../../shared/what-is-being-done'
 import type { ForestWindow } from '../../../shared/the-whole-forest'
@@ -2014,8 +2005,8 @@ const needsYou = computed<AttentionRequest[]>(() =>
   attentionQueue(
     store.live.value,
     (record) => {
-      // ⚑ **D-017 · R11** — in the ONE state's words (`stateHere`), as the rail row says them: off
-      // the same reading, so who owes it the next move is the host's verdict here too (R19).
+      // ⚑ **D-017 · R11** — in the host's ONE state's words, as the rail row says them: who owes it
+      // the next move is the host's verdict here too (R19).
       const facets = recordFacets(
         record,
         theWaitIn(conversationWaits.value, record.sessionId),
@@ -2023,19 +2014,7 @@ const needsYou = computed<AttentionRequest[]>(() =>
         // ⚑ **F036** — who waits on its answer, off the host's state of it (the rail's listed row).
         whoItOwesIn(rail.value?.listedOf(record.sessionId)?.state),
       )
-      return standingWord(
-        facets,
-        stateForRecord(record, () =>
-          stateHere(
-            record,
-            facets,
-            whoseAnswerIn(conversationWaits.value, record.sessionId),
-            whoseWorkIn(conversationWaits.value, record.sessionId),
-            {},
-            stoppedWorkIn(conversationWaits.value, record.sessionId),
-          ),
-        ),
-      )
+      return standingWord(facets, stateForRecord(record))
     },
     // ⚑ **714 · R41** — the identity each waiting row's conversation runs as
     // (`AttentionRequest.who`), named over the roster.
@@ -3011,16 +2990,6 @@ function lookAgainIfItMoved(): void {
 const listedStateOfActive = computed(() =>
   active.value === null ? null : (rail.value?.listedOf(active.value.sessionId)?.state ?? null),
 )
-/** When each of the active conversation's waits began, as the host read them. */
-const waitsBeganOfActive = computed(() =>
-  active.value === null
-    ? {}
-    : {
-        ...whenItsWaitsBeganIn(conversationWaits.value, active.value.sessionId),
-        owes: whenItOwedIn(listedStateOfActive.value),
-      },
-)
-
 const listedNamedOfActive = computed(() =>
   active.value === null ? null : (rail.value?.listedOf(active.value.sessionId)?.named ?? null),
 )
@@ -3999,10 +3968,6 @@ onUnmounted(() => {
             :work="work"
             :waiting="theWaitIn(conversationWaits, active.sessionId)"
             :held-work="theWorkIn(conversationWaits, active.sessionId)"
-            :answer-from="whoseAnswerIn(conversationWaits, active.sessionId)"
-            :work-with="whoseWorkIn(conversationWaits, active.sessionId)"
-            :stopped-work="stoppedWorkIn(conversationWaits, active.sessionId)"
-            :waits-began="waitsBeganOfActive"
             :listed-state="listedStateOfActive"
             :provider-block="active ? store.providerBlocks.get(active.sessionId) : null"
             :named="listedNamedOfActive"

@@ -4,7 +4,7 @@ import type {
   HeldWork,
   WhatEachConversationIsWaitingOn,
 } from '../../../shared/task-contracts'
-import type { AgentState, StoppedPiece } from '../../../shared/agent-state-contracts'
+import type { AgentState } from '../../../shared/agent-state-contracts'
 
 import { waitsNotReadSays } from './rows-unread'
 
@@ -86,9 +86,9 @@ export function waitReadingFor(
  *  - **a person** (*needs you*) — `waiting-on-a-person`: a question asked of a person or passed up
  *    to one, a decision, an ask against its rules — facts of ledgers this window may not hold;
  *  - **another conversation's answer** — `waiting-on-an-answer`: a question it asked went to its
- *    parent or to the agent it named (named by {@link whoseAnswerIn});
+ *    parent or to the agent it named (the host's state names it);
  *  - **the work it gave out** — `waiting-on-a-worker`: a piece it gave is still open (D-036), its
- *    holders named by {@link whoseWorkIn}. ⚠️ An open question the host does not count as owed (a
+ *    holders named in the host's state. ⚠️ An open question the host does not count as owed (a
  *    card no provider is parked on any more) is no wait, and ⛔ it hides no work: the host's
  *    `waiting` can name that question over it, so the verdict is read and never that.
  *
@@ -105,55 +105,6 @@ function theWaitAsTheHostOwesIt(row: ConversationWaiting): ConversationWait | nu
 }
 
 /**
- * ⚑ **D-017 · R19 — what the HOST calls the conversation a question this one asked went to**, or
- * `null` — the name in *"waiting on an answer from <name>"*, on {@link theWaitIn}'s absences.
- */
-export function whoseAnswerIn(
-  reading: WhatEachConversationIsWaitingOn | null,
-  conversation: string,
-): string | null {
-  const row = reading?.conversations.find((each) => each.conversation === conversation)
-  return row?.waitingOnTheAnswerOf ?? null
-}
-
-/**
- * ⚑ **D-036 — what the HOST calls each conversation holding open work this one gave**, or none —
- * the names in *"waiting on <name>"*, on {@link whoseAnswerIn}'s rules.
- */
-export function whoseWorkIn(
-  reading: WhatEachConversationIsWaitingOn | null,
-  conversation: string,
-): readonly string[] {
-  const row = reading?.conversations.find((each) => each.conversation === conversation)
-  return row?.waitingOnTheWorkOf ?? []
-}
-
-/**
- * The pieces this conversation gave whose holder stopped with them open, as the HOST read them
- * (`ConversationWaiting.stoppedWork`), oldest give first, or none: the giver's
- * *"W6.4.1 with Quinn: stopped at 00:28"*.
- */
-export function stoppedWorkIn(
-  reading: WhatEachConversationIsWaitingOn | null,
-  conversation: string,
-): readonly StoppedPiece[] {
-  const row = reading?.conversations.find((each) => each.conversation === conversation)
-  return (row?.stoppedWork ?? []).map(({ label, holder, at }) => ({ label, holder, at }))
-}
-
-/**
- * When this conversation's waits began, as the HOST read them: the question it asked, and the
- * oldest open work it gave. Each is `null` where the host cannot say or the reading has no row.
- */
-export function whenItsWaitsBeganIn(
-  reading: WhatEachConversationIsWaitingOn | null,
-  conversation: string,
-): { readonly answer: number | null; readonly work: number | null } {
-  const row = reading?.conversations.find((each) => each.conversation === conversation)
-  return { answer: row?.waitingOnTheAnswerSince ?? null, work: row?.waitingOnTheWorkSince ?? null }
-}
-
-/**
  * 🔴 **F036 · who waits on an answer from this conversation, as the HOST names them** — off the one
  * state it pushes of the conversation (`runtime:states`, the rail's listed row), which is where the
  * host says it: the window holds no asker's ledger. ⚑ `undefined` unless that state is *owes an
@@ -163,11 +114,6 @@ export function whoItOwesIn(
   state: AgentState | null | undefined,
 ): readonly [string, ...string[]] | undefined {
   return state?.is === 'owes-an-answer' ? state.to : undefined
-}
-
-/** When the oldest question this conversation owes an answer to was put to it, off the same state. */
-export function whenItOwedIn(state: AgentState | null | undefined): number | null {
-  return state?.is === 'owes-an-answer' ? (state.since ?? null) : null
 }
 
 /**
