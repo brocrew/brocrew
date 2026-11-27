@@ -10,13 +10,6 @@ import type { ConversationRowView } from './conversation-row'
  *
  * ## Why this is a rule module and not markup
  *
- * ⛔ **The control it replaces announced that it did nothing.** `RuntimeScreen.vue`'s ⌘K branch and
- * the rail's own button both said *"Command palette — not wired yet"*, which is `106` — a control
- * that cannot act — on the one gesture the Exploration Agent asked for by name in `220`:
- *
- * > *"one fast place to jump, compact, reopen, export, or change a conversation without hunting
- * > through surfaces."*
- *
  * ⚑ **Every row here is a verb some surface ALREADY has**, reached through the gesture that surface
  * already exposes. Nothing in this file invents a capability, and nothing in it re-derives a fact
  * another surface computes — see {@link buildCommands}, which takes the rail's own rows rather than

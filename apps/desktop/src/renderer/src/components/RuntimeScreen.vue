@@ -1505,7 +1505,7 @@ const { decideFromOverview, openRequest, heldHere, goToTheWork } = useRuntimeQue
   takeBackForAPerson,
 })
 
-/** ⌘N starts a conversation; ⌘K would open a palette that does not exist yet, and says so. */
+/** Handle the new-conversation and history shortcuts. */
 function onKey(event: KeyboardEvent): void {
   // Back and Forward: ⌘[ and ⌘] on a Mac, Alt+← and Alt+→ elsewhere.
   const step = historyKey(event)
@@ -1518,10 +1518,6 @@ function onKey(event: KeyboardEvent): void {
   if (event.key === 'n') {
     event.preventDefault()
     place.value = 'new'
-  }
-  if (event.key === 'k') {
-    event.preventDefault()
-    say('Command palette — not wired yet.')
   }
 }
 
@@ -1674,7 +1670,6 @@ onUnmounted(() => {
             }
           "
           :agents="agentStore.identities.value"
-          @command="say('Command palette — not wired yet.')"
         />
 
         <main class="main">
