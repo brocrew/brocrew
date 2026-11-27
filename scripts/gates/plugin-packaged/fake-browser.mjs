@@ -329,15 +329,18 @@ export function runBrowser(directory) {
     { mode: 0o600 },
   )
   let input = ''
+  // One command at a time, as Chrome does: its events and reply go out before the next starts.
+  // A busy host batches frames; a reply sent after later events stalls Playwright's launch.
+  let answered = Promise.resolve()
   new Socket({ fd: 3, readable: true, writable: false })
     .on('data', (bytes) => {
       input += bytes.toString()
       if (input.length > 2 * 1024 * 1024) process.exit(1)
       let end
       while ((end = input.indexOf('\0')) !== -1) {
-        const frame = input.slice(0, end)
+        const frame = JSON.parse(input.slice(0, end))
         input = input.slice(end + 1)
-        void browser.message(JSON.parse(frame))
+        answered = answered.then(() => browser.message(frame))
       }
     })
     .on('end', () => process.exit(0))

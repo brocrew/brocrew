@@ -234,8 +234,9 @@ describe('killed journey witness', () => {
     fs.chmodSync(root, 0o700)
     fs.writeFileSync(path.join(root, 'fixture-owned'), 'packaged-plugin-gate\n')
     const sleeper = path.join(root, 'fern-sleeper')
-    fs.copyFileSync(process.execPath, sleeper)
-    fs.chmodSync(sleeper, 0o700)
+    // A link, not an 89 MB copy: eight copies at once took 5 to 8 s on a busy host. A symbolic
+    // link, because a hard link needs the same disk and, on Linux, a binary this user owns.
+    fs.symlinkSync(process.execPath, sleeper)
     const script = path.join(root, 'journey.cjs')
     fs.writeFileSync(
       script,
