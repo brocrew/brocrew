@@ -1,0 +1,106 @@
+# BroCrew's one hosted plugin check: the app as built from the tested commit, with its own version,
+# installs, configures and removes Chrome and WhatsApp from the public plugin list as published
+# today. Windows also runs the controlled main-app reload journey. Windows runs on every main push
+# that touches the plugin area and when dispatched before a plugin release; Mac, on a paid hosted
+# runner, runs only when dispatched. scripts/gates/plugin-v2/README.md has the details.
+name: Plugin review
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'plugins/**'
+      - 'apps/desktop/src/main/plugins/**'
+      - 'apps/desktop/resources/plugin-host/**'
+      - 'scripts/gates/plugin-v2/**'
+      - '.github/workflows/plugin-review.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  review:
+    name: Plugin review (${{ matrix.os }})
+    if: github.repository == 'brocrew/brocrew'
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(github.event_name == 'workflow_dispatch' && '["windows","mac"]' || '["windows"]') }}
+    runs-on: ${{ matrix.os == 'windows' && 'windows-2022' || vars.MAC_RUNNER || 'macos-15' }}
+    timeout-minutes: ${{ matrix.os == 'windows' && 60 || 45 }}
+    concurrency:
+      group: plugin-review-${{ matrix.os }}-${{ github.ref }}
+      cancel-in-progress: false
+    steps:
+      - name: Preserve committed line endings
+        shell: bash
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@v4
+        id: gate-pnpm
+        with:
+          version: 10.11.0
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Plugin review source controls
+        timeout-minutes: 2
+        run: node --test --test-reporter=tap --test-concurrency=1 scripts/gates/plugin-v2/controls.test.mjs scripts/gates/plugin-v2/native-dependency.test.mjs scripts/gates/plugin-v2/reload-controls.test.mjs scripts/gates/plugin-v2/source-binding.test.mjs
+      - name: Stage the tested source SHA
+        id: stage
+        shell: bash
+        run: |
+          test "$RUNNER_ENVIRONMENT" = github-hosted
+          control=$(node scripts/gates/plugin-v2/owner.mjs stage)
+          echo "control=$control" >> "$GITHUB_OUTPUT"
+      - name: Install the app dependencies in scratch
+        shell: bash
+        env:
+          REVIEW_CONTROL: ${{ steps.stage.outputs.control }}
+          PLUGIN_GATE_PNPM_ENTRY: ${{ steps.gate-pnpm.outputs.dest }}/node_modules/pnpm/bin/pnpm.cjs
+        run: node scripts/gates/plugin-v2/owner.mjs install "$REVIEW_CONTROL"
+      - name: Public list over HTTPS, then install, configure and remove in the packaged app
+        shell: bash
+        env:
+          REVIEW_CONTROL: ${{ steps.stage.outputs.control }}
+        run: node scripts/gates/plugin-v2/owner.mjs run "$REVIEW_CONTROL"
+      - name: Stage dedicated main-app reload source
+        if: matrix.os == 'windows'
+        id: reload-stage
+        shell: bash
+        run: |
+          control=$(node scripts/gates/plugin-v2/reload-owner.mjs stage)
+          echo "control=$control" >> "$GITHUB_OUTPUT"
+      - name: Install dedicated reload dependencies in owned scratch
+        if: matrix.os == 'windows'
+        shell: bash
+        env:
+          REVIEW_CONTROL: ${{ steps.reload-stage.outputs.control }}
+          PLUGIN_GATE_PNPM_ENTRY: ${{ steps.gate-pnpm.outputs.dest }}/node_modules/pnpm/bin/pnpm.cjs
+        run: node scripts/gates/plugin-v2/owner.mjs install "$REVIEW_CONTROL"
+      - name: Controlled main-app reload queue
+        if: matrix.os == 'windows'
+        shell: bash
+        env:
+          REVIEW_CONTROL: ${{ steps.reload-stage.outputs.control }}
+        run: node scripts/gates/plugin-v2/reload-owner.mjs run "$REVIEW_CONTROL"
+      - name: Keep controlled main-app reload evidence
+        if: always() && matrix.os == 'windows' && steps.reload-stage.outputs.control != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: plugin-reload-windows
+          path: ${{ steps.reload-stage.outputs.control }}/reload-summary.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Keep the product check summary
+        if: always() && steps.stage.outputs.control != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: plugin-review-${{ matrix.os }}
+          path: ${{ steps.stage.outputs.control }}/summary.json
+          if-no-files-found: error
+          retention-days: 7

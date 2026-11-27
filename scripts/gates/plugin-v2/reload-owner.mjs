@@ -1,4 +1,4 @@
-// Dedicated Windows018 main-app reload package; no dispatch/publication capability.
+// Dedicated Windows main-app reload package of the tested source; no dispatch/publication capability.
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -8,7 +8,6 @@ import { stage, observe, owned, bin, inventory } from './owner.mjs'
 import { command, cleanup, cancellation } from './processes.mjs'
 import { projectReload, RELOAD_MARKER, RELOAD_CHANNEL } from './reload-projection.mjs'
 import { reloadJourney } from './reload-journey.mjs'
-import { projectedVersionArguments } from './staging.mjs'
 
 const route = path.dirname(fileURLToPath(import.meta.url))
 const readJSON = (p) => JSON.parse(readFile(p))
@@ -47,7 +46,7 @@ function printReloadFailure(error, records, phase, result) {
 }
 export async function stageReload() {
   demand(process.platform === 'win32' && process.arch === 'x64')
-  return stage('0.1.8')
+  return stage()
 }
 function reloadBundle(repo) {
   const directory = path.join(repo, 'apps/desktop/out/main')
@@ -91,7 +90,7 @@ function reloadBundle(repo) {
   )
   return { mainSha256: hash(main), preloadSha256: hash(preload), controlledSdkRefusal, mainChunks }
 }
-async function packageBinding(repo, app, bundle) {
+async function packageBinding(repo, app, bundle, appVersion) {
   const req = createRequire(path.join(repo, 'apps/desktop/package.json'))
   const asar = await import(
     pathToFileURL(req.resolve('@electron/asar', { paths: [req.resolve('electron-builder')] })).href
@@ -99,7 +98,7 @@ async function packageBinding(repo, app, bundle) {
   const extract = asar.extractFile ?? asar.default?.extractFile
   demand(typeof extract === 'function')
   const archive = path.join(app, 'resources/app.asar')
-  demand(JSON.parse(extract(archive, 'package.json')).version === '0.1.8')
+  demand(JSON.parse(extract(archive, 'package.json')).version === appVersion)
   demand(hash(extract(archive, path.join('out', 'main', 'index.js'))) === bundle.mainSha256)
   demand(hash(extract(archive, path.join('out', 'preload', 'index.js'))) === bundle.preloadSha256)
   for (const chunk of bundle.mainChunks)
@@ -132,18 +131,13 @@ export async function runReload(root) {
     journey: null,
     cleanup: { directClosed: false, twoEmptySamples: false },
     realSdk: null,
-    final018Qualification: null,
   }
   let projected,
     phase = 'observe-source'
   try {
     const held = readJSON(path.join(root, 'observed-source.json'))
-    const observed = await observe('0.1.8', records, root)
-    demand(
-      held.appVersion === '0.1.8' &&
-        held.appSource === held.routeCommit &&
-        JSON.stringify(held) === JSON.stringify(observed),
-    )
+    const observed = await observe(records, root)
+    demand(JSON.stringify(held) === JSON.stringify(observed))
     demand(readFile(path.join(root, 'staged'), 64).toString() === hash(JSON.stringify(observed)))
     demand(
       readFile(path.join(root, 'dependencies-installed'), 64).toString() ===
@@ -195,7 +189,6 @@ export async function runReload(root) {
         'electron-builder.yml',
         '--publish',
         'never',
-        ...projectedVersionArguments('0.1.8'),
       ],
       root,
       records,
@@ -205,7 +198,7 @@ export async function runReload(root) {
     result.bundle = reloadBundle(repo)
     const app = path.join(desktop, 'dist/win-unpacked')
     phase = 'package-binding'
-    result.packageSha256 = await packageBinding(repo, app, result.bundle)
+    result.packageSha256 = await packageBinding(repo, app, result.bundle, observed.appVersion)
     phase = 'restore-normal-source'
     projected.restore()
     projected = undefined
@@ -273,7 +266,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
       JSON.stringify({
         execution: false,
         publication: false,
-        required: 'hosted Windows018 workflow on the tested source SHA',
+        required: 'a hosted Windows run on the tested source SHA',
       }),
     )
 }
