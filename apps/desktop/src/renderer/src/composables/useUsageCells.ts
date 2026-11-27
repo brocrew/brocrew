@@ -1,6 +1,7 @@
 import { computed, type ComputedRef } from 'vue'
 import { SUPPORTED_PROVIDERS } from '@brobot2/shared/providers'
 import type { Provider, ProviderUsageReading } from '../../../shared/runtime-ipc'
+import { drawnInTheTitleBar, TITLE_BAR_WINDOWS } from '../../../shared/usage-window'
 import { agoWords, fullTime } from '../lib/clock'
 import { NOT_MEASURED } from '../lib/agent-panel'
 import { processMemoryWords } from '../lib/process-memory'
@@ -23,12 +24,6 @@ import { useWhoCalledWhom, type RunningConversation } from './useWhoCalledWhom'
  * minute clock moves the ages and resets. Running agents use the rail's all-page state reading;
  * process memory keeps the conversation page's existing reading.
  */
-
-/** The two windows the cells show, by their core-supplied period word, with the short name a cell uses. */
-const WINDOWS = [
-  { word: '5-hour', short: '5h' },
-  { word: 'weekly', short: 'week' },
-] as const
 
 const PROVIDERS = SUPPORTED_PROVIDERS
 
@@ -63,8 +58,9 @@ function readingIn(
   word: string,
 ): ProviderUsageReading | null {
   return (
-    readings.find((one) => one.window?.word === word && one.window?.bucket === false)?.reading ??
-    null
+    readings.find(
+      ({ window }) => window !== undefined && window.word === word && drawnInTheTitleBar(window),
+    )?.reading ?? null
   )
 }
 
@@ -112,7 +108,7 @@ export function useUsageCells(
       }))
       return {
         provider,
-        windows: WINDOWS.flatMap(({ word, short }) => {
+        windows: TITLE_BAR_WINDOWS.flatMap(({ word, short }) => {
           const reading = readingIn(readings, word)
           if (reading === null) return []
           return [{ word, short, reading }]

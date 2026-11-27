@@ -903,7 +903,7 @@ describe('§2–§4 · on a host', () => {
       expect(host.providerUsage().claude).toMatchObject([{ usedPercent: 5 }])
     })
 
-    it('⚑ a Codex sign-in is its profile’s: conversations on two of them keep each other’s readings', async () => {
+    it('⚑ a Codex sign-in is its profile’s: conversations on two of them keep each other’s readings, and the account in use is shown', async () => {
       await reading(await openOn(ONE, 'codex'), [
         { window: 'a 7-day window', usedPercent: 40, resetsAt: clock + WEEK },
       ])
@@ -911,7 +911,13 @@ describe('§2–§4 · on a host', () => {
       await reading(await openOn(OTHER, 'codex'), [
         { window: 'a 5-hour window', usedPercent: 10, resetsAt: clock + HOUR },
       ])
-      expect(windows('codex')).toEqual(['a 7-day window', 'a 5-hour window'])
+      expect(
+        usageKeptIn(db)
+          .read()
+          .readings.codex.map((one) => one.window),
+      ).toEqual(['a 7-day window', 'a 5-hour window'])
+      // The newest reading's account is the one in use, and only its readings are shown.
+      expect(windows('codex')).toEqual(['a 5-hour window'])
     })
 
     it('⚑ the sign-in a reading was read on is kept when it alone moved', async () => {

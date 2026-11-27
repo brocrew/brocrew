@@ -18,6 +18,20 @@ export function usageWindowDetails(window: string, word: string | null): UsageWi
   }
 }
 
+/** The windows the title bar's usage cells draw, by period word, with the short name a cell uses. */
+export const TITLE_BAR_WINDOWS = [
+  { word: '5-hour', short: '5h' },
+  { word: 'weekly', short: 'week' },
+] as const
+
+/** Whether the title bar draws a reading of this period: one of its words, and no bucket's. */
+export function drawnInTheTitleBar(period: {
+  readonly word: string | null
+  readonly bucket: boolean
+}): boolean {
+  return !period.bucket && TITLE_BAR_WINDOWS.some((one) => one.word === period.word)
+}
+
 const HOUR = 3_600_000
 const DAY = 24 * HOUR
 
