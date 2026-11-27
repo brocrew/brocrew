@@ -42,11 +42,8 @@ describe('what a person owes outside this window', () => {
   })
 
   it('is what both the badge and the page count with', () => {
-    for (const file of ['RuntimeScreen.vue', 'WaitingOnYou.vue']) {
-      const source = readFileSync(
-        new URL(`../src/renderer/src/components/${file}`, import.meta.url),
-        'utf8',
-      )
+    for (const file of ['composables/useRuntimeAttention.ts', 'components/WaitingOnYou.vue']) {
+      const source = readFileSync(new URL(`../src/renderer/src/${file}`, import.meta.url), 'utf8')
       expect(source, file).toMatch(/onlyYou\s*[:=][^\n]*owedHere\(persons, /)
     }
   })

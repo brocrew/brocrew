@@ -1,0 +1,127 @@
+/* ⛔ **Off-screen without being hidden** (401). `display: none` and `visibility: hidden` take an
+   element out of the accessibility tree, which would make the region above announce nothing at
+   all; the clip-rect pattern leaves it in the tree and out of the picture. ⚠️ `white-space: nowrap`
+   so a sentence cannot wrap into a 1px box and be laid out at a height a reader's cursor lands in. */
+.only-for-a-reader {
+  position: absolute;
+  overflow: hidden;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  margin: -1px;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.app {
+  display: grid;
+  width: 100vw;
+  /*
+   * ⚠️ **`100%` of `#app`, not `100vh`, and the horizontal scrollbar is the difference** (338).
+   * `#app` is `overflow-x: auto; overflow-y: hidden` so that a window narrower than
+   * `--app-min-w` is a scrollbar rather than a silent cut; when that bar appears it takes 11 px
+   * (measured) out of `#app`'s content box. A frame keyed to the VIEWPORT does not know that
+   * happened, overflows `#app` by exactly the bar's height, and loses its bottom 11 px — the
+   * composer's own row — to the `overflow-y: hidden` beside the reach. `100%` is the same 808 px
+   * as `100vh` whenever there is no bar, which is every width at or above 1180.
+   */
+  height: 100%;
+  min-width: var(--app-min-w);
+  background-color: var(--window-bg-color, var(--app-bg));
+  background-image: var(--window-bg-image, none);
+  background-position: var(--window-bg-position, 0% 0%);
+  background-repeat: var(--window-bg-repeat, repeat);
+  background-size: var(--window-bg-size, auto);
+  image-rendering: var(--window-bg-rendering, auto);
+  grid-template-rows: var(--titlebar-h) 1fr;
+}
+
+.app > * {
+  image-rendering: auto;
+}
+
+.shell {
+  display: grid;
+  min-height: 0;
+  grid-template-columns: var(--rail-w) 1fr;
+}
+
+.shell[data-rail='collapsed'] {
+  grid-template-columns: var(--rail-w-collapsed) 1fr;
+}
+
+/* The surface fills its column and owns its own padding: the conversation runs edge to edge,
+   with the reading measure doing the centring inside it.
+
+   ⚑ **384 §1.3 · the tuck.** `border-top-left-radius` is the whole geometry change this dispatch
+   makes to the frame, and it is deliberate that it is only a corner: v2.3's own workspace is
+   `border-radius: 22px 0 0 0`, rounded against the rail and the titlebar and square against the
+   window's own edges, which is what makes the paper read as a sheet laid into the chrome.
+   ⛔ **`overflow: hidden` was already here and is what makes the radius clip its contents** — it is
+   not defensive, it is the surface column refusing to scroll (`base.css` §the reach). The dark that
+   shows through the corner is `.app`'s `--app-bg`.
+   ⚠️ **No padding, no gutter, no `transform`, no `backdrop-filter`.** A gutter would take horizontal
+   pixels out of `.pane-body`, and `drawerFit` measures its two thresholds (940 / 880) on exactly
+   that box — at the app's own opening width the drawer would have dropped from `--drawer-w` to
+   `--drawer-w-narrow` as a side effect of a background change. And a `transform` or a
+   `backdrop-filter` here would make this element a containing block for `position: fixed`, which is
+   the escape `app-frame-reachable.dom.test.ts` reproduces on purpose. */
+.main {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border-top-left-radius: var(--surface-tuck);
+  /* ⚠️ **`box-shadow` and not a `border`.** A border is part of the box, so it would take a pixel
+     off the surface column's width and hand it to `drawerFit`'s arithmetic; an inset shadow paints
+     the same hairline and takes nothing. */
+  box-shadow: inset var(--border-width) var(--border-width) 0 0 var(--surface-edge);
+}
+
+.not-built {
+  display: flex;
+  max-width: 46ch;
+  height: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto;
+  color: var(--faint);
+  gap: var(--space-5);
+  text-align: center;
+}
+
+.not-built .big {
+  width: 28px;
+  height: 28px;
+}
+
+.not-built h1 {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: var(--type-heading);
+  font-weight: var(--fw-semibold);
+}
+
+.not-built p {
+  margin: 0;
+  font-size: var(--type-small);
+  line-height: var(--leading-relaxed);
+}
+
+.toast {
+  position: absolute;
+  bottom: var(--space-8);
+  left: 50%;
+  padding: var(--space-4) var(--space-7);
+  border: var(--border-width) solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--panel-3);
+  box-shadow: var(--shadow);
+  color: var(--text-soft);
+  font-size: var(--type-small);
+  transform: translateX(-50%);
+}
