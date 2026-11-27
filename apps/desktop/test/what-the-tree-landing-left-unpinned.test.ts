@@ -9,7 +9,7 @@ import { recordHistoricalReplacement } from './lib/historical-replacement'
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
+import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime/testing'
 import type { Provider } from '@brobot2/shared'
 
 import type { TranscriptEvent } from '../src/shared/conversation-events'

@@ -13,8 +13,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   AuthUnavailableError,
   boundInventory,
-  FakeProviderSessions,
-  FakeRuntime,
   ResumeError,
   StartFailed,
   StartRefused,
@@ -22,9 +20,9 @@ import {
   startFailureOf,
   startRefusalOf,
   type AgentRuntime,
-  type FakeSessionHandle,
   type StartOptions,
 } from '@brobot2/runtime'
+import { FakeProviderSessions, FakeRuntime, type FakeSessionHandle } from '@brobot2/runtime/testing'
 import {
   CodexRuntime,
   CODEX_TOOL_NAMING,

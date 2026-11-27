@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import { describe, expect, it, vi } from 'vitest'
 import type { RuntimeEvent, SessionRef } from '../src/index'
-import { FakeRuntime } from '../src/fake-runtime'
+import { FakeRuntime } from './fake-runtime'
 import { claudeResultOutcome } from '../src/claude/normalize'
 import { SessionMachine } from '../src/internal/session-machine'
 

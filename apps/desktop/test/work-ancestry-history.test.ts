@@ -3,14 +3,13 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { expect, it, vi } from 'vitest'
+import { type StartOptions, type RuntimeEvent } from '@brobot2/runtime'
 import {
   FakeRuntime,
   FakeLaunchGate,
   FakeProviderSessions,
   type FakeSessionHandle,
-  type StartOptions,
-  type RuntimeEvent,
-} from '@brobot2/runtime'
+} from '@brobot2/runtime/testing'
 import { AsyncQueue } from '../../../packages/runtime/src/internal/async-queue'
 import { openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'

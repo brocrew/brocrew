@@ -38,7 +38,9 @@ import {
  */
 
 const here = dirname(fileURLToPath(import.meta.url))
-const src = (leaf: string): string => readFileSync(join(here, '../src', leaf), 'utf8')
+// The test double moved out of `src` into this folder, and it is still a producer this census reads.
+const src = (leaf: string): string =>
+  readFileSync(leaf === 'fake-runtime.ts' ? join(here, leaf) : join(here, '../src', leaf), 'utf8')
 
 /** Every outcome, from the schema, so a sixth is a failure here rather than an omission. */
 const EVERY_OUTCOME = permissionOutcomeSchema.options as readonly PermissionOutcome[]

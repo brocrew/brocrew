@@ -7,15 +7,16 @@ import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { FakeProviderSessions, FakeRuntime, ResumeError } from '@brobot2/runtime'
+import { ResumeError } from '@brobot2/runtime'
+import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime/testing'
 import type {
-  FakeSessionHandle,
   ProviderRuntimeContext,
   SessionHandle,
   ResumeOptions,
   SessionRef,
   StartOptions,
 } from '@brobot2/runtime'
+import type { FakeSessionHandle } from '@brobot2/runtime/testing'
 import type { Provider } from '@brobot2/shared'
 import { openDatabase, type AppDatabase } from '../../src/main/db/connection'
 import { applyMigrations } from '../../src/main/db/migrate'

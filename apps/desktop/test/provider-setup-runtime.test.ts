@@ -7,12 +7,8 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import {
-  FakeRuntime,
-  type ProviderRuntimeContext,
-  type ModelChoice,
-  type AuthState,
-} from '@brobot2/runtime'
+import { type ProviderRuntimeContext, type ModelChoice, type AuthState } from '@brobot2/runtime'
+import { FakeRuntime } from '@brobot2/runtime/testing'
 import type { Provider } from '@brobot2/shared'
 import { NULL_SESSION_STORE } from '../src/main/db/session-store'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'

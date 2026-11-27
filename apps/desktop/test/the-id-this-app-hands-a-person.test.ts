@@ -3,7 +3,7 @@ import type { PersistedEventInfo, TranscriptEvent } from '../src/shared/conversa
 import { existsSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
+import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime/testing'
 import type { Provider } from '@brobot2/shared'
 import type { AppDatabase } from '../src/main/db/connection'
 import type { SessionStore } from '../src/main/db/session-store'

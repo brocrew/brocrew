@@ -1,6 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import {
-  FakeRuntime,
   RejectedSessionLaunch,
   ResumeError,
   StoppedBeforeSend,
@@ -8,6 +7,7 @@ import {
   type SessionHandle,
   type SessionRef,
 } from '@brobot2/runtime'
+import { FakeRuntime } from '@brobot2/runtime/testing'
 import { ClaudeRuntime } from '@brobot2/runtime/claude'
 import { CodexRuntime } from '@brobot2/runtime/codex'
 import type { Provider, ProviderConnection } from '@brobot2/shared'

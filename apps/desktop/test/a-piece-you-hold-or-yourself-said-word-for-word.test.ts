@@ -5,7 +5,7 @@ import { closeAndRemove, homesUnder, scratchHostState } from './helpers/scratch-
 import { personOpener } from './helpers/person-opens-session'
 import { answerOn } from './helpers/call-tool'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import type { FakeProviderSessions } from '@brobot2/runtime'
+import type { FakeProviderSessions } from '@brobot2/runtime/testing'
 import type { AgentToolset } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import type { AppDatabase } from '../src/main/db/connection'

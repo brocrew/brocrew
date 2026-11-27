@@ -5,7 +5,7 @@ import {
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { FakeRuntime } from '@brobot2/runtime'
+import { FakeRuntime } from '@brobot2/runtime/testing'
 import { claudeAutoMemoryDir, claudeAutoMemoryIndex } from '@brobot2/runtime/claude'
 import type { Provider } from '@brobot2/shared'
 import { composeSystemHint, readSessionInstructions } from '../src/main/runtime/instructions'
