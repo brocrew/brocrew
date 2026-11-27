@@ -3,12 +3,9 @@ import { PluginBrokerError } from '../src/main/plugins/tool-broker'
 import type { BrokerValue } from '../src/main/plugins/tool-broker'
 import { deferred, tick, tracked, setup } from './helpers/plugin-tool-broker'
 
-describe('independent transport calls', () => {
-  it('counts an active call already retained as uncertain only once during cancellation', async () => {
-    const h = setup((options) => ({
-      ...options,
-      server: { ...options.server, independentToolCalls: true },
-    }))
+describe('calls that end without completion proof', () => {
+  it('counts a running call already retained as uncertain only once during cancellation', async () => {
+    const h = setup()
     for (let i = 0; i < 62; i++) {
       const pending = h.call()
       await tick()
@@ -37,7 +34,6 @@ describe('independent transport calls', () => {
     const h = setup((options) => ({
       ...options,
       hostExited: exited.promise,
-      server: { ...options.server, independentToolCalls: true },
     }))
     const pending = h.call()
     await tick()
@@ -63,10 +59,7 @@ describe('independent transport calls', () => {
   it.each(['reply-first', 'proof-first'])(
     'releases a successful reply with rejected proof (%s)',
     async (order) => {
-      const h = setup((options) => ({
-        ...options,
-        server: { ...options.server, independentToolCalls: true },
-      }))
+      const h = setup()
       let outcome: unknown
       void h.call().then(
         (value) => {
@@ -104,11 +97,8 @@ describe('independent transport calls', () => {
       expect(h.broker.owner.hasCompletionProof()).toBe(false)
     },
   )
-  it('counts active work together with uncertain and queued calls', async () => {
-    const h = setup((options) => ({
-      ...options,
-      server: { ...options.server, independentToolCalls: true },
-    }))
+  it('counts running work together with uncertain calls', async () => {
+    const h = setup()
     for (let i = 0; i < 63; i++) {
       const call = h.call()
       await tick()
@@ -133,7 +123,6 @@ describe('independent transport calls', () => {
     const h = setup((options) => ({
       ...options,
       hostExited: exited.promise,
-      server: { ...options.server, independentToolCalls: true },
     }))
     const first = tracked(h.call())
     await tick()
@@ -173,10 +162,7 @@ describe('independent transport calls', () => {
     )
   })
   it('bounds retained uncertainty with the existing total capacity', async () => {
-    const h = setup((options) => ({
-      ...options,
-      server: { ...options.server, independentToolCalls: true },
-    }))
+    const h = setup()
     for (let i = 0; i < 64; i++) {
       const pending = tracked(h.call())
       await tick()

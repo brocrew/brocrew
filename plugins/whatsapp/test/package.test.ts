@@ -470,6 +470,29 @@ describe('sending', () => {
     ).toContain('"sent":true')
   })
 
+  it('sends the same text once when two calls for it run at the same time', async () => {
+    const { client, bridge } = await boot({ writable: [ROWING.jid] })
+    let release!: () => void
+    bridge.sendHeld = new Promise((resolve) => {
+      release = resolve
+    })
+    const send = async () => {
+      const result = (await client.callTool({
+        name: 'send_to_group',
+        arguments: { group: ROWING.jid, text: 'Boats at seven' },
+      })) as { content: Array<{ text?: string }> }
+      return result.content[0].text
+    }
+    const both = [send(), send()]
+    expect(await Promise.race(both)).toBe(refused(REFUSALS.duplicate))
+    expect(bridge.sends()).toHaveLength(1)
+    release()
+    expect((await Promise.all(both)).sort()).toEqual(
+      [refused(REFUSALS.duplicate), JSON.stringify({ sent: true, group: ROWING.name })].sort(),
+    )
+    expect(bridge.sends()).toEqual([{ group: ROWING.jid, text: '🤖 Boats at seven' }])
+  })
+
   it('takes a file only from the files folder, sending its path, name and size', async () => {
     const { call, bridge, config } = await boot({ writable: [ROWING.jid] })
     const inside = path.join(config.files, 'minutes.pdf')

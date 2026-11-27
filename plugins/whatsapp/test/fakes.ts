@@ -64,6 +64,8 @@ export class FakeBridge implements Bridge {
   requests: Array<{ route: string; body: unknown }> = []
   /** An error code the next send answers with, as the bridge would. */
   sendError: string | undefined
+  /** A send waits for this before it answers, like a slow phone. */
+  sendHeld: Promise<void> | undefined
   mediaError: string | undefined
   unlinked = 0
 
@@ -151,6 +153,7 @@ export class FakeBridge implements Bridge {
           preview: '/9j/AA==',
         })
       case '/send': {
+        await this.sendHeld
         const error = this.sendError
         this.sendError = undefined
         return error ? refused(error) : ok({})

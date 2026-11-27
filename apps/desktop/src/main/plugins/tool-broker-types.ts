@@ -50,30 +50,17 @@ export interface PluginExecution {
   cancel(): void | Promise<void>
 }
 export interface BrokerServer {
-  /** The transport owns idle timeouts; failed calls release dispatch without proving completion. */
-  readonly independentToolCalls?: boolean
+  /** The transport owns idle timeouts; a failed call stays counted until its quiescence is proven. */
   tool(
     request: BrokerRequest,
     signal: AbortSignal,
     onprogress?: (progress: BrokerProgress) => void,
   ): PluginExecution
 }
-export interface BrokerClock {
-  now(): number
-  after(ms: number, callback: () => void): () => void
-}
 export type BrokerFailure =
-  | 'invalid'
-  | 'unauthorized'
-  | 'unavailable'
-  | 'denied'
-  | 'busy'
-  | 'cancelled'
-  | 'deadline'
-  | 'downstream'
+  'invalid' | 'unauthorized' | 'unavailable' | 'denied' | 'busy' | 'cancelled' | 'downstream'
 export interface BrokerAudit {
-  readonly event: 'queued' | 'started' | 'finished' | 'refused' | 'unavailable' | 'call'
-  readonly queued: number
+  readonly event: 'started' | 'finished' | 'refused' | 'unavailable' | 'call'
   readonly code?: BrokerFailure
   readonly reason?: PluginToolFailureReason
   readonly call?: PluginCallDiagnostic
@@ -89,7 +76,6 @@ export interface BrokerOptions {
   readonly server: BrokerServer
   /** Trusted owner proof for the exact retained host and its descendants, never plugin input. */
   readonly hostExited?: Promise<void>
-  readonly clock?: BrokerClock
   readonly audit?: (event: BrokerAudit) => void
 }
 declare const workspaceBrand: unique symbol
@@ -124,7 +110,6 @@ export interface PluginToolBroker {
   }
   status(): Readonly<{
     available: boolean
-    queued: number
     executing: boolean
     awaitingQuiescence: boolean
     unknownCalls: readonly PluginCallDiagnostic[]

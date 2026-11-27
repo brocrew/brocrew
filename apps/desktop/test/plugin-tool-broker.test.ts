@@ -110,22 +110,16 @@ describe('plugin authority and all-agent reach', () => {
 })
 
 describe('package inputs at execution', () => {
-  it('forwards queued inputs without cloning or freezing transport-owned values', async () => {
+  it('forwards inputs without cloning or freezing transport-owned values', async () => {
     const h = setup()
-    const first = h.call()
-    await tick()
     const input = { profile: 'fern', nested: { title: 'before' } }
-    const queued = h.call(h.agent, input)
-    input.nested.title = 'after'
-    h.server.finish(0)
-    await first
-    await tick()
-    const request = h.server.calls[1]!.request
+    const pending = h.call(h.agent, input)
+    const request = h.server.calls[0]!.request
     expect(request.input).toBe(input)
     expect(Object.isFrozen(request.input.nested)).toBe(false)
     expect(Object.isFrozen(request.identity)).toBe(true)
-    h.server.finish(1)
-    await queued
+    h.server.finish(0)
+    await pending
   })
   it('does not publish unsupported resources/prompts or let a caller select another surface', async () => {
     const h = setup()
@@ -140,88 +134,77 @@ describe('package inputs at execution', () => {
   })
 })
 
-describe('bounded fair serial queue', () => {
-  it('round-robins workspaces, then agents, even when one floods first', async () => {
+describe('every admitted call starts at once', () => {
+  it('a call that never answers does not delay another agent in the same or another workspace', async () => {
     const h = setup()
-    const secondAgent = h.broker.owner.grantAgent(h.ws, 'cedar')
-    const birch = h.broker.owner.grantAgent(h.broker.owner.attach('birch'), 'aspen')
-    const oak = h.broker.owner.grantAgent(h.broker.owner.attach('oak'), 'elm')
-    const first = h.call()
-    await tick()
-    const pending = [
-      h.call(),
-      h.call(),
-      h.call(secondAgent),
-      h.call(secondAgent),
-      h.call(birch),
-      h.call(birch),
-      h.call(oak),
-    ]
-    expect(h.server.calls).toHaveLength(1)
-    for (let i = 0; i < 8; i++) {
-      h.server.finish(i)
-      await tick()
-    }
-    await Promise.all([first, ...pending])
+    const neighbour = h.broker.owner.grantAgent(h.ws, 'cedar-life-one')
+    const elsewhere = h.broker.owner.grantAgent(h.broker.owner.attach('birch'), 'aspen-life-one')
+    let hungSettled = false
+    const hung = h.call()
+    void hung.finally(() => {
+      hungSettled = true
+    })
+    const sameWorkspace = h.call(neighbour)
+    const otherWorkspace = h.call(elsewhere)
     expect(
       h.server.calls.map(
         (c) => `${c.request.identity.workspaceId}:${c.request.identity.incarnation}`,
       ),
-    ).toEqual([
-      'willow:fern-life-one',
-      'birch:aspen',
-      'oak:elm',
-      'willow:cedar',
-      'birch:aspen',
-      'willow:fern-life-one',
-      'willow:cedar',
-      'willow:fern-life-one',
-    ])
-    expect(h.clock.timers.size).toBe(0)
-  })
-  it('serves more than two queued calls from one agent and eight from one workspace', async () => {
-    const h = setup()
-    const first = h.call()
+    ).toEqual(['willow:fern-life-one', 'willow:cedar-life-one', 'birch:aspen-life-one'])
+    h.server.finish(1, 'neighbour done')
+    h.server.finish(2, 'elsewhere done')
+    await expect(sameWorkspace).resolves.toBe('neighbour done')
+    await expect(otherWorkspace).resolves.toBe('elsewhere done')
     await tick()
-    const same = h.broker.owner.grantAgent(h.ws, 'fern-life-one')
-    expect(same).toBe(h.agent)
-    const pending = Array.from({ length: 10 }, () => h.call(same))
-    expect(h.broker.status().queued).toBe(10)
-    for (let i = 0; i < 11; i++) {
-      h.server.finish(i)
-      await tick()
-    }
-    await Promise.all([first, ...pending])
-    expect(h.server.calls).toHaveLength(11)
-    expect(h.broker.status()).toMatchObject({ available: true, queued: 0, executing: false })
+    expect(hungSettled).toBe(false)
+    expect(h.broker.status()).toMatchObject({ available: true, executing: true })
+    expect(h.audit.filter((event) => event.event === 'refused')).toEqual([])
+    h.server.finish(0)
+    await expect(hung).resolves.toEqual({ done: true })
+    expect(h.broker.status()).toMatchObject({ executing: false, awaitingQuiescence: false })
   })
-  it('caps active plus queued work at 64 even for one agent', async () => {
+  it('runs many calls from one agent at the same time', async () => {
     const h = setup()
-    const first = h.call()
-    await tick()
-    const pending = Array.from({ length: 63 }, () => h.call())
-    expect(h.broker.status().queued).toBe(63)
+    const pending = Array.from({ length: 10 }, () => h.call())
+    expect(h.server.calls).toHaveLength(10)
+    expect(h.broker.status()).toMatchObject({ available: true, executing: true })
+    for (let i = 9; i >= 0; i--) h.server.finish(i, i)
+    await expect(Promise.all(pending)).resolves.toEqual([...Array(10).keys()])
+    expect(h.broker.status()).toMatchObject({ available: true, executing: false })
+  })
+  it('caps running plus uncertain work at 64 even for one agent', async () => {
+    const h = setup()
+    const pending = Array.from({ length: 64 }, () => h.call())
+    expect(h.server.calls).toHaveLength(64)
     await expect(h.call()).rejects.toMatchObject({ code: 'busy' })
+    expect(h.server.calls).toHaveLength(64)
     h.broker.owner.invalidate()
-    await Promise.allSettled([first, ...pending])
+    for (const result of await Promise.allSettled(pending))
+      expect(result).toMatchObject({ status: 'rejected', reason: { code: 'unavailable' } })
+    expect(h.broker.status()).toMatchObject({ available: false, executing: false })
+    expect(h.broker.owner.hasCompletionProof()).toBe(false)
+    for (const call of h.server.calls) call.quiet.resolve()
+    await tick()
+    expect(h.broker.owner.hasCompletionProof()).toBe(true)
+  })
+  it('cancelling a hung call releases it while the others keep running', async () => {
+    const h = setup()
+    const signal = new AbortController()
+    const hung = h.call(h.agent, { profile: 'fern' }, signal.signal)
+    const other = h.call(h.broker.owner.grantAgent(h.ws, 'cedar-life-one'))
+    signal.abort()
+    await expect(hung).rejects.toMatchObject({ code: 'cancelled' })
+    expect(h.server.calls[0]!.signal.aborted).toBe(true)
+    expect(h.server.calls[0]!.cancels).toBe(1)
+    expect(h.server.calls[1]!.signal.aborted).toBe(false)
+    expect(h.broker.status()).toMatchObject({ executing: true, awaitingQuiescence: true })
+    h.server.calls[0]!.result.resolve({ ok: true, value: 'late' })
+    h.server.finish(1)
+    await expect(other).resolves.toEqual({ done: true })
+    expect(h.broker.status()).toMatchObject({ executing: false, awaitingQuiescence: true })
     h.server.calls[0]!.quiet.resolve()
     await tick()
-    expect(h.broker.status()).toMatchObject({ available: false, queued: 0, executing: false })
-  })
-  it('cancels queued calls promptly and never sends them to the server', async () => {
-    const h = setup()
-    const first = h.call()
-    await tick()
-    const signal = new AbortController()
-    const pending = h.call(h.agent, { profile: 'fern' }, signal.signal)
-    signal.abort()
-    await expect(pending).rejects.toMatchObject({ code: 'cancelled' })
-    expect(h.broker.status().queued).toBe(0)
-    h.server.finish(0)
-    await first
-    await tick()
-    expect(h.server.calls).toHaveLength(1)
-    expect(h.clock.timers.size).toBe(0)
+    expect(h.broker.status()).toMatchObject({ executing: false, awaitingQuiescence: false })
   })
   it('does not admit an already-cancelled call', async () => {
     const h = setup(),
@@ -230,142 +213,55 @@ describe('bounded fair serial queue', () => {
     await expect(h.call(h.agent, { profile: 'fern' }, signal.signal)).rejects.toMatchObject({
       code: 'cancelled',
     })
-    expect(h.broker.status().queued).toBe(0)
-  })
-  it('expires queued requests after 120 seconds without executing them', async () => {
-    const h = setup()
-    const pending = h.call()
-    h.clock.advance(120_000)
-    await tick()
-    await expect(pending).rejects.toMatchObject({ code: 'deadline' })
     expect(h.server.calls).toHaveLength(0)
-    expect(h.clock.timers.size).toBe(0)
   })
-})
-
-describe('deadline, cancellation and independent quiescence proof', () => {
-  it('answers an active deadline at 120 seconds but holds the slot until quiescence', async () => {
-    const h = setup()
-    const first = h.call()
-    await tick()
-    h.clock.advance(5000)
-    const queued = h.call()
-    h.clock.advance(115_000)
-    await tick()
-    await expect(first).rejects.toMatchObject({
-      code: 'deadline',
-      message:
-        'Tool read_page took too long; completion is unknown. The operation may still be running.',
-    })
-    expect(h.server.calls[0]!.signal.aborted).toBe(true)
-    expect(h.server.calls[0]!.cancels).toBe(1)
-    expect(h.server.calls).toHaveLength(1)
-    h.server.calls[0]!.quiet.resolve()
-    await tick()
-    expect(h.server.calls).toHaveLength(2)
-    h.server.finish(1)
-    await queued
-  })
-  it('a settled result or resolved cancellation request is not proof of stopped execution', async () => {
-    const h = setup()
-    const first = h.call()
-    await tick()
-    h.server.calls[0]!.result.resolve({ ok: true, value: 'early-result' })
-    await tick()
-    const queued = h.call()
-    await tick()
-    expect(h.server.calls).toHaveLength(1)
-    h.clock.advance(120_000)
-    await tick()
-    await expect(first).rejects.toMatchObject({ code: 'deadline' })
-    h.clock.advance(1000)
-    await tick()
-    await expect(queued).rejects.toMatchObject({ code: expect.any(String) })
-    expect(h.broker.status()).toMatchObject({
-      available: true,
-      executing: false,
-      awaitingQuiescence: true,
-    })
-    expect(h.server.calls).toHaveLength(1)
-    h.server.calls[0]!.quiet.resolve()
-    await tick()
-    expect(h.broker.status()).toMatchObject({
-      available: true,
+  it('host exit settles every running call', async () => {
+    const exited = deferred<void>()
+    const h = setup((options) => ({ ...options, hostExited: exited.promise }))
+    const pending = [h.call(), h.call(), h.call(h.broker.owner.grantAgent(h.ws, 'cedar'))]
+    exited.resolve()
+    for (const result of await Promise.allSettled(pending))
+      expect(result).toMatchObject({ status: 'rejected', reason: { code: 'unavailable' } })
+    expect(h.broker.status()).toEqual({
+      available: false,
       executing: false,
       awaitingQuiescence: false,
+      unknownCalls: [],
     })
-  })
-  it('a normal result plus quiescence releases the slot unchanged', async () => {
-    const h = setup()
-    const first = h.call()
-    await tick()
-    const second = h.call()
-    h.server.calls[0]!.quiet.resolve()
-    await tick()
-    expect(h.server.calls).toHaveLength(1)
-    h.server.calls[0]!.result.resolve({ ok: true, value: { page: 'fictional' } })
-    await tick()
-    await expect(first).resolves.toEqual({ page: 'fictional' })
-    expect(h.server.calls).toHaveLength(2)
-    h.server.finish(1)
-    await second
-  })
-  it('cancels a stopped caller, ignores late results and resumes only after proof', async () => {
-    const h = setup()
-    const signal = new AbortController()
-    const first = h.call(h.agent, { profile: 'fern' }, signal.signal)
-    await tick()
-    const second = h.call()
-    signal.abort()
-    await tick()
-    await expect(first).rejects.toMatchObject({ code: 'cancelled' })
-    h.server.calls[0]!.result.resolve({ ok: true, value: 'late' })
-    await tick()
-    expect(h.server.calls).toHaveLength(1)
-    h.server.calls[0]!.quiet.resolve()
-    await tick()
-    expect(h.server.calls).toHaveLength(2)
-    h.server.finish(1)
-    await second
-  })
-  it('retains missing proof after its observation grace and lets later calls proceed', async () => {
-    const h = setup()
-    const signal = new AbortController()
-    const first = h.call(h.agent, { profile: 'fern' }, signal.signal)
-    await tick()
-    const queued = h.call()
-    signal.abort()
-    await tick()
-    h.clock.advance(1000)
-    await tick()
-    await expect(first).rejects.toMatchObject({ code: 'cancelled' })
-    expect(h.server.calls).toHaveLength(2)
-    expect(h.broker.status()).toMatchObject({ available: true, awaitingQuiescence: true })
-    h.server.finish(1)
-    await expect(queued).resolves.toEqual({ done: true })
-    h.broker.owner.invalidate()
-    expect(h.broker.owner.hasCompletionProof()).toBe(false)
-    h.server.finish(0)
-    await tick()
-    expect(h.broker.status().available).toBe(false)
     expect(h.broker.owner.hasCompletionProof()).toBe(true)
+    expect(h.audit.filter((event) => event.call?.state === 'host-exited')).toHaveLength(3)
   })
-  it('detaching one workspace cancels its work, while another workspace proceeds after proof', async () => {
+  it('answers only once both the result and quiescence arrive', async () => {
+    const h = setup()
+    let answered = false
+    const first = h.call()
+    void first.finally(() => {
+      answered = true
+    })
+    h.server.calls[0]!.quiet.resolve()
+    await tick()
+    expect(answered).toBe(false)
+    h.server.calls[0]!.result.resolve({ ok: true, value: { page: 'fictional' } })
+    await expect(first).resolves.toEqual({ page: 'fictional' })
+    const early = h.call()
+    h.server.calls[1]!.result.resolve({ ok: true, value: 'early-result' })
+    await tick()
+    expect(h.broker.status()).toMatchObject({ executing: true })
+    h.server.calls[1]!.quiet.resolve()
+    await expect(early).resolves.toBe('early-result')
+  })
+  it('detaching one workspace cancels its work, while another workspace keeps running', async () => {
     const h = setup()
     const first = h.call()
-    await tick()
-    const queued = h.call()
+    const second = h.call()
     const other = h.broker.owner.grantAgent(h.broker.owner.attach('birch'), 'aspen')
     const next = h.call(other)
     h.broker.owner.detach(h.ws)
-    await tick()
     await expect(first).rejects.toMatchObject({ code: 'unauthorized' })
-    await expect(queued).rejects.toMatchObject({ code: 'unauthorized' })
-    h.server.calls[0]!.quiet.resolve()
-    await tick()
-    expect(h.server.calls[1]!.request.identity.workspaceId).toBe('birch')
-    h.server.finish(1)
-    await next
+    await expect(second).rejects.toMatchObject({ code: 'unauthorized' })
+    expect(h.server.calls[2]!.signal.aborted).toBe(false)
+    h.server.finish(2)
+    await expect(next).resolves.toEqual({ done: true })
   })
 })
 
@@ -403,7 +299,10 @@ describe('secret-free failures and diagnostics', () => {
     signal.abort()
     await tick()
     await expect(stopped).rejects.toMatchObject({ code: 'cancelled' })
-    expect(cancel.broker.status().available).toBe(false)
+    expect(cancel.broker.status().available).toBe(true)
+    expect(cancel.audit).toContainEqual(
+      expect.objectContaining({ event: 'refused', code: 'downstream', reason: 'cancel-failed' }),
+    )
     expect(JSON.stringify(cancel.audit)).not.toContain(secret)
   })
   it('keeps execution errors, identities, arguments and outputs out of audit events', async () => {
@@ -417,22 +316,17 @@ describe('secret-free failures and diagnostics', () => {
     )
     for (const event of h.audit)
       expect(
-        Object.keys(event).every((key) =>
-          ['event', 'queued', 'code', 'reason', 'call'].includes(key),
-        ),
+        Object.keys(event).every((key) => ['event', 'code', 'reason', 'call'].includes(key)),
       ).toBe(true)
     for (const event of h.audit)
       if (event.reason !== undefined)
         expect([
           'call-state',
           'proof-rejected',
-          'proof-timeout',
           'cancel-failed',
           'execution-invalid',
           'reply-invalid',
           'owner-invalidated',
-          'queue-deadline',
-          'call-deadline',
         ]).toContain(event.reason)
     const logger = setup((o) => ({
       ...o,
@@ -464,7 +358,6 @@ describe('secret-free failures and diagnostics', () => {
     h.server.calls[0]!.quiet.resolve()
     await expect(pending).rejects.toMatchObject({ code: 'downstream' })
     expect(JSON.stringify(h.audit)).not.toContain(secret)
-    expect(h.clock.timers.size).toBe(0)
   })
 })
 
@@ -486,46 +379,44 @@ describe('revocation and malformed downstream boundaries', () => {
     await expect(first).rejects.toMatchObject({ code: 'unauthorized' })
     expect(h.server.calls[0]!.signal.aborted).toBe(true)
     expect(h.server.calls[0]!.cancels).toBe(1)
-    expect(h.broker.status()).toMatchObject({ executing: true, awaitingQuiescence: true })
+    expect(h.broker.status()).toMatchObject({ executing: false, awaitingQuiescence: true })
     h.server.calls[0]!.quiet.resolve()
     await tick()
-    expect(h.broker.status()).toMatchObject({ available: true, executing: false })
-    expect(h.clock.timers.size).toBe(0)
+    expect(h.broker.status()).toMatchObject({ available: true, awaitingQuiescence: false })
   })
-  it('invalidating an epoch stops active/queued work, and late success cannot restore it', async () => {
+  it('invalidating an epoch stops every running call, and late success cannot restore it', async () => {
     const h = setup()
     const first = h.call()
-    await tick()
     const next = h.call()
     h.broker.owner.invalidate()
-    await tick()
     await expect(first).rejects.toMatchObject({ code: 'unavailable' })
     await expect(next).rejects.toMatchObject({ code: 'unavailable' })
     h.server.finish(0, 'late')
+    h.server.finish(1, 'late')
     await tick()
     expect(h.broker.status()).toEqual({
       available: false,
-      queued: 0,
       executing: false,
       awaitingQuiescence: false,
       unknownCalls: [],
     })
     expect(() => h.broker.agent.discover(h.agent)).toThrow(PluginBrokerError)
   })
-  it('does not trust a rejected quiescence receipt, and never starts the next call', async () => {
+  it('a rejected quiescence receipt fails only its own call and keeps it uncertain', async () => {
     const h = setup()
     const first = h.call()
-    await tick()
     const second = h.call()
     h.server.calls[0]!.quiet.reject(new Error('fictional-quiescence-secret'))
-    await tick()
-    await expect(first).rejects.toMatchObject({ code: 'unavailable' })
-    await expect(second).rejects.toMatchObject({ code: 'unavailable' })
-    expect(h.server.calls).toHaveLength(1)
+    await expect(first).rejects.toMatchObject({
+      code: 'downstream',
+      message: expect.stringContaining('completion is unknown'),
+    })
     expect(h.audit).toContainEqual(
-      expect.objectContaining({ event: 'unavailable', reason: 'proof-rejected' }),
+      expect.objectContaining({ event: 'refused', code: 'downstream', reason: 'proof-rejected' }),
     )
-    expect(h.audit.filter((e) => e.event === 'refused' && e.code === 'unavailable')).toHaveLength(2)
+    h.server.finish(1)
+    await expect(second).resolves.toEqual({ done: true })
+    expect(h.broker.status()).toMatchObject({ available: true, awaitingQuiescence: true })
     expect(JSON.stringify(h.audit)).not.toContain('fictional-quiescence-secret')
   })
   it('handles throwing result getters as a fixed failure with no unhandled secret exception', async () => {
@@ -588,34 +479,15 @@ it('attribution copies only installation identity fields from owner metadata', a
   await pending
 })
 
-it('distinguishes a queue deadline from a dispatched call deadline using fixed reasons', async () => {
-  const h = setup()
-  const first = h.call(),
-    second = h.call()
-  await tick()
-  h.clock.advance(120000)
-  await expect(first).rejects.toMatchObject({ code: 'deadline' })
-  await expect(second).rejects.toMatchObject({ code: 'deadline' })
-  expect(h.audit).toContainEqual(
-    expect.objectContaining({ event: 'refused', reason: 'call-deadline' }),
-  )
-  expect(h.audit).toContainEqual(
-    expect.objectContaining({ event: 'refused', reason: 'queue-deadline' }),
-  )
-  h.server.calls[0]!.quiet.resolve()
-  await tick()
-})
-
 it('offers replacement authority only after a failed call positively completes', async () => {
   const h = setup()
   const pending = h.call()
-  await tick()
-  h.clock.advance(120000)
-  await expect(pending).rejects.toMatchObject({ code: 'deadline' })
-  h.clock.advance(1000)
+  h.server.calls[0]!.result.resolve({ ok: false, cause: 'stalled' })
+  await expect(pending).rejects.toMatchObject({ code: 'downstream' })
   expect(h.broker.status()).toMatchObject({ available: true, awaitingQuiescence: true })
   expect(h.broker.owner.hasCompletionProof()).toBe(false)
   h.broker.owner.invalidate()
+  expect(h.broker.owner.hasCompletionProof()).toBe(false)
   h.server.calls[0]!.quiet.resolve()
   await tick()
   expect(h.broker.status()).toMatchObject({ available: false, executing: false })
@@ -626,9 +498,8 @@ it('uses positive exact-host exit after a rejected call proof, never a rejected 
   const host = deferred<void>()
   const h = setup((options) => Object.assign(options, { hostExited: host.promise }))
   const pending = h.call()
-  await tick()
   h.server.calls[0]!.quiet.reject(new Error('fictional unproved remote call'))
-  await expect(pending).rejects.toMatchObject({ code: 'unavailable' })
+  await expect(pending).rejects.toMatchObject({ code: 'downstream' })
   expect(h.broker.owner.hasCompletionProof()).toBe(false)
   host.resolve()
   await tick()
@@ -638,11 +509,12 @@ it('uses positive exact-host exit after a rejected call proof, never a rejected 
   const unknown = deferred<void>()
   const other = setup((options) => Object.assign(options, { hostExited: unknown.promise }))
   const active = other.call()
-  await tick()
   unknown.reject(new Error('fictional unknown host exit'))
-  other.clock.advance(120000)
+  other.server.calls[0]!.result.resolve({ ok: false, cause: 'stalled' })
   await expect(active).rejects.toThrow()
-  other.clock.advance(1000)
+  expect(other.audit).toContainEqual(
+    expect.objectContaining({ event: 'refused', reason: 'host-exit-unproven' }),
+  )
   expect(other.broker.owner.hasCompletionProof()).toBe(false)
   expect(other.broker.status()).toMatchObject({ available: true, awaitingQuiescence: true })
 })
@@ -728,8 +600,9 @@ it('keeps the first failed result cause when quiescence also rejects', async () 
   await tick()
   h.server.calls[0]!.quiet.reject(new Error('fictional later proof failure'))
   await expect(pending).rejects.toMatchObject({
+    code: 'downstream',
     cause: original,
     message: expect.stringContaining(original.message),
   })
-  expect(h.broker.status().available).toBe(false)
+  expect(h.broker.status().available).toBe(true)
 })
