@@ -139,7 +139,7 @@ import {
   describeConversationForRead,
   isRecordedServiceConversation,
   resolveConversationAddress,
-} from './conversation-address'
+} from '../db/conversation-address'
 import { renameConversation } from './rename-conversation'
 import { appendWorkReplyInTransaction } from './reply-commit'
 import { sendReceipt, type SendFacts } from './send-receipt'

@@ -13,7 +13,7 @@ import type { SessionStore } from '../db/session-store'
 import type { CurrentRules } from '../../shared/conversation-title'
 import type { WorkEdge } from '../../shared/who-called-whom'
 import { rowsUnreadOnce } from '../db/rows-unread'
-import { describeConversationForRead, resolveConversationAddress } from './conversation-address'
+import { describeConversationForRead, resolveConversationAddress } from '../db/conversation-address'
 
 const cursorShape = z.object({
   conversation: z.string(),

@@ -1,4 +1,4 @@
-import { agentIdentityRowId } from '../db/identity'
+import { agentIdentityRowId } from './identity'
 import type { ConversationTitle } from '../../shared/conversation-title'
 import { profileLabel } from '../../shared/runtime-ipc'
 

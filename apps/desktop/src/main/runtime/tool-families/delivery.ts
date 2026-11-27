@@ -18,7 +18,7 @@ import { aWakeRefused, aWakeThatDidNotHappen } from './launch-failures'
 import { refusalAnswer } from './answers'
 import { clockTimeFrom } from '../../../shared/clock'
 import { didIt } from '../../../shared/who-did-it'
-import { conversationLine } from '../conversation-address'
+import { conversationLine } from '../../db/conversation-address'
 
 /** Where the last ask to stop landed, as the sentence that says it names the three. */
 export const WHEN_THE_ASK_LANDED: Readonly<

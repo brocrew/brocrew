@@ -10,7 +10,7 @@ import {
   canonicalAddressOf,
   describeConversationForRead,
   resolveConversationAddress,
-} from '../src/main/runtime/conversation-address'
+} from '../src/main/db/conversation-address'
 
 /**
  * # A conversation's address is its first task, in the order tasks were stored

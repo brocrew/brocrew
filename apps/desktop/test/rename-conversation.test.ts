@@ -1,4 +1,4 @@
-import { describeConversationForRead } from '../src/main/runtime/conversation-address'
+import { describeConversationForRead } from '../src/main/db/conversation-address'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { WorkSearchEngine } from '../src/main/db/work-search-engine'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'

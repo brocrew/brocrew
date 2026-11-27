@@ -7,7 +7,7 @@ import {
 } from '@brobot2/runtime'
 import { type AgentToolHost } from './host'
 import { type Caller } from '../conversation-caller'
-import { conversationLine } from '../conversation-address'
+import { conversationLine } from '../../db/conversation-address'
 import { type RequestState, type VisibleQuestion } from '../../../shared/question-contracts'
 import { REQUEST_IS_OPEN, theChannelRefusalIn } from '../../../shared/questions'
 import { type ToolName } from './catalog'
