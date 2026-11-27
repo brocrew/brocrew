@@ -3,6 +3,7 @@ import { RecordingSink, neutralHostDeps } from './lib/host-fixture'
 import { waitFor } from './lib/f093-host'
 import { registerProviderFailureFallbackCases } from './helpers/provider-failure-fallback-cases'
 import { registerPacedReminderQuitCase } from './helpers/paced-reminder-quit-case'
+import { registerReconciliationPersistedReadCases } from './helpers/reconciliation-persisted-read-cases'
 import {
   countSqlReads,
   settle,
@@ -249,6 +250,7 @@ describe('a work wait is reconciled without a window', () => {
   registerPersistedWaitRevisionCase(waitContext)
   registerPacedReminderQuitCase(waitContext)
   registerProviderFailureFallbackCases(waitContext, tick, cycle, (owner) => notices(owner).length)
+  registerReconciliationPersistedReadCases(waitContext, tick)
 
   it('a quiet pass reads no names and several notices share one narrow names read', async () => {
     keepTurnsOpen = true

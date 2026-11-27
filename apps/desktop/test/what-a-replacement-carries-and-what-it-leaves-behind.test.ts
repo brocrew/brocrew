@@ -1,5 +1,5 @@
 import { recordedMessageWakeFailure } from './lib/recorded-message-wake'
-import { recordFailedQuestionTurn } from './lib/question-wake'
+import { planProviderFailureNotice, recordFailedQuestionTurn } from './lib/question-wake'
 import { giveToSeededWorker } from './lib/give-fixture'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -179,28 +179,14 @@ describe('what a replacement carries, and what it leaves behind', () => {
       message,
     })
     const messageId = 'retained-failure-notice'
-    append(holder, {
-      type: 'work_reconciliation',
-      incident: 'retained-failure-incident',
-      kind: 'provider-turn-failed',
-      episode: { generation: 0, terminalOrdinal },
+    const held = planProviderFailureNotice(append, {
+      asker,
+      holder,
+      terminalOrdinal,
       since: tick(),
-      step: 'giver',
-      outcome: 'planned',
-      target: asker,
-      messageId,
-    })
-    const held = {
+      incident: 'retained-failure-incident',
       messageId,
       text: message,
-      attribution: 'app_authored',
-      appNotice: 'a-provider-turn-failed',
-    } as const
-    append(asker, {
-      ...held,
-      type: 'message_queued',
-      kind: 'notice',
-      providerFailureHolder: holder,
     })
     append(asker, { ...held, type: 'message_unqueued', reason: 'retracted' })
     expect(store.reconciliationOwners()).not.toContain(holder)
