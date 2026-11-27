@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createSqliteMemoryAmendmentJournal } from '../src/main/database/sqlite/agents/knowledge'
 import { codexAdHocNotesDir } from '@brobot2/runtime/codex'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
@@ -20,10 +21,12 @@ import {
   createSessionStore,
   type SessionStore,
 } from '../src/main/db/session-store'
-import * as memory from '../src/main/runtime/agent-memory'
-import type { AgentMemoryInputs, MemoryWriteSeams } from '../src/main/runtime/agent-memory'
-import type { MemoryAmendment, MemoryObservation } from '../src/shared/agent-memory'
-import type { ActedBy } from '../src/shared/who-did-it'
+import {
+  createMemoryService,
+  type CloseMemoryJournal,
+  type MemoryService,
+  type MemoryServiceInputs,
+} from '../src/main/runtime/agent-memory'
 
 interface Edit {
   profile: string
@@ -32,28 +35,6 @@ interface Edit {
   act: 'removed' | 'corrected'
   text: string
   confirmed: boolean
-}
-interface Result {
-  ok: boolean
-  reason?: string
-  cause?: string
-  amendment?: MemoryAmendment
-}
-interface Service {
-  amend(said: Edit, by: ActedBy): Promise<Result>
-  undo(slug: string, sourceId: string, confirmed: boolean, by: ActedBy): Promise<Result>
-  checkInterrupted(slug: string, confirmed: boolean, by: ActedBy): Promise<Result>
-  held(slug: string): boolean
-  busy(slug: string): boolean
-  close(waitMs?: number): Promise<void>
-}
-interface Inputs {
-  store: SessionStore
-  inputsOf: (slug: string) => AgentMemoryInputs
-  now: () => number
-  reconcile: (id: string, change: string, actual: MemoryObservation, by: ActedBy) => boolean
-  changed?: (slug: string) => void
-  seams?: { beforeEffect?: () => Promise<void>; writes?: MemoryWriteSeams }
 }
 const person = { who: 'a-person' } as const
 const app = { who: 'the-app-itself' } as const
@@ -65,7 +46,7 @@ let homes: string
 let db: AppDatabase
 let store: SessionStore
 let clock: number
-let services: Service[]
+let services: MemoryService[]
 let releases: (() => void)[]
 const home = (slug: string) => join(homes, 'default', slug, 'codex')
 const entry = (slug = 'lark', name = 'note.md') => join(codexAdHocNotesDir(home(slug)), name)
@@ -86,10 +67,12 @@ function deferred() {
   releases.push(resolve)
   return { promise, resolve }
 }
-async function create(overrides: Partial<Inputs> = {}): Promise<Service> {
-  const factory = memory.createMemoryService as unknown as (inputs: Inputs) => Promise<Service>
-  const service = await factory({
+async function create(
+  overrides: Partial<MemoryServiceInputs> & { store?: SessionStore } = {},
+): Promise<MemoryService> {
+  const service = await createMemoryService({
     store,
+    journal: createSqliteMemoryAmendmentJournal(overrides.store ?? store),
     inputsOf: (slug) => ({ profileId: slug, homesRoot: homes, homeOf: () => home(slug) }),
     now: () => clock++,
     reconcile: createMemoryAmendmentObserver(db, () => clock++).reconcile,
@@ -116,7 +99,7 @@ beforeEach(() => {
 afterEach(async () => {
   for (const release of releases) release()
   for (const service of services) await service.close(0)
-  db.close()
+  if (db.open) db.close()
   vi.restoreAllMocks()
   rmSync(root, { recursive: true, force: true })
 })
@@ -232,7 +215,7 @@ describe('memory writes retain their intent under one profile lock until honest 
         cause: expect.stringContaining(code),
         amendment: { outcome: 'unchanged' },
       })
-      expect(outcome.cause).toContain(entry())
+      expect(outcome).toHaveProperty('cause', expect.stringContaining(entry()))
       expect(readFileSync(entry(), 'utf8')).toBe(original)
       await failed.close(0)
       const repaired = await create()
@@ -536,6 +519,164 @@ describe('memory writes retain their intent under one profile lock until honest 
     expect(readFileSync(entry(), 'utf8')).toBe(original)
     expect(store.memoryAmendmentsOf('lark')[0]?.outcome).toBe('pending')
   })
+  it.each([
+    'pending',
+    'begin',
+    'settle',
+    'readback',
+    'readback-rejected',
+    'candidate',
+    'startup',
+  ] as const)(
+    'joins the held %s journal acknowledgement before closing its database',
+    async (edge) => {
+      const accepted = deferred()
+      const acknowledgement = deferred()
+      let closeJournal: CloseMemoryJournal | undefined
+      const changed = vi.fn()
+      const inputsOf = vi.fn((slug: string) => ({
+        profileId: slug,
+        homesRoot: homes,
+        homeOf: () => home(slug),
+      }))
+      const journal = createSqliteMemoryAmendmentJournal(store)
+      const observer = createMemoryAmendmentObserver(db, () => clock++).reconcile
+      const hold = async <T>(operation: () => T | Promise<T>): Promise<T> => {
+        accepted.resolve()
+        await acknowledgement.promise
+        expect(db.open).toBe(true)
+        return operation()
+      }
+      if (edge === 'startup') {
+        store.beginMemoryAmendment(
+          {
+            profileSlug: 'lark',
+            provider: 'codex',
+            entry: entry(),
+            act: 'removed',
+            by: person,
+            textBefore: original,
+            textAfter: null,
+          },
+          clock++,
+        )
+      }
+      const source =
+        edge === 'candidate'
+          ? store.writeMemoryAmendment(
+              {
+                profileSlug: 'lark',
+                provider: 'codex',
+                entry: entry(),
+                act: 'corrected',
+                by: person,
+                textBefore: 'Prior text',
+                textAfter: original,
+              },
+              clock++,
+            )
+          : null
+      if (edge === 'candidate') expect(source).not.toBeNull()
+      let startedEdit = false
+      const readback = vi.fn((...args: Parameters<typeof journal.memoryAmendment>) => {
+        if (edge === 'readback-rejected')
+          return hold(() => {
+            throw new Error('The readback failed')
+          })
+        if (edge === 'readback') return hold(() => journal.memoryAmendment(...args))
+        return journal.memoryAmendment(...args)
+      })
+      const list = vi.fn((...args: Parameters<typeof journal.memoryAmendmentsOf>) =>
+        edge === 'candidate' && startedEdit ? hold(() => []) : journal.memoryAmendmentsOf(...args),
+      )
+      const pending = vi.fn((...args: Parameters<typeof journal.hasPendingMemoryAmendment>) =>
+        edge === 'pending' && startedEdit
+          ? hold(() => journal.hasPendingMemoryAmendment(...args))
+          : journal.hasPendingMemoryAmendment(...args),
+      )
+      const ready = create({
+        acquired: (close) => {
+          closeJournal = close
+        },
+        journal: {
+          ...journal,
+          memoryAmendment: readback,
+          memoryAmendmentsOf: list,
+          hasPendingMemoryAmendment: pending,
+          beginMemoryAmendment: (...args) =>
+            edge === 'begin'
+              ? hold(() => journal.beginMemoryAmendment(...args))
+              : journal.beginMemoryAmendment(...args),
+          settleMemoryAmendment: (...args) =>
+            edge === 'settle'
+              ? hold(() => journal.settleMemoryAmendment(...args))
+              : journal.settleMemoryAmendment(...args),
+        },
+        reconcile: (...args) => hold(() => observer(...args)),
+        inputsOf,
+        changed,
+      })
+      const service = edge === 'startup' ? undefined : await ready
+      startedEdit = true
+      const edit =
+        source === null
+          ? service?.amend(selection(), person)
+          : service?.undo('lark', source.id, true, person)
+      await accepted.promise
+      const fileEffectHasRun =
+        edge === 'settle' || edge === 'readback' || edge === 'readback-rejected'
+      expect(store.hasPendingMemoryAmendment('lark')).toBe(edge === 'settle' || edge === 'startup')
+      expect(existsSync(entry())).toBe(!fileEffectHasRun)
+      if (edge === 'settle') expect(readback).not.toHaveBeenCalled()
+
+      expect(closeJournal).toBeDefined()
+
+      vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+      try {
+        // The database owner closes the service, then joins its journal, then closes the database.
+        const closed = (async () => {
+          await service?.close(0)
+          await closeJournal?.(0)
+          db.close()
+        })()
+        await vi.runOnlyPendingTimersAsync()
+        expect(db.open).toBe(true)
+        changed.mockClear()
+        inputsOf.mockClear()
+        readback.mockClear()
+        list.mockClear()
+        pending.mockClear()
+
+        acknowledgement.resolve()
+        if (edit !== undefined) expect(await edit).toMatchObject({ reason: 'closing' })
+        await ready
+        await closed
+        expect(db.open).toBe(false)
+        expect(changed).not.toHaveBeenCalled()
+        expect(readback).not.toHaveBeenCalled()
+        expect(list).not.toHaveBeenCalled()
+        expect(inputsOf).not.toHaveBeenCalled()
+        expect(pending).not.toHaveBeenCalled()
+
+        expect(existsSync(entry())).toBe(!fileEffectHasRun)
+        if (!fileEffectHasRun) expect(readFileSync(entry(), 'utf8')).toBe(original)
+        db = openDatabase(join(root, 'app.sqlite'))
+        const rows = createSessionStore(db, () => clock++).memoryAmendmentsOf('lark')
+        const [row] = rows
+        if (edge === 'pending') expect(row).toBeUndefined()
+        else if (edge === 'candidate') expect(rows).toStrictEqual([source])
+        else if (edge === 'begin') expect(row).toMatchObject({ outcome: 'pending' })
+        else if (fileEffectHasRun) {
+          expect(row).toMatchObject({ outcome: 'done', settlement: { by: person } })
+        } else {
+          expect(row).toMatchObject({ outcome: 'unchanged', settlement: { by: app } })
+        }
+      } finally {
+        vi.useRealTimers()
+      }
+    },
+  )
+
   it('does not wait for a stale pending record when no operation is in flight', async () => {
     store.beginMemoryAmendment(
       {

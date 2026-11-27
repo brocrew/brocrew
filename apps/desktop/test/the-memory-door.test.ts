@@ -7,6 +7,7 @@ import { FakeRuntime } from '@brobot2/runtime/testing'
 import { claudeAutoMemoryDir } from '@brobot2/runtime/claude'
 import type { Provider } from '@brobot2/shared'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { createSqliteMemoryAmendmentJournal } from '../src/main/database/sqlite/agents/knowledge'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import {
@@ -77,6 +78,7 @@ async function hostDeps(
   const store = options.store ?? createSessionStore(db)
   const memoryKnowledge = await createMemoryService({
     store,
+    journal: createSqliteMemoryAmendmentJournal(store),
     inputsOf: (slug) => ({
       profileId: slug,
       homesRoot: join(userData, 'provider-homes'),

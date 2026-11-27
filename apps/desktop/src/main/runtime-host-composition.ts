@@ -48,6 +48,7 @@ import { aProtectedPlace, thePlacesOnThisComputer } from './protected-places'
 import { workspaceListFile } from './workspaces'
 import { nativeTranscriptPath } from './archive/native-file'
 import { createMemoryAmendmentObserver, createSessionStore } from './db/session-store'
+import { createSqliteMemoryAmendmentJournal } from './database/sqlite/agents/knowledge'
 import { committedChangesOf } from './db/committed-changes'
 import { DEFAULT_SILENCE_WINDOW_MS } from './runtime/liveness'
 import { readProviderConfig } from './runtime/provider-config'
@@ -236,6 +237,7 @@ export async function composeRuntimeHost(
   }
   const memoryKnowledge = await createMemoryService({
     store,
+    journal: createSqliteMemoryAmendmentJournal(store),
     inputsOf: (slug) => ({
       profileId: slug,
       homesRoot: providerHomesRoot(userData),
