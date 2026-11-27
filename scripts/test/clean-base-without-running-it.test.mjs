@@ -91,7 +91,6 @@ describe('the source census — a new durable write under userData must not slip
       }
     }
     expect([...found].sort()).toEqual([
-      "'brobot2.sqlite'",
       "'exports'",
       // The app's log file, in `logs` (`WORKSPACE`).
       "'logs', 'brocrew.log'",

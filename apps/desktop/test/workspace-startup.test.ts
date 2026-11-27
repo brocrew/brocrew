@@ -13,10 +13,6 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { pinTheDataFolder, workspaceStartup, type PinnableApp } from '../src/main/data-folder'
 import { workspaceLaunchMessage } from '../src/main/workspace-routing'
 import { ExistingWorkspace, WorkspaceUnavailable } from '../src/main/workspace-startup'
-import {
-  openWorkspaceDatabase,
-  type WorkspaceDatabaseOpening,
-} from '../src/main/db/open-workspace-database'
 import { createRecoveryService, inspect } from '../src/main/recovery/coordinator'
 import { nodeFs as recoveryFiles } from '../src/main/recovery/files'
 import { openDatabase } from '../src/main/db/connection'
@@ -205,6 +201,7 @@ async function startup(
     stopThemeIpc: null,
     registerThemeIpc: () => () => {},
     ipcMain: {},
+    openTheDatabaseOffMain: async () => {},
     initDatabase: () => {
       databaseStarts++
       return {}
@@ -357,14 +354,13 @@ it('main passes the must-exist option into SQLite when the database disappears a
     app: fake,
     workspaceStartup,
     join,
-    resolveMigrationsFolder: () => migrations,
-    openWorkspaceDatabase: (opening: WorkspaceDatabaseOpening) => {
-      rmSync(opening.file)
-      const db = openWorkspaceDatabase({ ...opening, migrate: () => {} })
+    databaseFile: (userData: string) => join(userData, 'brobot2.sqlite'),
+    openDatabase: (file: string, options?: { fileMustExist: boolean }) => {
+      rmSync(file)
+      const db = openDatabase(file, options)
       connections.push(db)
       return db
     },
-    theBuildsMigrations: () => [],
     db: null,
     presentation: { hidden: false },
   }

@@ -1,6 +1,7 @@
 import './worker-memory'
 import { parentPort, workerData } from 'node:worker_threads'
 import { trimOldEvents, type EventTrimWrite } from './db/event-retention'
+import { describeOpenFailure, openWorkspaceDatabase } from './db/open-workspace-database'
 import { inspectCompaction, writeCompactedWorkspace } from './db/workspace-compaction'
 import {
   StorageEngine,
@@ -22,6 +23,23 @@ if (port) {
         if (request.kind === 'compact') {
           writeCompactedWorkspace(request.file, request.output)
           port.postMessage({ ok: true, value: null })
+          return
+        }
+        if (request.kind === 'open') {
+          let failure = null
+          try {
+            openWorkspaceDatabase({
+              ...request.opening,
+              migrate: (apply) => {
+                port.postMessage({ migrating: true })
+                apply()
+                port.postMessage({ migrated: true })
+              },
+            }).close()
+          } catch (error) {
+            failure = describeOpenFailure(error, request.opening.file)
+          }
+          port.postMessage({ ok: true, value: failure })
           return
         }
         let stopped = false
