@@ -1,4 +1,10 @@
-import { isReasoning, stallNotice, type RuntimeEvent } from '@brobot2/runtime'
+import {
+  isReasoning,
+  stallNotice,
+  unrefTimers,
+  type RuntimeEvent,
+  type UnrefTimers,
+} from '@brobot2/runtime'
 import type { SessionLiveness } from '../../shared/runtime-ipc'
 
 /**
@@ -34,25 +40,10 @@ import type { SessionLiveness } from '../../shared/runtime-ipc'
  */
 export const DEFAULT_SILENCE_WINDOW_MS = 120_000
 
-export interface LivenessTimers {
-  setTimeout: (fn: () => void, ms: number) => unknown
-  clearTimeout: (handle: unknown) => void
-}
-
-const realTimers: LivenessTimers = {
-  setTimeout: (fn, ms) => {
-    const handle = setTimeout(fn, ms)
-    // Reporting on silence must never be the reason the process stays alive.
-    ;(handle as { unref?: () => void }).unref?.()
-    return handle
-  },
-  clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
-}
-
 export interface LivenessOptions {
   windowMs?: number
   now?: () => number
-  timers?: LivenessTimers
+  timers?: UnrefTimers
 }
 
 /**
@@ -68,7 +59,7 @@ export class LivenessTracker {
   private handle: unknown = null
   private readonly windowMs: number
   private readonly now: () => number
-  private readonly timers: LivenessTimers
+  private readonly timers: UnrefTimers
 
   constructor(
     private readonly onChange: (liveness: SessionLiveness) => void,
@@ -76,7 +67,7 @@ export class LivenessTracker {
   ) {
     this.windowMs = options.windowMs ?? DEFAULT_SILENCE_WINDOW_MS
     this.now = options.now ?? Date.now
-    this.timers = options.timers ?? realTimers
+    this.timers = options.timers ?? unrefTimers
     this.state = { state: 'live', since: this.now() }
   }
 

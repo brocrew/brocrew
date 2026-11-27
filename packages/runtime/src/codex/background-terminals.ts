@@ -7,6 +7,7 @@ import {
   type BackgroundWorkEnding,
 } from '../background-work'
 import type { RuntimeEvent } from '../events'
+import { unrefTimers, type UnrefTimers } from '../internal/stall-watchdog'
 import { truncate } from './normalize'
 
 /**
@@ -136,22 +137,6 @@ export function endingsBetween(
 }
 
 /** Every hook this watch needs from the session that owns it — nothing else of the handle leaks in. */
-/** Injectable timers, so a test drives the poll deterministically instead of by sleeping (074's shape). */
-export interface TerminalTimers {
-  setTimeout: (fn: () => void, ms: number) => unknown
-  clearTimeout: (handle: unknown) => void
-}
-
-const realTimers: TerminalTimers = {
-  setTimeout: (fn, ms) => {
-    const handle = setTimeout(fn, ms)
-    // A registry watch must never be the reason a process stays alive — `StallWatchdog`'s rule.
-    ;(handle as { unref?: () => void }).unref?.()
-    return handle
-  },
-  clearTimeout: (handle) => clearTimeout(handle as ReturnType<typeof setTimeout>),
-}
-
 export interface BackgroundTerminalsDeps {
   /** Send one request on this session's transport. Rejects exactly as the transport does. */
   request(method: string, params: unknown): Promise<unknown>
@@ -195,7 +180,7 @@ export class BackgroundTerminals {
 
   constructor(
     private readonly deps: BackgroundTerminalsDeps,
-    private readonly timers: TerminalTimers = realTimers,
+    private readonly timers: UnrefTimers = unrefTimers,
   ) {}
 
   /** Stop watching for good, from the session's teardown, so no list request reaches a closing transport. */

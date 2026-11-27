@@ -286,7 +286,7 @@ export {
 
 // Export bounded waits so app-layer provider round trips have deadlines, as adapter waits do.
 export { DidNotAnswerInTime, didNotAnswerInTime, withDeadline } from './internal/bounded'
-export { isReasoning, stallNotice } from './internal/stall-watchdog'
+export { isReasoning, stallNotice, unrefTimers, type UnrefTimers } from './internal/stall-watchdog'
 
 export { SessionMachine, type SessionState, type TurnOutcome } from './internal/session-machine'
 

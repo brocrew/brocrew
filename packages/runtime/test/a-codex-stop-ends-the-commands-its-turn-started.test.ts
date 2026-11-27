@@ -12,7 +12,8 @@ import { type RuntimeEvent, type SessionHandle } from '../src/index'
 import { AsyncQueue } from '../src/internal/async-queue'
 import { CodexRequestRefused } from '../src/codex/codex-transport'
 import { CODEX_PROTOCOL_VERSION } from '../src/codex/protocol-version'
-import { BackgroundTerminals, type TerminalTimers } from '../src/codex/background-terminals'
+import { BackgroundTerminals } from '../src/codex/background-terminals'
+import type { UnrefTimers } from '../src/internal/stall-watchdog'
 import {
   completedTurn,
   failedTurn,
@@ -758,7 +759,7 @@ function aWire(answers: Record<string, unknown[]>) {
 }
 
 /** Timers nothing fires — the poll a non-empty level arms never runs here. */
-const STILL: TerminalTimers = {
+const STILL: UnrefTimers = {
   setTimeout: () => 'never',
   clearTimeout: () => {},
 }

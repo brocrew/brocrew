@@ -20,15 +20,16 @@ export function stallNotice(idleMs: number, afterReasoning: boolean): string {
   return `still working — no activity for ${String(Math.round(idleMs / 1000))}s. The provider may be busy, rate-limited, or stalled; you can interrupt.`
 }
 
-export interface WatchdogTimers {
+/** Injectable timers, so a test drives a watch deterministically instead of by sleeping. */
+export interface UnrefTimers {
   setTimeout: (fn: () => void, ms: number) => unknown
   clearTimeout: (handle: unknown) => void
 }
 
-const realTimers: WatchdogTimers = {
+/** Real timers that never hold the process open: a watch must never be why a process stays alive. */
+export const unrefTimers: UnrefTimers = {
   setTimeout: (fn, ms) => {
     const handle = setTimeout(fn, ms)
-    // Node: don't hold the event loop open just to report a stall.
     ;(handle as { unref?: () => void }).unref?.()
     return handle
   },
@@ -67,7 +68,7 @@ export class StallWatchdog {
   constructor(
     private readonly onStall: (idleMs: number, afterReasoning: boolean) => void,
     private readonly timeoutMs: number = DEFAULT_STALL_TIMEOUT_MS,
-    private readonly timers: WatchdogTimers = realTimers,
+    private readonly timers: UnrefTimers = unrefTimers,
   ) {}
 
   /** Restart on every event: the watchdog measures silence, not the length of a turn. */
