@@ -14,6 +14,7 @@ import { stageAtomicWriteSync } from '@brobot2/runtime/atomic-write'
 import { openNotThroughALink } from '@brobot2/runtime/provider-home'
 import { OwnerRecord, PluginSupervisorError, refuse, StopRecord } from './protocol'
 import { isSocketFile, localEndpoint } from '../local-endpoint'
+import { ensureSocketFolder, pluginSocketPath, SOCKET_PATH_BYTES } from '../socket-path'
 import {
   isWithinOrSame,
   openDirectoryNotThroughALink,
@@ -35,7 +36,7 @@ function privateEntry(stat: BigIntStats, directory: boolean): void {
 export class SupervisorStorage {
   private pins: { path: string; stat: BigIntStats; fd: number }[] = []
   readonly folder: string
-  readonly socket: string
+  readonly socket: string = ''
   readonly lock: string
   readonly record: string
   readonly stop: string
@@ -47,7 +48,6 @@ export class SupervisorStorage {
     create: boolean,
   ) {
     this.folder = join(root, 'supervisor')
-    this.socket = join(this.folder, 'owner.sock')
     this.lock = join(this.folder, 'owner-lock.sqlite')
     this.record = join(this.folder, 'owner.json')
     this.stop = join(this.folder, 'owner-stop.json')
@@ -55,7 +55,9 @@ export class SupervisorStorage {
       if (!isMainThread) refuse('unsupported')
       if (!isAbsolute(root) || resolve(root) !== root || realPath(dirname(root)) !== dirname(root))
         refuse()
-      if (isSocketFile() && Buffer.byteLength(this.socket) > 100) refuse('path-too-long')
+      this.socket = pluginSocketPath(root, 'supervisor', 'owner.sock')
+      if (isSocketFile() && Buffer.byteLength(this.socket) > SOCKET_PATH_BYTES)
+        refuse('path-too-long')
       let intended = join(realPath(dirname(root)), basename(root))
       let existingRoot = false
       try {
@@ -93,7 +95,7 @@ export class SupervisorStorage {
         }
         this.pin(path)
       }
-
+      if (create) ensureSocketFolder(root, this.socket)
       const stat = this.pins.at(-1)!.stat
       this.identity = `${stat.dev}:${stat.ino}`
       const rootStat = this.pins.find((pin) => pin.path === root)!.stat

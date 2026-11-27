@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { randomBytes, randomUUID } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { pluginSocketPath } from '../src/main/plugins/socket-path'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import { loadRepoPluginList } from '../src/main/plugins/catalogue/repo-list'
@@ -107,7 +108,7 @@ export async function callPluginTools(
       }
     }
     person = await connectPersonPluginControl({
-      path: join(root, 'person-control/person.sock'),
+      path: pluginSocketPath(root, 'person-control', 'person.sock'),
       key: plan.personKey,
       handle: async () => true,
     })
