@@ -172,6 +172,8 @@ async function screens() {
   cleanups.push(() => store.dispose())
   await store.attachOpen()
   const record = store.get(META.sessionId)!
+  // 501 · this bridge has no epoch or listing, so stand in for the host's seed: idle, as every push here says.
+  Object.assign(record, { agentState: { is: 'idle' } })
   const rail = ref<Rail | null>(null)
   cleanups.push(listenProviderStates(bridge, store, (message) => rail.value?.hearStates(message)))
   const handing = createAttachmentBook().handing(draftKey(record.sessionId))

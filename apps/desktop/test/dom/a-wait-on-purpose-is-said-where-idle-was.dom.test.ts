@@ -216,13 +216,15 @@ describe('the giver’s header', () => {
   const giver = async (state: TaskState, marked: boolean) => {
     castFor(state, marked)
     await page.viewport(1200, 808)
+    // 501 · the giver's state is the host's: it waits on Mira, who holds its work.
+    const giving = record([{ type: 'status', state: 'idle' } as never])
+    giving.agentState = {
+      is: 'waiting-on-a-worker',
+      on: ['Mira (the owner of W90.1 · Coach the person through a week of openings)'],
+    }
     const m = mount(
       ConversationPane,
-      paneProps({
-        record: record([{ type: 'status', state: 'idle' } as never]),
-        waiting: 'waiting-on-a-worker',
-        workWith: ['Mira (the owner of W90.1 · Coach the person through a week of openings)'],
-      }),
+      paneProps({ record: giving, waiting: 'waiting-on-a-worker' }),
       { width: 1200, height: 808 },
     )
     await settle()

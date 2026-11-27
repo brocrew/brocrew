@@ -8,7 +8,6 @@ import {
   recordFacets,
   standingOf,
   standingWord,
-  stateHere,
   stateForRecord,
   type AgentFacets,
   type Standing,
@@ -31,9 +30,6 @@ import {
   whoItOwesIn,
   theWorkIn,
   whatTheWaitsCouldNotRead,
-  whoseAnswerIn,
-  whoseWorkIn,
-  stoppedWorkIn,
 } from '../lib/conversation-waits'
 import { providerLimitDisplay } from '../lib/provider-limit-status'
 import type { ProviderBlockStore } from '../lib/provider-limit-facts'
@@ -174,16 +170,7 @@ export function useRailRows(
         // ⚑ **F036 · who waits on its answer** — the host's own state of it, pushed to its listed row.
         whoItOwesIn(host?.state),
       )
-      const currentState = stateForRecord(record, () =>
-        stateHere(
-          record,
-          facets,
-          whoseAnswerIn(props.waiting, record.sessionId),
-          whoseWorkIn(props.waiting, record.sessionId),
-          {},
-          stoppedWorkIn(props.waiting, record.sessionId),
-        ),
-      )
+      const currentState = stateForRecord(record)
       const limit = providerLimitDisplay(
         providerBlocks.value.get(record.sessionId) ?? record.meta,
         currentState,

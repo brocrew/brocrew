@@ -1,6 +1,6 @@
 import type { HandedPath } from '../../../shared/attachment-contracts'
 import type { WhatAPickBecame } from '../../../shared/model-choice-contracts'
-import type { AgentState, StoppedPiece } from '../../../shared/agent-state-contracts'
+import type { AgentState } from '../../../shared/agent-state-contracts'
 import type { ConversationWait, HeldWork } from '../../../shared/task-contracts'
 import type {
   AgentIdentity,
@@ -109,29 +109,6 @@ export interface ConversationPaneProps {
    * handed down beside {@link ConversationPane.waiting} from the same reading, on its rules.
    */
   heldWork?: HeldWork | null
-  /**
-   * ⚑ **D-017 · R19 — what the HOST calls the conversation a question this one asked went to**
-   * (`whoseAnswerIn`, off the same reading as {@link ConversationPane.waiting}), or `null` — the
-   * state's *"waiting on an answer from <name>"*. ⛔ The pane names nobody itself.
-   */
-  answerFrom?: string | null
-  /**
-   * ⚑ **D-036 — what the HOST calls each conversation holding open work this one gave**
-   * (`whoseWorkIn`, off the same reading), or none — the state's *"waiting on <name>"*. ⛔ The pane
-   * names nobody itself.
-   */
-  workWith?: readonly string[]
-  /**
-   * The pieces this conversation gave whose holder stopped with them open (`stoppedWorkIn`, off the
-   * same reading), or none: the state's *"W6.4.1 with Quinn: stopped at 00:28"*.
-   */
-  stoppedWork?: readonly StoppedPiece[]
-  /** When each wait began, as the host read them; a wait it gives no start for has none. */
-  waitsBegan?: {
-    readonly answer?: number | null
-    readonly owes?: number | null
-    readonly work?: number | null
-  }
   /**
    * ⚑ **D-017b · the one state the host says of this conversation** — its row in the one list — or
    * `null` while the list has not named it. ⚑ A view drawn from its ledger draws its plate from it,

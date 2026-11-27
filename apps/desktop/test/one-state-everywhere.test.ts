@@ -1,7 +1,8 @@
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import type { BackgroundLevel, ScheduledRow } from '../src/shared/agent-state-contracts'
 import { describe, expect, it, vi } from 'vitest'
-import { plateWord, standingWord, stateHere } from '../src/renderer/src/lib/agent-state'
+import { plateWord, standingWord } from '../src/renderer/src/lib/agent-state'
+import { hostStateOf } from './lib/host-state'
 import { createSessionRecord } from '../src/renderer/src/lib/session-record'
 import { applyEvent } from '../src/renderer/src/lib/transcript'
 
@@ -44,13 +45,13 @@ const running = (...rows: { id: string; description?: string }[]): BackgroundLev
 
 /**
  * The window's one state for an idle conversation it holds from its first event, with the schedule
- * given — ⚑ the LEVEL decides the arm (`stateHere`), not the facet.
+ * given — ⚑ the LEVEL decides the arm (the host's fold), not the facet.
  *
  * ⚑ **D-029 · `closed` ends it AFTER the level, through the fold's own door** (`session` →
  * `markTerminal`) — the door that set 258 §2's `sleeping` flag, gone with the asleep ruling.
  *
- * ⚑ **D-036 · nobody holds work it gave out** — `stateHere`'s fourth argument (`whoseWorkIn`'s
- * names) is empty, and the facets carry no wait, so the schedule alone decides.
+ * ⚑ **D-036 · nobody holds work it gave out**, and nothing waits, so the schedule alone decides
+ * (the host's fold, {@link hostStateOf}).
  */
 function idleWith(schedule: ScheduledRow[], closed = false) {
   const record = createSessionRecord('sess_f023')
@@ -62,7 +63,7 @@ function idleWith(schedule: ScheduledRow[], closed = false) {
       ref: { provider: 'claude', sessionId: 'th_f023', cwd: '/work', rotation: 0 },
     } as TranscriptEvent)
   }
-  return stateHere(record, { doing: 'idle' }, null, [])
+  return hostStateOf(record)
 }
 
 describe('§2 · the registries, as one detail each', () => {

@@ -8,7 +8,9 @@ import { settle, windowAtItsRailWidth } from '../fixtures/window'
  */
 scene('waiting-avatar', async (stage) => {
   await windowAtItsRailWidth(stage, {
-    pane: { waiting: 'waiting-on-a-worker', workWith: ['Glint'] },
+    pane: { waiting: 'waiting-on-a-worker' },
+    // 501 · the host's state names whom it waits on; the pane names nobody itself.
+    agentState: { is: 'waiting-on-a-worker', on: ['Glint'] },
     more: [[{ type: 'status', state: 'idle' }, Date.now() - 900_000]],
   })
   await settle()

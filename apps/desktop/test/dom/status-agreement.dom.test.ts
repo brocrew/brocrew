@@ -451,6 +451,8 @@ describe('the four surfaces answer once (099)', () => {
     // The fold really is holding the work — without this the four equalities below are a dead page.
     expect(r.control.background.running, 'the fold no longer holds the level').toHaveLength(1)
     expect(r.control.status).toBe('idle')
+    // 501 · the host's state of this fold, as it pushes it: the shared fold names the command.
+    r.agentState = { is: 'in-the-background', what: 'node -e "…"' }
 
     // The provider's name comes from the Client API's catalogue.
     ;(window as { api?: unknown }).api = {
