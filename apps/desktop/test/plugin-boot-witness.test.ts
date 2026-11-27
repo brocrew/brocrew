@@ -1,6 +1,74 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { bootWitness, laterBoot, readBootWitness } from '../resources/plugin-host/boot-witness.mjs'
 
+type NativeExecFailure = {
+  code?: string | number | null
+  signal?: string | null
+  killed?: boolean
+  errno?: string | number
+  syscall?: string
+  stdout?: string
+  stderr?: string
+}
+
+function streamShape(stdout: string, stderr: string) {
+  const out = stdout.trim()
+  return {
+    stdoutBytes: Buffer.byteLength(stdout),
+    stdoutLines: out ? out.split(/\r\n|\r|\n/).length : 0,
+    stdoutDecimalOnly: /^[0-9]+$/.test(out),
+    stdoutHasNul: stdout.includes('\0'),
+    stdoutIsWitness: bootWitness({ kind: 'windows-tick64-v1', value: out }) !== null,
+    stderrBytes: Buffer.byteLength(stderr),
+    stderrNonblank: stderr.trim().length > 0,
+    stderrClixml: /^\s*#< CLIXML\b/.test(stderr),
+    stderrProgressRecord: /\bS=["']progress["']/i.test(stderr),
+    stderrErrorRecord: /\bS=["']error["']/i.test(stderr),
+  }
+}
+
+async function observeWindowsRead() {
+  const start = performance.now()
+  let child: object | null = null
+  const witness = await readBootWitness({
+    read: async (program, args) => {
+      const spawnAt = performance.now()
+      const result = await promisify(execFile)(program, args, {
+        timeout: 10_000,
+        maxBuffer: 4096,
+        windowsHide: true,
+        encoding: 'utf8',
+      }).catch((error: NativeExecFailure) => {
+        child = {
+          elapsedMs: Math.round(performance.now() - spawnAt),
+          completed: false,
+          code: error.code ?? null,
+          signal: error.signal ?? null,
+          killed: error.killed ?? null,
+          errno: error.errno ?? null,
+          syscall: error.syscall ?? null,
+          ...streamShape(error.stdout ?? '', error.stderr ?? ''),
+        }
+        throw error
+      })
+      child = {
+        elapsedMs: Math.round(performance.now() - spawnAt),
+        completed: true,
+        code: 0,
+        signal: null,
+        killed: false,
+        ...streamShape(result.stdout, result.stderr),
+      }
+      if (result.stderr.trim()) throw new Error('Native boot observation failed')
+      return result.stdout
+    },
+  })
+  return {
+    witness,
+    receipt: { elapsedMs: Math.round(performance.now() - start), witnessKind: witness?.kind ?? null, child },
+  }
+}
+
 describe('native boot witnesses', () => {
   afterEach(() => vi.unstubAllEnvs())
   it('reads the macOS boot-session property with the system executable', async () => {
@@ -51,11 +119,16 @@ describe('native boot witnesses', () => {
   it.runIf(process.platform === 'darwin' || process.platform === 'win32')(
     'obtains two well-formed native same-boot observations',
     async () => {
-      const a = await readBootWitness(),
-        b = await readBootWitness()
-      expect(a).not.toBeNull()
-      expect(b).not.toBeNull()
-      expect(laterBoot(a, b)).toBe(false)
+      const a = process.platform === 'win32' ? await observeWindowsRead() : null
+      const first = a ? a.witness : await readBootWitness()
+      const b = process.platform === 'win32' ? await observeWindowsRead() : null
+      const second = b ? b.witness : await readBootWitness()
+      if (a && b) {
+        console.log('RC26_BOOT_WITNESS ' + JSON.stringify({ first: a.receipt, second: b.receipt }))
+      }
+      expect(first).not.toBeNull()
+      expect(second).not.toBeNull()
+      expect(laterBoot(first, second)).toBe(false)
     },
   )
   it.runIf(process.platform === 'win32')(
