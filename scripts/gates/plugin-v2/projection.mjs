@@ -53,17 +53,11 @@ export function project(repo, options) {
     download: fs.readFileSync(download, 'utf8'),
   }
   demand(!fs.existsSync(shim))
-  // Normalize the historical runtime call only for the shared disposable projection.
-  const normalized = (source) =>
-    source.replace(
-      'providerModules[provider].createRuntime()',
-      'providerModules[provider].createRuntime(connectionId)',
-    )
   const together = original.composition === null
   const p = projectBuild(
     config,
-    together ? normalized(original.main) : original.main,
-    together ? null : normalized(original.composition),
+    original.main,
+    together ? null : original.composition,
     options.appData,
     options.browser,
   )

@@ -449,10 +449,10 @@ test('the actual staging body reaches017 from0.0.0 and refuses wrong source/vers
       fs.mkdirSync(path.dirname(to), { recursive: true })
       fs.writeFileSync(to, fs.readFileSync(path.join(repo, f)), { flag: 'wx', mode: 0o600 })
     }
-    assert.equal(
-      JSON.parse(fs.readFileSync(path.join(source, 'apps/desktop/package.json'))).version,
-      '0.0.0',
-    )
+    const testedVersion = JSON.parse(
+      fs.readFileSync(path.join(source, 'apps/desktop/package.json')),
+    ).version
+    assert.ok(!['0.1.7', '0.1.8'].includes(testedVersion))
     let wrongGit = false,
       sourceVersion = '0.0.0',
       observedSource = 'a4dfcf611c244f8365d485022dc674309c2e7ae1',
@@ -498,6 +498,11 @@ test('the actual staging body reaches017 from0.0.0 and refuses wrong source/vers
       ),
       ['-c.extraMetadata.version=0.1.7'],
     )
+    // The tested checkout keeps its released version; Builder's stamp still differs from it.
+    sourceVersion = testedVersion
+    await stageSource('0.1.7', boundaries)
+    assert.equal(cleaned, 0)
+    sourceVersion = '0.0.0'
     wrongGit = true
     await assert.rejects(() => stageSource('0.1.7', boundaries))
     assert.equal(cleaned, 1)

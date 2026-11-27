@@ -41,16 +41,18 @@ function gateChild(child, plugin) {
           "      gateChild(child, 'supervisor')\n      let failed = false",
         ),
     )
+    // Sources since the 0.2 plugin startup errors pipe the forked child's stderr themselves.
+    const ignoredIpc = "stdio: ['ignore', 'ignore', 'ignore', 'ipc'],"
+    const pipeIpcStderr = (source) =>
+      source.includes(ignoredIpc)
+        ? once(source, ignoredIpc, "stdio: ['ignore', 'ignore', 'pipe', 'ipc'],")
+        : source
     change(
       'apps/desktop/src/main/plugins/node-host.ts',
       (source) =>
         helper('guardian') +
         once(
-          once(
-            source,
-            "stdio: ['ignore', 'ignore', 'ignore', 'ipc'],",
-            "stdio: ['ignore', 'ignore', 'pipe', 'ipc'],",
-          ),
+          pipeIpcStderr(source),
           '    const ready = deferred<PluginNodeReady>(),',
           '    gateChild(child, manifest.id)\n    const ready = deferred<PluginNodeReady>(),',
         ),
@@ -60,11 +62,7 @@ function gateChild(child, plugin) {
       (source) =>
         helper('plugin') +
         once(
-          once(
-            source,
-            "stdio: ['ignore', 'ignore', 'ignore', 'ipc'],",
-            "stdio: ['ignore', 'ignore', 'pipe', 'ipc'],",
-          ),
+          pipeIpcStderr(source),
           "  child.on('message', (message) => {",
           "  gateChild(child, config.pluginId)\n  child.on('message', (message) => {",
         ),
