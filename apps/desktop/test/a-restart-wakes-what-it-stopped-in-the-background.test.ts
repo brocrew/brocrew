@@ -199,6 +199,13 @@ describe('a restart wakes what it stopped in the background', () => {
     return host
   }
 
+  it('passes the app quit reason to the active provider session', async () => {
+    const id = await opens('agent-a')
+    const close = vi.spyOn(handlesOf(id)[0]!, 'close')
+    await host.closeAll()
+    expect(close).toHaveBeenCalledExactlyOnceWith('app-quit')
+  })
+
   it.each([false, true])(
     '🔴 a conversation whose background work the quit stopped is held a notice at once and started five seconds on, and the notice goes in as its turn (deferred %s)',
     async (deferred) => {

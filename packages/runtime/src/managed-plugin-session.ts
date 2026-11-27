@@ -616,14 +616,14 @@ export function withManagedPluginAttachments(
             return inner.interrupt(...args)
           }
         if (key === 'close')
-          return () =>
+          return (...args: Parameters<SessionHandle['close']>) =>
             (closing ??= (async () => {
               closed = true
               pending?.abort()
               try {
-                await ownership.closeAll()
+                await ownership.closeAll(...args)
                 await pendingSend
-                await ownership.closeAll()
+                await ownership.closeAll(...args)
               } finally {
                 ownership.seal()
                 await bounded(source.close()).catch(() => undefined)
