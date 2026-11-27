@@ -7,7 +7,7 @@ import {
   CHANGES_TEXT,
   DROPPED_OFF_THE_SCALE,
   DROPPED_TEXT,
-} from '../src/renderer/src/lib/drawer-tab-roles'
+} from './lib/drawer-tab-roles'
 // Read through the namespace inside each test, so a missing export fails by assertion rather
 // than at collection.
 import * as grants from '../src/renderer/src/lib/standing-grants'

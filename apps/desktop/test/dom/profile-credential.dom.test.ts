@@ -8,8 +8,7 @@ import type { Provider } from '../../src/shared/runtime-ipc'
 import { mount, unmountAll, visible, type Mounted } from './harness'
 import { NO_LAUNCH_CHOICES } from '../../src/renderer/src/lib/launch-choices'
 
-// The approved short launcher removes the credential disclosure. Capability wording
-// remains covered by profile-credential.test.ts, where its surviving helper is used.
+// The approved short launcher removes the credential disclosure.
 function open(over: { defaultProvider?: Provider } = {}): Mounted {
   const words = ref('go')
   const book = createAttachmentBook()

@@ -149,9 +149,9 @@ export interface ProviderStanding {
 }
 
 /**
- * ⚑ **The fallback for an `available` entry that declared no note** — {@link profileCredential}'s
- * shape and its reason: *"every real declaration carries one; a provider that omitted it would still
- * have to say something, because silence here is the original defect."*
+ * ⚑ **The fallback for an `available` entry that declared no note**: every real declaration carries
+ * one, and a provider that omitted it would still have to say something, because silence here is the
+ * original defect.
  */
 export const A_PROVIDER_THAT_SAID_ONLY_YES =
   'A server this identity may use is handed to conversations on this provider.'

@@ -455,7 +455,7 @@ function press(): void {
 }
 
 /* The primary quantity stays larger than prose, using the shared display role.
- * drawer-tab-roles.ts retains its existing off-scale roster entry for Hana to review. */
+ * test/lib/drawer-tab-roles.ts retains its existing off-scale roster entry for Hana to review. */
 .meter-figure {
   color: var(--text);
   font-size: var(--type-display);

@@ -18,7 +18,7 @@ import {
   type AgentFacets,
 } from '../src/renderer/src/lib/agent-state'
 import { theWaitIn, waitReadingFor } from '../src/renderer/src/lib/conversation-waits'
-import { everyFacetState } from '../src/renderer/src/lib/status-projection'
+import { everyFacetState } from './lib/status-projection'
 import { WORK_STATE_WORD } from '../src/renderer/src/lib/work-report'
 import { applyEvent } from '../src/renderer/src/lib/transcript'
 import { createSessionRecord, type SessionRecord } from '../src/renderer/src/lib/session-record'

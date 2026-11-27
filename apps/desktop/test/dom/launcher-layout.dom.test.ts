@@ -44,8 +44,8 @@ import { NO_LAUNCH_CHOICES } from '../../src/renderer/src/lib/launch-choices'
  * *"A line no mutation can kill is not carrying its rule"*, so this was decided by naming the
  * content that can still be too wide rather than by keeping a sweep out of habit:
  *
- *  - **`profile-credential` is the ADAPTER's sentence** (`homeCredential.note` / `.reason`,
- *    `profile-credential.ts`: *"the words are the ADAPTER's, never this file's"*). It arrives from
+ *  - **`profile-credential` is the ADAPTER's sentence** (`homeCredential.note` / `.reason`:
+ *    the words are the adapter's, never this app's). It arrives from
  *    outside this repo and no assertion anywhere bounds its length.
  *  - **`command-error` is the adapter's diagnostic** — `085` made reading it forbidden precisely
  *    because it is not a contract, and seven live-smoke steps show it verbatim.
