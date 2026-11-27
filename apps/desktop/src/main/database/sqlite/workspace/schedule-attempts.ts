@@ -1,8 +1,6 @@
-import { join } from 'node:path'
 import type { NotStartedBecause } from '@brobot2/runtime'
 import type { WakeAttempt } from '../../../../shared/schedule-wake-admission'
 import type { AppDatabase } from '../../../db/connection'
-import { importSideFile, objectIn } from './side-file-import'
 
 /**
  * What this app has already done about each stopped conversation's scheduled jobs, kept across a
@@ -71,9 +69,6 @@ export interface KeptAttempts {
 /** Nothing done yet. */
 export const NO_ATTEMPTS_KEPT: KeptAttempts = { conversations: {} }
 
-/** The file older builds kept these in, imported once into `schedule_attempt`. */
-export const SCHEDULE_ATTEMPTS_FILE = 'schedule-attempts.json'
-
 export interface AttemptsKept {
   read(): KeptAttempts
   write(kept: KeptAttempts): void
@@ -113,30 +108,4 @@ function replaceAttempts(database: AppDatabase, kept: KeptAttempts): void {
        (SELECT conversation_id FROM schedule_attempt ORDER BY at DESC LIMIT ?)`,
     )
     .run(MAX_ATTEMPT_CONVERSATIONS)
-}
-
-/** Imports `schedule-attempts.json` from `userData` once, skipping each record it cannot use. */
-export function importScheduleAttemptsFile(database: AppDatabase, userData: string): void {
-  importSideFile(database, join(userData, SCHEDULE_ATTEMPTS_FILE), (said) => {
-    const conversations: Record<string, ConversationAttempts> = {}
-    for (const [id, row] of Object.entries(objectIn(objectIn(said)['conversations']))) {
-      const record = objectIn(row)
-      const list = (value: unknown) => (Array.isArray(value) ? value : [])
-      if (typeof record['at'] !== 'number') continue
-      conversations[id] = {
-        attempts: list(record['attempts']),
-        admittedAt: typeof record['admittedAt'] === 'number' ? record['admittedAt'] : null,
-        told: list(record['told']),
-        runs: objectIn(record['runs']) as ConversationAttempts['runs'],
-        notStartedSaid: objectIn(
-          record['notStartedSaid'],
-        ) as ConversationAttempts['notStartedSaid'],
-        ...(typeof record['resetUnmarkedAt'] === 'number'
-          ? { resetUnmarkedAt: record['resetUnmarkedAt'] }
-          : {}),
-        at: record['at'],
-      }
-    }
-    replaceAttempts(database, { conversations })
-  })
 }

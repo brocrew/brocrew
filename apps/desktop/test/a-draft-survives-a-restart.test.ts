@@ -3,7 +3,6 @@ import {
   linkSync,
   mkdirSync,
   mkdtempSync,
-  readFileSync,
   realpathSync,
   rmSync,
   statSync,
@@ -18,11 +17,7 @@ import { nextTick, ref, type Ref } from 'vue'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createDraftWriter, keepDraftedPastes } from '../src/main/drafts-file'
-import {
-  createSqliteDraftStorage,
-  importDraftsFile,
-  SAVED_DRAFTS_FILE,
-} from '../src/main/database/sqlite/workspace/drafts'
+import { createSqliteDraftStorage } from '../src/main/database/sqlite/workspace/drafts'
 import { restoreSavedDrafts, savedDraftsFrom } from '../src/main/saved-drafts'
 import { pastedImagesRoot, sweepPastedImages } from '../src/main/runtime/pasted-image'
 import {
@@ -593,6 +588,14 @@ describe('§3 · the last run’s drafts are read BEFORE the window draws, bound
 // §4 · main's file
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
+/** A draft row as an earlier run left it in the database. */
+function keptByAnEarlierRun(
+  db: AppDatabase,
+  entry: { slot: string; [field: string]: unknown },
+): void {
+  db.prepare('INSERT INTO draft (slot, entry) VALUES (?, ?)').run(entry.slot, JSON.stringify(entry))
+}
+
 describe('§4 · the kept drafts — in the app’s own database, and read as untrusted', () => {
   let userData: string
   let db: AppDatabase
@@ -660,14 +663,11 @@ describe('§4 · the kept drafts — in the app’s own database, and read as un
   it('⛔ `missing` is never read from what was kept — it is decided afresh at each launch', async () => {
     const present = join(userData, 'present.md')
     writeFileSync(present, 'x')
-    writeFileSync(
-      join(userData, SAVED_DRAFTS_FILE),
-      JSON.stringify({
-        version: 1,
-        drafts: [{ slot: draftKey(A), text: '', attached: [{ ...FILE(present), missing: true }] }],
-      }),
-    )
-    importDraftsFile(db, userData)
+    keptByAnEarlierRun(db, {
+      slot: draftKey(A),
+      text: '',
+      attached: [{ ...FILE(present), missing: true }],
+    })
     expect((await readBack()).drafts[0]!.attached).toEqual([FILE(present)])
   })
 
@@ -790,19 +790,8 @@ describe('§4 · the kept drafts — in the app’s own database, and read as un
     expect(shaped.drafts[0]!.attached).toEqual(twelve.slice(0, 10))
   })
 
-  it('⚑ nothing kept is no drafts; an old file that is not JSON is kept and imports nothing', async () => {
+  it('⚑ nothing kept is no drafts', async () => {
     expect((await readBack()).drafts).toEqual([])
-    writeFileSync(join(userData, SAVED_DRAFTS_FILE), '{ half a file')
-    importDraftsFile(db, userData)
-    expect((await readBack()).drafts).toEqual([])
-    expect(readFileSync(join(userData, SAVED_DRAFTS_FILE), 'utf8')).toBe('{ half a file')
-  })
-
-  it('⚑ an old file ANOTHER build wrote (another version) is imported, so this build restores it', async () => {
-    const raw = { version: 2, drafts: [{ slot: NEW_CONVERSATION, text: 'x', attached: [] }] }
-    writeFileSync(join(userData, SAVED_DRAFTS_FILE), JSON.stringify(raw))
-    importDraftsFile(db, userData)
-    expect((await readBack()).drafts).toEqual(raw.drafts)
   })
 
   it('⛔ a save that fails throws nothing at the renderer', async () => {
@@ -964,21 +953,14 @@ describe('§4 · the kept drafts — in the app’s own database, and read as un
     expect(statSync(picture).isFile()).toBe(true)
   })
 
-  it('a picture named only by an imported draft survives the first start-up sweep', async () => {
+  it('a picture named only by a draft an earlier run kept survives the first start-up sweep', async () => {
     const root = pastedImagesRoot(userData)
     mkdirSync(root)
     const picture = join(realpathSync(root), `pasted-${'d'.repeat(32)}.png`)
     writeFileSync(picture, 'png')
     const old = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000)
     utimesSync(picture, old, old)
-    writeFileSync(
-      join(userData, SAVED_DRAFTS_FILE),
-      JSON.stringify({
-        version: 1,
-        drafts: [{ slot: draftKey(A), text: '', attached: [FILE(picture)] }],
-      }),
-    )
-    importDraftsFile(db, userData)
+    keptByAnEarlierRun(db, { slot: draftKey(A), text: '', attached: [FILE(picture)] })
     const now = Date.now()
     expect(keepDraftedPastes(createSqliteDraftStorage(db), userData, now)).toBe(1)
     expect(await sweepPastedImages(root, now)).toBe(0)

@@ -6,7 +6,7 @@ import {
   neutralHostDeps,
 } from './lib/host-fixture'
 import { performance } from 'node:perf_hooks'
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -21,12 +21,7 @@ import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
-import {
-  importProviderUsageFile,
-  NO_USAGE_KEPT,
-  PROVIDER_USAGE_FILE,
-  usageKeptIn,
-} from '../src/main/provider-usage-file'
+import { NO_USAGE_KEPT, usageKeptIn } from '../src/main/provider-usage-file'
 import {
   USAGE_NEARS_ITS_LIMIT_AT,
   providerConditions,
@@ -141,44 +136,6 @@ describe('§1 · the readings, kept and imported', () => {
     }
     usageKeptIn(db).write(usage)
     expect(usageKeptIn(db).read()).toEqual(usage)
-  })
-
-  it('⛔ the old file is imported once, skipping rows that are not readings; one not JSON is kept', () => {
-    const file = join(dir, PROVIDER_USAGE_FILE)
-    writeFileSync(file, 'not json')
-    importProviderUsageFile(db, dir)
-    expect(usageKeptIn(db).read()).toEqual(NO_USAGE_KEPT)
-    expect(readFileSync(file, 'utf8')).toBe('not json')
-    writeFileSync(
-      file,
-      JSON.stringify({
-        readings: {
-          claude: [
-            { window: 'seven_day', usedPercent: 34, resetsAt: 2_000_000, at: 1_000 },
-            { window: 'y', usedPercent: 1, resetsAt: 'soon', at: 1 },
-            { window: 'z', usedPercent: 1, resetsAt: null, at: 0 },
-            // A time no date can hold: saying it would throw where the band and card say it.
-            { window: 'far', usedPercent: 99, resetsAt: 9e15, at: 1 },
-            { window: 'seven_day', usedPercent: 99, resetsAt: null, at: 5 },
-          ],
-          codex: 'nothing',
-        },
-        seen: { claude: [{ window: 'seven_day', first: 1, last: 2 }, { window: 'no-time' }] },
-      }),
-    )
-    importProviderUsageFile(db, dir)
-    expect(usageKeptIn(db).read()).toEqual({
-      readings: {
-        claude: [
-          { window: 'seven_day', usedPercent: 34, resetsAt: 2_000_000, at: 1_000 },
-          { window: 'y', usedPercent: 1, resetsAt: null, at: 1 },
-          { window: 'far', usedPercent: 99, resetsAt: null, at: 1 },
-        ],
-        codex: [],
-      },
-      seen: { claude: [{ window: 'seven_day', first: 1, last: 2 }], codex: [] },
-    })
-    expect(existsSync(file)).toBe(false)
   })
 })
 

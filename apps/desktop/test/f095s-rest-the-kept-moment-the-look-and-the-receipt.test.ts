@@ -1,5 +1,5 @@
 import { neutralHostDeps, RecordingSink } from './lib/host-fixture'
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -12,11 +12,7 @@ import { createSessionStore, type SessionStore } from '../src/main/db/session-st
 import { resourcesRoot } from '../src/main/resources/resources'
 import { RuntimeHost, THE_APP_ITSELF } from '../src/main/runtime/runtime-host'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
-import {
-  importSignInChangesFile,
-  SIGN_IN_CHANGES_FILE,
-  signInChangesIn,
-} from '../src/main/sign-in-changes'
+import { signInChangesIn } from '../src/main/sign-in-changes'
 import { sinkOwnerId } from '../src/main/runtime/window-caller'
 import { ProviderDouble, anOpenGate } from './lib/provider-double'
 
@@ -76,27 +72,6 @@ describe('F095 · W4.172’s rest', () => {
       expect(read.get('claude')).toBe(1_700_000_000_000)
       kept.write(new Map<Provider, number>([['codex', 5]]))
       expect([...kept.read()]).toEqual([['codex', 5]])
-    })
-
-    it('⛔ the old file is imported once, taking only real moments, then deleted', () => {
-      const file = join(dir, SIGN_IN_CHANGES_FILE)
-      writeFileSync(
-        file,
-        JSON.stringify({ version: 1, changed: { claude: 0, codex: 7, other: 9 } }),
-      )
-      importSignInChangesFile(db, dir)
-      expect([...signInChangesIn(db).read()]).toEqual([['codex', 7]])
-      expect(existsSync(file)).toBe(false)
-    })
-
-    it('⛔ an old file that is not JSON is kept, imports nothing, and does not throw', () => {
-      const warned = vi.spyOn(console, 'warn').mockImplementation(() => {})
-      const file = join(dir, SIGN_IN_CHANGES_FILE)
-      writeFileSync(file, 'not json')
-      expect(() => importSignInChangesFile(db, dir)).not.toThrow()
-      expect(signInChangesIn(db).read().size).toBe(0)
-      expect(existsSync(file)).toBe(true)
-      expect(warned).toHaveBeenCalled()
     })
   })
 

@@ -75,14 +75,14 @@ export const MANIFEST = Object.freeze([
     name: 'drafts.json',
     expect: 'file',
     why: DRAFTS,
-    source: 'main/database/sqlite/workspace/drafts.ts (importDraftsFile)',
+    source: 'main/database/sqlite/workspace/side-file-import.ts (SIDE_FILES_BEFORE_0_2_18)',
   },
   // The conversations a person archived, named by their rows in the ledger it goes with.
   {
     name: 'archived.json',
     expect: 'file',
     why: LEDGER,
-    source: 'main/database/sqlite/workspace/archived.ts',
+    source: 'main/database/sqlite/workspace/side-file-import.ts (SIDE_FILES_BEFORE_0_2_18)',
   },
   { name: 'exports', expect: 'dir', why: EXPORTS, source: 'main/index.ts:415' },
   { name: 'worker-output', expect: 'dir', why: WORKSPACE, source: 'main/storage/engine.ts' },
@@ -104,19 +104,19 @@ export const MANIFEST = Object.freeze([
     name: 'sign-in-changes.json',
     expect: 'file',
     why: LEDGER,
-    source: 'main/sign-in-changes.ts (importSignInChangesFile)',
+    source: 'main/database/sqlite/workspace/side-file-import.ts (SIDE_FILES_BEFORE_0_2_18)',
   },
   {
     name: 'schedule-attempts.json',
     expect: 'file',
     why: LEDGER,
-    source: 'main/schedule-attempts-file.ts (importScheduleAttemptsFile)',
+    source: 'main/database/sqlite/workspace/side-file-import.ts (SIDE_FILES_BEFORE_0_2_18)',
   },
   {
     name: 'profile-execution.json',
     expect: 'file',
     why: LEDGER,
-    source: 'main/profile-execution-file.ts (importProfileExecutionFile)',
+    source: 'main/database/sqlite/workspace/side-file-import.ts (SIDE_FILES_BEFORE_0_2_18)',
   },
   {
     name: 'api-keys.json',
@@ -128,7 +128,7 @@ export const MANIFEST = Object.freeze([
     name: 'turns-the-app-cut.json',
     expect: 'file',
     why: LEDGER,
-    source: 'main/turns-the-app-cut-file.ts (importTurnsTheAppCutFile)',
+    source: 'main/database/sqlite/workspace/side-file-import.ts (SIDE_FILES_BEFORE_0_2_18)',
   },
   {
     name: 'workspace.json',
@@ -146,7 +146,7 @@ export const MANIFEST = Object.freeze([
     name: 'provider-usage.json',
     expect: 'file',
     why: USAGE,
-    source: 'main/provider-usage-file.ts (importProviderUsageFile)',
+    source: 'main/database/sqlite/workspace/side-file-import.ts (SIDE_FILES_BEFORE_0_2_18)',
   },
   {
     name: 'provider-accounts.json',

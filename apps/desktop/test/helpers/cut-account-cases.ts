@@ -1,5 +1,3 @@
-import { writeFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { expect, it } from 'vitest'
 import type { FakeSessionHandle } from '@brobot2/runtime/testing'
 import type { Provider } from '@brobot2/shared'
@@ -11,13 +9,7 @@ import {
 } from '../../src/main/providers/claude/account-record'
 import type { AppDatabase } from '../../src/main/db/connection'
 import { usageKeptIn } from '../../src/main/provider-usage-file'
-import {
-  importTurnsTheAppCutFile,
-  NO_CUTS_KEPT,
-  TURNS_THE_APP_CUT_FILE,
-  turnsTheAppCutIn,
-  type CutState,
-} from '../../src/main/turns-the-app-cut-file'
+import { turnsTheAppCutIn, type CutState } from '../../src/main/turns-the-app-cut-file'
 
 export interface Held {
   readonly promise: Promise<void>
@@ -114,43 +106,6 @@ export function registerPersistedCutIdentityCases({
     else if (typeof expected === 'string') expect(identity).toBe(expected)
     else expect(identity).toMatch(expected)
     if (identity !== undefined) expect(identity).not.toContain(EMAIL.ada)
-  })
-}
-
-export function registerLegacyCutIdentityCase({
-  life,
-  folder,
-  aTurnRunsIn,
-  starts,
-  stateOf,
-  continuations,
-  waitFor,
-  SOON,
-}: CutAccountContext): void {
-  it('imports a legacy digest as unknown, skips its life, and never uses the latest account', async () => {
-    const id = await aTurnRunsIn()
-    await life().host.closeAll()
-    const kept = turnsTheAppCutIn(life().db).read()
-    turnsTheAppCutIn(life().db).write(NO_CUTS_KEPT)
-    life().db.prepare('DELETE FROM imported_side_file WHERE name = ?').run(TURNS_THE_APP_CUT_FILE)
-    writeFileSync(
-      join(folder(), TURNS_THE_APP_CUT_FILE),
-      JSON.stringify({
-        lives: {
-          ...kept.lives,
-          [id]: { ...kept.lives[id]!, identity: `claude:${'b'.repeat(32)}` },
-        },
-        cuts: { ...kept.cuts, [id]: { ...kept.cuts[id]!, expected: `claude:${'a'.repeat(32)}` } },
-      }),
-    )
-    importTurnsTheAppCutFile(life().db, folder())
-    const imported = turnsTheAppCutIn(life().db).read()
-    expect(imported.cuts[id]!.expected).toBeNull()
-    expect(imported.lives[id]).toBeUndefined()
-    starts(SOON)
-    await waitFor(() => typeof stateOf(id) === 'object', 'the legacy cut to be left unknown')
-    expect(continuations(id)).toEqual([])
-    expect(stateOf(id)).toEqual({ ended: 'account-not-known' })
   })
 }
 

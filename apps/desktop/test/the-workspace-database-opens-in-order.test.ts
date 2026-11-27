@@ -5,9 +5,9 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeAll, expect, it } from 'vitest'
-import { ARCHIVED_FILE, archivedConversationsIn } from '../src/main/archived-file'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { counted, NewerDatabaseError, openOrRefuse } from '../src/main/db/newer-database'
+import { OPEN_IN_0_2_18_FIRST } from '../src/main/database/sqlite/workspace/side-file-import'
 import {
   MigrationFailed,
   openWorkspaceDatabase,
@@ -23,7 +23,7 @@ import { WorkspaceUnavailable } from '../src/main/workspace-startup'
 /**
  * Card 359 S0: how a start opens the workspace database, pinned before the open moves off the
  * window's main thread. Open (with the WAL cut), refuse a newer database before any migration,
- * migrate, then import the old side files once; a failed migration closes and says so. A database
+ * stop on a workspace that skipped 0.2.18, then migrate; a failed migration closes and says so. A database
  * opened again afterwards needs no migration and is left in shared locking, so a second connection
  * can still take the checkpoint at close.
  *
@@ -65,19 +65,13 @@ const recorded = (db: AppDatabase): number | null => {
   return record.kind === 'recorded' ? record.migrations.length : null
 }
 
-it('a new workspace opens migrated, in WAL with shared locking, and imports its side files after', () => {
+it('a new workspace opens migrated, in WAL with shared locking', () => {
   const folder = aFolder()
-  writeFileSync(
-    join(folder, ARCHIVED_FILE),
-    JSON.stringify({ version: 1, archived: { fictional: { at: 5 } } }),
-  )
   const steps: string[] = []
   const db = opened(
     opening(folder, {
       migrate: (apply) => {
         steps.push('migrate')
-        // The side files are imported only after the migrations: the file is still there now.
-        expect(existsSync(join(folder, ARCHIVED_FILE))).toBe(true)
         apply()
       },
     }),
@@ -86,8 +80,17 @@ it('a new workspace opens migrated, in WAL with shared locking, and imports its 
   expect(recorded(db)).toBe(build.length)
   expect(db.pragma('journal_mode', { simple: true })).toBe('wal')
   expect(db.pragma('locking_mode', { simple: true })).toBe('normal')
-  expect(existsSync(join(folder, ARCHIVED_FILE))).toBe(false)
-  expect(archivedConversationsIn(db).archivedAt('fictional')).toBe(5)
+})
+
+it('a workspace that skipped 0.2.18 stops before any migration, and keeps its side file', () => {
+  const folder = aFolder()
+  writeFileSync(join(folder, 'archived.json'), '{"version":1}')
+  const steps: string[] = []
+  expect(() =>
+    openWorkspaceDatabase(opening(folder, { migrate: () => void steps.push('migrate') })),
+  ).toThrow(OPEN_IN_0_2_18_FIRST)
+  expect(steps).toEqual([])
+  expect(existsSync(join(folder, 'archived.json'))).toBe(true)
 })
 
 it('a database a newer build migrated is refused before any migration runs, and left as it was', () => {

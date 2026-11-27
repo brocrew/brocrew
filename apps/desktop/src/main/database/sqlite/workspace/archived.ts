@@ -1,9 +1,4 @@
-import { join } from 'node:path'
 import type { AppDatabase } from '../../../db/connection'
-import { importSideFile, objectIn } from './side-file-import'
-
-/** The file older builds kept the archived set in, imported once into `archived_conversation`. */
-export const ARCHIVED_FILE = 'archived.json'
 
 export interface ArchivedConversations {
   /** Whether `id` is archived. */
@@ -48,17 +43,6 @@ export function archivedInMemory(): ArchivedConversations {
     () => undefined,
     () => undefined,
   )
-}
-
-/** Imports `archived.json` (`{version, archived: {id: {at}}}`) from `userData`, once. */
-export function importArchivedFile(database: AppDatabase, userData: string): void {
-  importSideFile(database, join(userData, ARCHIVED_FILE), (said) => {
-    const insert = database.prepare(INSERT)
-    for (const [id, entry] of Object.entries(objectIn(objectIn(said)['archived']))) {
-      const at = objectIn(entry)['at']
-      if (typeof at === 'number' && Number.isFinite(at)) insert.run(id, at)
-    }
-  })
 }
 
 function keptIn(

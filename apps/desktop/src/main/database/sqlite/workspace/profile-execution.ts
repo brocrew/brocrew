@@ -1,7 +1,4 @@
-import { join } from 'node:path'
-import { existsSync } from 'node:fs'
 import type Database from 'better-sqlite3'
-import { importSideFile, objectIn } from './side-file-import'
 
 /**
  * How each profile runs its work, kept across a restart: one `profile_execution` row per identity.
@@ -84,9 +81,6 @@ export type ProfileExecutionRead =
     }
   | { readonly readable: false; readonly why: string }
 
-/** The old file's versions the import reads. */
-const PROFILE_EXECUTION_VERSIONS = [1, 2]
-
 /** Nothing kept: every profile is normal. */
 export const NO_PROFILE_EXECUTION: KeptProfileExecution = { profiles: {} }
 
@@ -99,9 +93,6 @@ export function entryWithout(
   delete copy[field]
   return copy
 }
-
-/** The file older builds kept this in, imported once. */
-export const PROFILE_EXECUTION_FILE = 'profile-execution.json'
 
 /** What `database` keeps; the graph worker reads it in its own snapshot. */
 export function readProfileExecution(database: Database.Database): ProfileExecutionRead {
@@ -117,23 +108,6 @@ export function readProfileExecution(database: Database.Database): ProfileExecut
     rows.map(({ id, entry }) => [id, JSON.parse(entry) as ProfileExecution]),
   )
   return { readable: true, kept: state.off === 1 ? { servicesOff: true, profiles } : { profiles } }
-}
-
-/**
- * What the host reads: as {@link readProfileExecution}, except that an older build's file still
- * waiting to be imported is unreadable, so every kind is unknown rather than normal.
- */
-export function readProfileExecutionIn(
-  database: Database.Database,
-  userData: string,
-): ProfileExecutionRead {
-  const imported =
-    database
-      .prepare('SELECT 1 FROM imported_side_file WHERE name = ?')
-      .get(PROFILE_EXECUTION_FILE) !== undefined
-  if (!imported && existsSync(join(userData, PROFILE_EXECUTION_FILE)))
-    return { readable: false, why: `${PROFILE_EXECUTION_FILE} could not be imported` }
-  return readProfileExecution(database)
 }
 
 /** Keep `kept`, replacing what was kept, in one transaction. */
@@ -156,19 +130,6 @@ function replaceProfileExecution(database: Database.Database, kept: KeptProfileE
        ON CONFLICT(id) DO UPDATE SET services_off = excluded.services_off`,
     )
     .run(kept.servicesOff === true ? 1 : 0)
-}
-
-/** Imports `profile-execution.json` (v1 or v2) from `userData` once, each entry as written. */
-export function importProfileExecutionFile(database: Database.Database, userData: string): void {
-  importSideFile(database, join(userData, PROFILE_EXECUTION_FILE), (said) => {
-    const whole = objectIn(said)
-    if (!PROFILE_EXECUTION_VERSIONS.includes(whole['version'] as number))
-      throw new Error('it is not a version this build imports')
-    replaceProfileExecution(database, {
-      profiles: objectIn(whole['profiles']) as Record<string, ProfileExecution>,
-      ...(whole['servicesOff'] === true ? { servicesOff: true } : {}),
-    })
-  })
 }
 
 /** Independent service birth evidence, including the legacy parentless rootless record. */

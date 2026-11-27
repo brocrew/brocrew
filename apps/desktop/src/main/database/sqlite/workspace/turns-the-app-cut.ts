@@ -1,8 +1,6 @@
-import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { providerSchema, type Provider } from '@brobot2/shared'
+import type { Provider } from '@brobot2/shared'
 import type { AppDatabase } from '../../../db/connection'
-import { importSideFile, objectIn } from './side-file-import'
 
 /**
  * The turns that were cut while they ran — by this app's own quit, a crash, the provider's program
@@ -23,39 +21,36 @@ import { importSideFile, objectIn } from './side-file-import'
  */
 
 /** Why a cut was not, or will not be, continued. */
-const NOT_CONTINUED_BECAUSE = [
+export type NotContinuedBecause =
   // Not a cut the app may continue.
-  'too-old',
-  'blocked',
-  'not-cut',
+  | 'too-old'
+  | 'blocked'
+  | 'not-cut'
   // Two automatic continuations of it came just before, in a row: a third cut waits for a person.
-  'continued-twice',
-  'elsewhere',
-  'not-startable',
-  'kept-stopped',
+  | 'continued-twice'
+  | 'elsewhere'
+  | 'not-startable'
+  | 'kept-stopped'
   // A service's that is no longer on the piece it was cut on: that piece stalls, and its caller is told.
-  'a-service',
+  | 'a-service'
   // The account.
-  'account-not-known',
-  'not-same-account',
-  'not-same-account-cohort',
+  | 'account-not-known'
+  | 'not-same-account'
+  | 'not-same-account-cohort'
   // Something else took the conversation first.
-  'overtaken',
-  'stopped',
+  | 'overtaken'
+  | 'stopped'
   // Its provider's usage limit holds: the words would wait past the moment they are true for.
-  'limited',
+  | 'limited'
   // A limit's: its reset is not known, or too far off to wait for, or it needs credits bought.
-  'no-reset',
-  'reset-too-far',
-  'credits-required',
+  | 'no-reset'
+  | 'reset-too-far'
+  | 'credits-required'
   // A step that may or may not have happened, which is never taken again.
-  'start-failed',
-  'start-uncertain',
-  'never-queued',
-  'handover-uncertain',
-] as const
-
-export type NotContinuedBecause = (typeof NOT_CONTINUED_BECAUSE)[number]
+  | 'start-failed'
+  | 'start-uncertain'
+  | 'never-queued'
+  | 'handover-uncertain'
 
 /**
  * Where a cut stands. Each moves only forward: `pending` → `starting` → `queued` → `sent`, or to an
@@ -121,9 +116,6 @@ const MAX_CUT_CONVERSATIONS = 500
 /** How long an ended or sent cut is kept, for a person to be told of later: a week. */
 const CUT_KEPT_FOR_MS = 7 * 24 * 60 * 60_000
 
-/** The file older builds kept these in, imported once into `cut_turn` and `cut_life`. */
-export const TURNS_THE_APP_CUT_FILE = 'turns-the-app-cut.json'
-
 /** A new id for the words a cut's continuation is held under: a held message's own shape. */
 export const newNoticeId = (): string => `msg_${randomUUID()}`
 
@@ -186,57 +178,4 @@ function replaceCuts(database: AppDatabase, kept: KeptCuts): void {
        (SELECT conversation_id FROM cut_life ORDER BY since DESC LIMIT ?)`,
     )
     .run(MAX_CUT_CONVERSATIONS)
-}
-
-/** Old keyed/double-digest tags supply no evidence of the account now launching. */
-const legacyIdentity = (identity: unknown): boolean =>
-  typeof identity === 'string' && /^[a-z]+(?:-launch)?:[0-9a-f]{32}$/.test(identity)
-
-const CUT_STATES = ['pending', 'starting', 'queued', 'sent']
-
-/**
- * Imports `turns-the-app-cut.json` from `userData` once. A cut or life it cannot use is skipped,
- * which authorizes nothing; a life on a legacy identity is skipped and a cut's legacy `expected`
- * becomes `null`, so neither can prove the account now launching.
- */
-export function importTurnsTheAppCutFile(database: AppDatabase, userData: string): void {
-  importSideFile(database, join(userData, TURNS_THE_APP_CUT_FILE), (said) => {
-    const whole = objectIn(said)
-    const number = (value: unknown): value is number =>
-      typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
-    const text = (value: unknown): value is string => typeof value === 'string' && value !== ''
-    const lives: Record<string, LifeRecord> = {}
-    for (const [id, row] of Object.entries(objectIn(whole['lives']))) {
-      const { since, identity, generation, launched } = objectIn(row)
-      if (
-        [since, generation, launched].every(number) &&
-        text(identity) &&
-        !legacyIdentity(identity)
-      )
-        lives[id] = { since, identity, generation, launched } as LifeRecord
-    }
-    const cuts: Record<string, CutRecord> = {}
-    for (const [id, row] of Object.entries(objectIn(whole['cuts']))) {
-      const r = objectIn(row)
-      const ended = objectIn(r['state'])['ended']
-      const stateKnown =
-        CUT_STATES.includes(r['state'] as string) ||
-        NOT_CONTINUED_BECAUSE.includes(ended as NotContinuedBecause)
-      if (
-        !stateKnown ||
-        !providerSchema.safeParse(r['provider']).success ||
-        !['quit', 'crash', 'program', 'limit'].includes(r['kind'] as string) ||
-        ![r['turn'], r['profile'], r['noticeId']].every(text) ||
-        ![r['generation'], r['cutAt'], r['at']].every(number) ||
-        typeof r['aPersonStartedIt'] !== 'boolean' ||
-        !(r['expected'] === null || text(r['expected']))
-      )
-        continue
-      cuts[id] = {
-        ...r,
-        expected: legacyIdentity(r['expected']) ? null : r['expected'],
-      } as CutRecord
-    }
-    replaceCuts(database, { lives, cuts })
-  })
 }

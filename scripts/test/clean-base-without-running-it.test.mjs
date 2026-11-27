@@ -101,32 +101,26 @@ describe('the source census — a new durable write under userData must not slip
       "'workspaces.json'",
       // The API keys a person saved. REMOVED: a fresh install has none (`LEDGER`).
       'API_KEYS_FILE',
-      // The conversations a person archived, removed with the ledger whose rows they name (`LEDGER`).
-      'ARCHIVED_FILE',
       // The workspace's recovery copies, removed with the ledger they copy (`RECOVERY`).
       'BACKUPS_DIRNAME',
       // The ledger itself, as the recovery code names it (`brobot2.sqlite`, `LEDGER`).
       'DATABASE_FILE',
       // Shared skill folders and their import receipts are removed with the workspace.
       'OFF_SKILLS_DIRNAME',
-      'PROFILE_EXECUTION_FILE',
       'PROVIDER_HOMES_DIRNAME',
-      'PROVIDER_USAGE_FILE',
       // The records of a restore, and the database a restore set aside (`RECOVERY`).
       'RECOVERY_DIRNAME',
       'RESOURCES_DIRNAME',
-      'SAVED_DRAFTS_FILE',
-      'SCHEDULE_ATTEMPTS_FILE',
       // The Debug mode choice, `logging.json` (`WORKSPACE`).
       'SETTINGS_FILE',
       'SHARED_SKILLS_DIRNAME',
-      'SIGN_IN_CHANGES_FILE',
       'SKILLS_CONVERSION_FILE',
       // A hidden launch's theme library is reset with its workspace.
       'THEME_LIBRARY_FOLDER',
-      'TURNS_THE_APP_CUT_FILE',
       'WORKER_OUTPUT_DIRNAME',
       'WORKSPACE_DIRNAME',
+      // The side files from before 0.2.18 a start looks for, each in `SIDE_FILES_BEFORE_0_2_18`.
+      'name',
       // The app's state files a recovery copy takes, each named in `APP_STATE_FILES`; the test
       // below holds every name there to this manifest.
       'segment(file.name)',
@@ -148,12 +142,19 @@ describe('the source census — a new durable write under userData must not slip
     expect(code('apps/desktop/src/main/resources/resources.ts')).toContain(
       "export const RESOURCES_DIRNAME = 'resources'",
     )
-    expect(code('apps/desktop/src/main/database/sqlite/workspace/drafts.ts')).toContain(
-      "export const SAVED_DRAFTS_FILE = 'drafts.json'",
-    )
-    expect(code('apps/desktop/src/main/database/sqlite/workspace/archived.ts')).toContain(
-      "export const ARCHIVED_FILE = 'archived.json'",
-    )
+    const before0218 = code('apps/desktop/src/main/database/sqlite/workspace/side-file-import.ts')
+    for (const name of [
+      'archived.json',
+      'sign-in-changes.json',
+      'provider-usage.json',
+      'schedule-attempts.json',
+      'turns-the-app-cut.json',
+      'drafts.json',
+      'profile-execution.json',
+    ]) {
+      expect(before0218).toContain(`'${name}'`)
+      expect(named).toContain(name)
+    }
     expect(code('apps/desktop/src/main/themes/state.ts')).toContain(
       "export const THEME_LIBRARY_FOLDER = 'themes'",
     )

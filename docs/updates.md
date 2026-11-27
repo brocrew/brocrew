@@ -11,3 +11,5 @@ Nothing downloads or installs until you choose it. With automatic checks on, dow
 A signed Windows build only accepts automatic updates that carry a valid signature from the same publisher. Older and test builds may be unsigned. A signed installer can still show a SmartScreen warning while it earns reputation; see the [Windows install guide](install-windows.md).
 
 On Windows, BroCrew installs when you choose to restart, once nothing is running. On Mac, **Download** fetches and checks the disk image, then opens it for you to drag into Applications after you quit BroCrew. BroCrew run from source never checks; update it with `git pull`.
+
+Coming from BroCrew 0.2.17 or older? Open your workspace in BroCrew 0.2.18 first, then update to the newest version.

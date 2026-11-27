@@ -1,4 +1,4 @@
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, expect, it, vi } from 'vitest'
@@ -6,10 +6,7 @@ import { nextTick } from 'vue'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createDraftWriter } from '../src/main/drafts-file'
-import {
-  createSqliteDraftStorage,
-  importDraftsFile,
-} from '../src/main/database/sqlite/workspace/drafts'
+import { createSqliteDraftStorage } from '../src/main/database/sqlite/workspace/drafts'
 import { restoreSavedDrafts } from '../src/main/saved-drafts'
 import { createDraftBook, draftKey } from '../src/renderer/src/lib/drafts'
 import {
@@ -366,45 +363,17 @@ it('a newer edit after a failed removal wins when the next save retries both', a
   }
 })
 
-it.each([{ version: 2 }, {}])(
-  'a drafts file another build wrote (%o) is imported, restored as far as it reads, and saving goes on',
-  async (written) => {
-    const path = folder()
-    writeFileSync(
-      join(path, 'drafts.json'),
-      JSON.stringify({ ...written, ...packet(brook, 'kept by another build') }),
-    )
-    importDraftsFile(dbAt(path), path)
-    const saved = await restoreSavedDrafts(bookAt(path), {
-      exists: () => true,
-    })
-    expect(saved.drafts.map((draft) => draft.text)).toEqual(['kept by another build'])
-    const writer = createDraftWriter(createSqliteDraftStorage(dbAt(path)))
-    await writer.write(packet(fern, 'new local words'))
-    expect(read(path).drafts.map((draft) => [draft.slot, draft.text])).toEqual([
-      [brook, 'kept by another build'],
-      [fern, 'new local words'],
-    ])
-  },
-)
-
 it('what another build wrote and this one does not read survives this build saving and clearing', async () => {
   const path = folder()
   const unknownSlot = { slot: 'tab:a-newer-kind', text: 'a newer build kept this', mode: 'plan' }
   const newerShape = { slot: brook, words: ['a newer shape'] }
-  writeFileSync(
-    join(path, 'drafts.json'),
-    JSON.stringify({
-      version: 2,
-      kept: 'by a newer build',
-      drafts: [
-        { slot: fern, text: 'fern words', attached: [], pinned: true },
-        unknownSlot,
-        newerShape,
-      ],
-    }),
-  )
-  importDraftsFile(dbAt(path), path)
+  const keep = dbAt(path).prepare('INSERT INTO draft (slot, entry) VALUES (?, ?)')
+  for (const entry of [
+    { slot: fern, text: 'fern words', attached: [], pinned: true },
+    unknownSlot,
+    newerShape,
+  ])
+    keep.run(entry.slot, JSON.stringify(entry))
   const writer = createDraftWriter(createSqliteDraftStorage(dbAt(path)))
   await writer.write(packet(fern, 'fern words, edited here'))
   expect(read(path).drafts).toEqual([

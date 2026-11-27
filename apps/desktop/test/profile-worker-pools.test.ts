@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -6,8 +6,6 @@ import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import {
   NO_PROFILE_EXECUTION,
-  PROFILE_EXECUTION_FILE,
-  importProfileExecutionFile,
   kindOf,
   readAgainstTheDatabase,
   readProfileExecution,
@@ -17,7 +15,6 @@ import {
   type NormalWorkerBinding,
   type NormalWorkerPool,
   type ProfileExecution,
-  type ProfileExecutionRead,
   type WhatTheDatabaseHolds,
   type WorkerBorn,
 } from '../src/main/profile-execution-file'
@@ -76,35 +73,15 @@ afterEach(() => {
   keptDb.close()
   rmSync(folder, { recursive: true, force: true })
 })
-/** An old keptDb holding `profiles`, imported afresh: what was kept, or not readable when nothing was. */
-const holding = (profiles: unknown, version = 2): ProfileExecutionRead => {
-  keptDb.exec(
-    'DELETE FROM imported_side_file; DELETE FROM profile_execution; DELETE FROM profile_execution_state',
-  )
-  const old = join(folder, PROFILE_EXECUTION_FILE)
-  writeFileSync(old, JSON.stringify({ version, profiles }))
-  const warned = vi.spyOn(console, 'warn').mockImplementation(() => {})
-  try {
-    importProfileExecutionFile(keptDb, folder)
-  } finally {
-    warned.mockRestore()
-  }
-  return existsSync(old) ? { readable: false, why: 'not imported' } : readProfileExecution(keptDb)
-}
 
 describe('bounded versioned normal pools', () => {
-  it('[P01] imports legacy v1 normal and service entries', () => {
+  it('[P01] keeps legacy normal and service entries', () => {
     const profiles = {
       [IDENTITY]: { kind: 'normal', identityCreatedAt: CREATED },
       'aid:service': { kind: 'service', identityCreatedAt: 43, reserved: 'service-a' },
     } as const
-    expect(holding(profiles, 1)).toEqual({ readable: true, kept: { profiles } })
     writeProfileExecution(keptDb, { profiles })
     expect(readProfileExecution(keptDb)).toEqual({ readable: true, kept: { profiles } })
-  })
-
-  it('[P02] an older build’s file of another version is not imported', () => {
-    expect(holding({}, 3).readable).toBe(false)
   })
 
   it('[P03] round trips multiple giver primaries and stable gaps without renumbering', () => {
@@ -271,7 +248,8 @@ describe('pure normal worker reservation recovery', () => {
       why: 'it is missing, and the database holds a worker registration',
     })
     expect(readAgainstTheDatabase(missing, [])).toEqual(missing)
-    const present = holding({})
+    writeProfileExecution(keptDb, NO_PROFILE_EXECUTION)
+    const present = readProfileExecution(keptDb)
     expect(readAgainstTheDatabase(present, [], [born()])).toEqual(present)
     expect(
       reconcileProfileExecution(NO_PROFILE_EXECUTION, database(['worker-1'], [born()])).conflicts,

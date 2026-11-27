@@ -58,8 +58,6 @@ export { CODEX_CONFIG_LAYOUT } from './codex/configuration'
 
 export { CODEX_TOOL_NAMING } from './codex/tool-naming'
 
-export { isNativeAccountTag } from './codex/account-identity'
-
 export {
   NoCodexSignInOnThisComputerError,
   CodexRefusedItsSignInError,
