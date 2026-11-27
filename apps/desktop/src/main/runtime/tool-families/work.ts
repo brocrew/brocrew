@@ -19,7 +19,7 @@ import { WORK_FIELD_WORDS } from '../../../shared/work-fields'
 import { sendOverflowSaid } from '../send-overflow'
 import { HELD_FORMS_WITH_EXTENSIONS_SAID } from '../../../shared/documents'
 import { PIECE_TITLE_CHARS } from '../../../shared/piece-called'
-import { REPLY_SUMMARY_LIMIT } from '../reply-rails'
+import { REPLY_SUMMARY_LIMIT } from '../../../shared/reply-summary-limit'
 import { CURRENT_RULES_CHARS } from '../../../shared/conversation-title'
 import type { ToolName } from './catalog'
 import {

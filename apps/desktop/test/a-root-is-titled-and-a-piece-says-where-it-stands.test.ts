@@ -16,7 +16,7 @@ import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from './helpers/giver-notice-host'
 import { agentToolsFor, type ToolName } from '../src/main/runtime/agent-tools'
-import * as rails from '../src/main/runtime/reply-rails'
+import { REPLY_SUMMARY_LIMIT } from '../src/shared/reply-summary-limit'
 import { resolveSessionCwd } from '../src/main/runtime/scratch-cwd'
 import { PIECE_TITLE_CHARS } from '../src/shared/piece-called'
 import { TASK_IS_OPEN } from '../src/shared/tasks'
@@ -663,7 +663,7 @@ describe('D-016 · a root is titled, and a piece says where it stands', () => {
     it('the title and the status are trimmed and bounded, and blank is refused', async () => {
       // ⚑ The bounds, as literals beside the constants they mirror.
       expect(PIECE_TITLE_CHARS).toBe(200)
-      expect(rails.REPLY_SUMMARY_LIMIT).toBe(1280)
+      expect(REPLY_SUMMARY_LIMIT).toBe(1280)
 
       const pm = await personOpens('pm')
       const mine = theRootOf(pm)

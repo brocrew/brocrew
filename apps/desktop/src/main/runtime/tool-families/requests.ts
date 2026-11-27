@@ -14,7 +14,7 @@ import {
   type McpServerRequestWho,
 } from '../../../shared/mcp-server-requests'
 import { PATH_SEGMENT_RULE, isPathSegment } from '../../../shared/runtime-ipc'
-import { REPLY_SUMMARY_LIMIT } from '../reply-rails'
+import { REPLY_SUMMARY_LIMIT } from '../../../shared/reply-summary-limit'
 import { type ToolRefusal, refuseTool } from './refusals'
 import { answer, refusalAnswer, refusedAsk, sendAnswer } from './answers'
 import { z } from 'zod'

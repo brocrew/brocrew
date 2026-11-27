@@ -532,7 +532,7 @@ export interface MessageSentEvent {
    *
    * ⚠️ **The message has no limit of its own to derive from**: `message_agent`'s `text` is a bare
    * `z.string()` and so is the command wire's (`wire-bounds.test.ts`'s table has no length for it).
-   * ⚑ **`REPLY_SUMMARY_LIMIT` (`reply-rails.ts`, 1,280, measured by `353` §6.2) is the bound this
+   * ⚑ **`REPLY_SUMMARY_LIMIT` (`reply-summary-limit.ts`, 1,280, measured by `353` §6.2) is the bound this
    * app already puts on every OTHER string one agent writes into another conversation** — a
    * reply's summary, an `ask_question` question and `pass_question_up`'s context. `message_agent`
    * has no bound of its own, so its receipt takes the family's number rather than a fourth.
