@@ -19,6 +19,7 @@ import { pluginPersonCapability } from './catalogue/capability'
 import { connectPluginSettings } from './lifecycle/settings-client'
 import { createPluginSupervisorLauncher } from './supervisor/launcher'
 import { SupervisorStorage } from './supervisor/storage'
+import { pluginSocketPath } from './socket-path'
 import { installedChromeOnWindows } from './windows-chrome'
 import { pluginWorkspaceIdentity, type PluginSupervisorAttachment } from './supervisor/client'
 import { PluginSupervisorError } from './supervisor/protocol'
@@ -711,7 +712,7 @@ export function productionPluginController() {
               peer = candidate
               const connection = await connectPluginSettings({
                 recordReviewFailure: recordPluginReviewFailure,
-                path: join(options.root, 'person-control/person.sock'),
+                path: pluginSocketPath(options.root, 'person-control', 'person.sock'),
                 personKey,
                 root: options.root,
                 repoCatalogueSha256: catalogueEntries.sha256,
