@@ -1,19 +1,19 @@
 import {
+  startLocalMcpServer,
+  type LocalServer,
+} from '../../../packages/runtime/test/helpers/local-mcp-server'
+import {
   fixtureProviderConfig,
   syntheticProviderHome,
   neutralHostDeps,
   RecordingSink as Sink,
 } from './lib/host-fixture'
 import { sessionStoreSource } from './lib/session-store-source'
-import { createServer, type Server } from 'node:http'
-import type { AddressInfo } from 'node:net'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
 import {
   capabilitiesFor,
   type ExternalMcpReach,
@@ -82,44 +82,7 @@ const migrationsFolder = join(here, '../src/main/db/migrations')
 
 /* ────────────────────────────────────────── a real local MCP server, for the length of a test */
 
-interface LocalServer {
-  readonly url: string
-  close(): Promise<void>
-}
-
 const running: LocalServer[] = []
-
-/** ⚠️ A fresh server and transport PER REQUEST — the reference implementation's stateless shape. */
-async function localMcpServer(tools: readonly string[]): Promise<LocalServer> {
-  const build = async (): Promise<StreamableHTTPServerTransport> => {
-    const mcp = new McpServer({ name: 'fixture', version: '1' })
-    for (const name of tools) {
-      mcp.registerTool(name, { description: `the fixture's ${name}` }, () => ({
-        content: [{ type: 'text' as const, text: 'never called' }],
-      }))
-    }
-    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined })
-    await mcp.connect(transport)
-    return transport
-  }
-  const http: Server = createServer((req, res) => {
-    void (async (): Promise<void> => {
-      const transport = await build()
-      res.on('close', () => void transport.close())
-      await transport.handleRequest(req, res)
-    })()
-  })
-  await new Promise<void>((resolve) => http.listen(0, '127.0.0.1', resolve))
-  const port = (http.address() as AddressInfo).port
-  const one: LocalServer = {
-    url: `http://127.0.0.1:${String(port)}/mcp`,
-    close: async () => {
-      await new Promise<void>((resolve) => http.close(() => resolve()))
-    },
-  }
-  running.push(one)
-  return one
-}
 
 /** One launch, as the provider saw it. */
 interface Launched {
@@ -592,3 +555,10 @@ describe('524 · a server the workspace has', () => {
     })
   })
 })
+
+/** Starts a real local MCP server and keeps it for afterEach to close. */
+async function localMcpServer(tools: readonly string[]): Promise<LocalServer> {
+  const one = await startLocalMcpServer(tools)
+  running.push(one)
+  return one
+}
