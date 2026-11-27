@@ -15,12 +15,10 @@ import { describe, expect, it } from 'vitest'
 import {
   CHAIN_HOP_LIMIT,
   chainReading,
-  NOTHING_NAMED_THE_WORK,
   chainSentence,
   decisionReading,
   escalationChain,
   readingSentence,
-  aPersonsSince,
 } from '../src/shared/questions'
 import { ACTIVITY_READ_EVERY_MS } from '../src/renderer/src/lib/recent-activity'
 import { homeAttention } from '../src/renderer/src/lib/home-attention'
@@ -40,6 +38,7 @@ import { createSessionStore } from '../src/renderer/src/lib/session-store'
 import type { PermissionDecision, RuntimeBridge } from '../src/shared/runtime-ipc'
 import { everythingOverTheWire } from './lib/the-wire'
 import type { ChannelRefusal } from '@brobot2/runtime'
+import { askedOfTheParent, routedProviderQuestion } from './helpers/queue-fixtures'
 
 /**
  * 🔴 **401 · the queue that ends at a person, the half with no DOM in it.**
@@ -54,15 +53,7 @@ const NAME = (id: string): string => id.replace('sess_', '')
 function routed(
   over: Partial<RoutedRequest> & { requestId: string; askedBy: string },
 ): RoutedRequest {
-  return {
-    parent: 'sess_pm',
-    went: { is: 'the-parent', to: 'the-parent' },
-    at: 1_000,
-    state: 'open',
-    endedAt: null,
-    escalatedAt: 31_000,
-    ...over,
-  }
+  return askedOfTheParent(over)
 }
 
 /** One `PersonsQuestion` exactly as `RuntimeHost.questionsForAPerson` builds it. */
@@ -85,28 +76,12 @@ function asked(
   openQuestionOf: (sessionId: string) => RoutedRequest | null = () => null,
 ): PersonsQuestion {
   const request = routed(over)
-  const chain = escalationChain(request, openQuestionOf)
-  return {
-    request,
-    // ⚑ **611 · when it became a person's** — see PersonsQuestion.aPersonsSince.
-    aPersonsSince: aPersonsSince(request),
-    chain,
-    reading: chainReading(chain, NAME),
-    sentence: chainSentence(chain, NAME),
-    // ⚑ **Empty by default and overridable** (434) — most conversations that stop to ask hold no
-    // task, and the row states that rather than omitting criterion 20's clause.
-    work: over.work ?? [],
-    // ⚑ **474 · a provider-raised question names no work by default** — `430`'s measured
-    // absence, which is the arm every row written before the edge existed carries.
-    about: over.about ?? NOTHING_NAMED_THE_WORK,
-    // ⚑ **602 · provider-raised by default, and overridable** — see `HowItWasRaised`. ⛔ Every case
-    // written before `602` means *a question whose card exists somewhere*, which is the world they
-    // were all written in; the arm with no card is planted by name.
-    raisedBy: over.raisedBy ?? 'the-provider',
-    // ⚑ **619 · nothing to press by default, and planted by name** — see the override above.
-    offered: over.offered ?? null,
-    asked: null,
-  }
+  return routedProviderQuestion(request, NAME, openQuestionOf, {
+    work: over.work,
+    about: over.about,
+    raisedBy: over.raisedBy,
+    offered: over.offered,
+  })
 }
 
 /**

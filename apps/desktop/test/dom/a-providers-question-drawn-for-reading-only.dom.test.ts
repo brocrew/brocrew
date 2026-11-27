@@ -5,7 +5,6 @@ import type {
   LedgerWalk,
   PersonsDecision,
   PersonsQuestion,
-  RoutedRequest,
 } from '../../src/shared/question-contracts'
 import { afterEach, describe, expect, it } from 'vitest'
 import PersonsQueue from '../../src/renderer/src/components/PersonsQueue.vue'
@@ -16,14 +15,8 @@ import {
   type AttentionRequest,
 } from '../../src/renderer/src/lib/attention'
 import type { UserInputResponse } from '../../src/shared/runtime-ipc'
-import {
-  NOTHING_NAMED_THE_WORK,
-  aPersonsSince,
-  chainReading,
-  chainSentence,
-  escalationChain,
-} from '../../src/shared/questions'
 import { mount, unmountAll } from './harness'
+import { askedOfAPerson, routedProviderQuestion } from '../helpers/queue-fixtures'
 
 /**
  * # 🔴 D-046 · a provider's question on *Waiting on you* — its words drawn, for reading only
@@ -63,29 +56,8 @@ const ASKED: AskedQuestion = {
 }
 
 function asked(raisedBy: HowItWasRaised, words: AskedQuestion | null): PersonsQuestion {
-  const request: RoutedRequest = {
-    requestId: 'req_1',
-    askedBy: SESSION,
-    parent: 'sess_pm',
-    went: { is: 'the-person-the-asker-named', to: 'a-person' },
-    at: NOW - 900_000,
-    state: 'open',
-    endedAt: null,
-    escalatedAt: null,
-  }
-  const chain = escalationChain(request, () => null)
-  return {
-    request,
-    aPersonsSince: aPersonsSince(request),
-    chain,
-    reading: chainReading(chain, NAME),
-    sentence: chainSentence(chain, NAME),
-    work: [],
-    about: NOTHING_NAMED_THE_WORK,
-    raisedBy,
-    offered: null,
-    asked: words,
-  }
+  const request = askedOfAPerson({ requestId: 'req_1', askedBy: SESSION, at: NOW - 900_000 })
+  return routedProviderQuestion(request, NAME, undefined, { raisedBy, asked: words })
 }
 
 /** ⚑ The live card a held conversation shows — `persons-queue.dom.test.ts`' `live`, cut down. */

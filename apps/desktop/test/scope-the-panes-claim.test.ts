@@ -4,7 +4,6 @@ import type {
   PersonsDecision,
   PersonsQuestion,
   RequestOnlyAPersonCanSettle,
-  RoutedRequest,
 } from '../src/shared/question-contracts'
 import type { TranscriptEvent } from '../src/shared/conversation-events'
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -29,16 +28,13 @@ import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript
 import { personsQueueView, type PersonsQueueWorld } from '../src/renderer/src/lib/persons-queue'
 import { attentionQueue, type AttentionRequest } from '../src/renderer/src/lib/attention'
 import { createSessionRecord } from '../src/renderer/src/lib/session-record'
-import {
-  NOTHING_NAMED_THE_WORK,
-  chainReading,
-  chainSentence,
-  decisionReading,
-  escalationChain,
-  readingSentence,
-  aPersonsSince,
-} from '../src/shared/questions'
+import { decisionReading, readingSentence, aPersonsSince } from '../src/shared/questions'
 import { fixtureProviderConfig, syntheticProviderHome, neutralHostDeps } from './lib/host-fixture'
+import {
+  askedOfTheParent,
+  personsQueueWorld,
+  routedProviderQuestion,
+} from './helpers/queue-fixtures'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const MIGRATIONS = join(HERE, '..', 'src', 'main', 'db', 'migrations')
@@ -253,44 +249,18 @@ const WALK = <Row>(rows: readonly Row[]): LedgerWalk<Row> => ({
 })
 
 function asked(raisedBy: HowItWasRaised, requestId = 'req_1'): PersonsQuestion {
-  const request: RoutedRequest = {
-    requestId,
-    askedBy: 'sess_worker',
-    parent: 'sess_pm',
-    went: { is: 'the-parent', to: 'the-parent' },
-    at: 1_000,
-    state: 'open',
-    endedAt: null,
-    escalatedAt: 31_000,
-  }
-  const chain = escalationChain(request, () => null)
-  return {
-    request,
-    aPersonsSince: aPersonsSince(request),
-    chain,
-    reading: chainReading(chain, NAME),
-    sentence: chainSentence(chain, NAME),
-    work: [],
-    about: NOTHING_NAMED_THE_WORK,
-    raisedBy,
-    offered: null,
-    asked: null,
-  }
-}
-
-function world(over: Partial<PersonsQueueWorld> = {}): PersonsQueueWorld {
-  return {
-    held: new Set<string>(),
-    answerable: new Map<string, AttentionRequest>(),
-    now: 91_000,
-    lastLookAnswered: { questions: true, decisions: true },
-    answeredFromHere: new Set<string>(),
-    ...over,
-  }
+  return routedProviderQuestion(
+    askedOfTheParent({ requestId, askedBy: 'sess_worker' }),
+    NAME,
+    undefined,
+    {
+      raisedBy,
+    },
+  )
 }
 
 function view(questions: readonly PersonsQuestion[], over: Partial<PersonsQueueWorld> = {}) {
-  return personsQueueView(WALK(questions), WALK<PersonsDecision>([]), world(over))
+  return personsQueueView(WALK(questions), WALK<PersonsDecision>([]), personsQueueWorld(over))
 }
 
 describe('§4 · the row says why there is nothing to press', () => {
@@ -342,7 +312,7 @@ describe('§4 · the row says why there is nothing to press', () => {
       const mixed = personsQueueView(
         WALK<PersonsQuestion>([]),
         WALK([decision]),
-        world(held ? { held: new Set(['sess_worker']) } : {}),
+        personsQueueWorld(held ? { held: new Set(['sess_worker']) } : {}),
       )
       expect(mixed?.rows).toHaveLength(1)
       for (const row of mixed?.rows ?? []) {

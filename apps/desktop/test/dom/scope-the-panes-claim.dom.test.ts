@@ -13,15 +13,9 @@ import PersonsQueue from '../../src/renderer/src/components/PersonsQueue.vue'
 import SessionPanel from '../../src/renderer/src/components/SessionPanel.vue'
 import { usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
 import type { AttentionRequest } from '../../src/renderer/src/lib/attention'
-import {
-  NOTHING_NAMED_THE_WORK,
-  chainReading,
-  chainSentence,
-  escalationChain,
-  aPersonsSince,
-} from '../../src/shared/questions'
 
 import { mount, record, unmountAll, visible } from './harness'
+import { routedProviderQuestion } from '../helpers/queue-fixtures'
 
 /**
  * 🔴 **602 · the two sentences, where a person actually reads them.**
@@ -71,22 +65,7 @@ function asked(raisedBy: HowItWasRaised): PersonsQuestion {
     endedAt: null,
     escalatedAt: 31_000,
   }
-  const chain = escalationChain(request, () => null)
-  return {
-    request,
-    // ⚑ **611 · when it became a person's** — every row here is escalated.
-    aPersonsSince: aPersonsSince(request),
-    chain,
-    reading: chainReading(chain, NAME),
-    sentence: chainSentence(chain, NAME),
-    work: [],
-    about: NOTHING_NAMED_THE_WORK,
-    raisedBy,
-    // ⚑ **619 · `602`'s own fixture, the population with nothing to press** — since UI-009 such a
-    // row is its own card, which says where its words are.
-    offered: null,
-    asked: null,
-  }
+  return routedProviderQuestion(request, NAME, undefined, { raisedBy })
 }
 
 const WALK = <Row>(rows: readonly Row[]): LedgerWalk<Row> => ({

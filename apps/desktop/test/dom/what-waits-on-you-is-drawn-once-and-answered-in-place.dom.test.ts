@@ -17,13 +17,7 @@ import WaitingOnYou from '../../src/renderer/src/components/WaitingOnYou.vue'
 import type { AttentionRequest } from '../../src/renderer/src/lib/attention'
 import { usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
 import { clockTime, clockTimeFrom } from '../../src/shared/clock'
-import {
-  NOTHING_NAMED_THE_WORK,
-  aPersonsSince,
-  chainReading,
-  chainSentence,
-  escalationChain,
-} from '../../src/shared/questions'
+import { NOTHING_NAMED_THE_WORK } from '../../src/shared/questions'
 import type { ResumableSessionInfo } from '../../src/shared/runtime-ipc'
 import type { StalledWork } from '../../src/shared/stalled-work'
 import type { StoppedWorkForAPerson } from '../../src/shared/stopped-work'
@@ -33,6 +27,7 @@ import type { PersonTodo } from '../../src/shared/work-waits'
 import { assertDrawn, drawnReady } from './drawn'
 import { mount, unmountAll, visible, type Mounted } from './harness'
 import { identities, workerRows } from './parallel-workers-fixture'
+import { routedProviderQuestion } from '../helpers/queue-fixtures'
 
 /**
  * Waiting on you draws what an agent asked a person to do, answered on its card; each piece no agent
@@ -120,24 +115,15 @@ function asARow(todo: PersonTodo): PersonsQuestion {
     endedAt: null,
     escalatedAt: null,
   }
-  const chain = escalationChain(request, () => null)
   const name = (id: string): string => (id === todo.askedBy ? todo.askedByName : id)
-  return {
-    request,
-    aPersonsSince: aPersonsSince(request),
-    chain,
-    reading: chainReading(chain, name),
-    sentence: chainSentence(chain, name),
-    work: [],
+  return routedProviderQuestion(request, name, undefined, {
     about:
       todo.label === null
         ? NOTHING_NAMED_THE_WORK
         : { is: 'the-asker-named-it', work: { label: todo.label } as WorkInHand },
     raisedBy: 'this-app',
-    offered: null,
-    asked: null,
     action: { text: todo.text, files: todo.files },
-  }
+  })
 }
 
 interface Waits {

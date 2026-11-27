@@ -1,4 +1,4 @@
-import type { PersonsQuestion, RoutedRequest } from '../../src/shared/question-contracts'
+import type { RoutedRequest } from '../../src/shared/question-contracts'
 import type { MoveOffer, MoveRequestAck } from '../../src/shared/move-contracts'
 import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -10,13 +10,6 @@ import UserMessage from '../../src/renderer/src/components/UserMessage.vue'
 import QueuedMessage from '../../src/renderer/src/components/QueuedMessage.vue'
 import PersonsQueue from '../../src/renderer/src/components/PersonsQueue.vue'
 import { usePersonsQueue, type PersonsQueueRow } from '../../src/renderer/src/lib/persons-queue'
-import {
-  aPersonsSince,
-  escalationChain,
-  chainReading,
-  chainSentence,
-  NOTHING_NAMED_THE_WORK,
-} from '../../src/shared/questions'
 import { moveRequestFromWindow } from '../../src/renderer/src/lib/move-request'
 import type { QuestionCardReading } from '../../src/renderer/src/lib/question-card'
 import type { RequestDraft } from '../../src/renderer/src/lib/session-record'
@@ -28,6 +21,7 @@ import { conversationLink } from '../../src/shared/links'
 import { moveReceiptLine } from '../../src/shared/move-request'
 import type { LinkResolution } from '../../src/shared/runtime-ipc'
 import { brobotToolInventory, mount, paneProps, record, unmountAll, visible } from './harness'
+import { routedProviderQuestion } from '../helpers/queue-fixtures'
 
 const MOVE: MoveOffer = {
   destination: 'target',
@@ -85,17 +79,8 @@ describe('the person decides on the move card', () => {
       endedAt: null,
       escalatedAt: 1,
     }
-    const chain = escalationChain(request, () => null)
-    const question: PersonsQuestion = {
-      request,
-      chain,
-      reading: chainReading(chain, (id) => id),
-      sentence: chainSentence(chain, (id) => id),
-      aPersonsSince: aPersonsSince(request),
-      work: [],
-      about: NOTHING_NAMED_THE_WORK,
+    const question = routedProviderQuestion(request, (id) => id, undefined, {
       raisedBy: 'this-app',
-      offered: null,
       asked: {
         move: MOVE,
         prompt: 'The release conversation has the answer.',
@@ -109,7 +94,7 @@ describe('the person decides on the move card', () => {
           },
         ],
       },
-    }
+    })
     const moved = vi.fn<(row: PersonsQueueRow, decision: 'move' | 'here') => Promise<string>>(
       async () => 'That conversation is unavailable. Nothing was moved.',
     )

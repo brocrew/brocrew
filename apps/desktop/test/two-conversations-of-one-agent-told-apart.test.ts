@@ -14,16 +14,9 @@ import {
   type PersonsQueueRow,
   type PersonsQueueWorld,
 } from '../src/renderer/src/lib/persons-queue'
-import {
-  NOTHING_NAMED_THE_WORK,
-  aPersonsSince,
-  chainReading,
-  chainSentence,
-  decisionReading,
-  escalationChain,
-  readingSentence,
-} from '../src/shared/questions'
+import { decisionReading, readingSentence } from '../src/shared/questions'
 import { agentName, type AgentIdentity } from '../src/shared/runtime-ipc'
+import { routedProviderQuestion } from './helpers/queue-fixtures'
 
 // Rows are built by the real fold (personsQueueView) over host-shaped doubles named by the real
 // agentName, so a namesake line is what the queue draws beside each row.
@@ -109,19 +102,7 @@ function passedUp(
   parent = 'sess_grace',
 ): PersonsQuestion {
   const request = routed({ requestId, askedBy, parent, escalatedAt })
-  const chain = escalationChain(request, () => null)
-  return {
-    request,
-    aPersonsSince: aPersonsSince(request),
-    chain,
-    reading: chainReading(chain, NAME),
-    sentence: chainSentence(chain, NAME),
-    work: [],
-    about: NOTHING_NAMED_THE_WORK,
-    raisedBy: 'the-provider',
-    offered: null,
-    asked: null,
-  }
+  return routedProviderQuestion(request, NAME)
 }
 
 const WORLD: PersonsQueueWorld = {

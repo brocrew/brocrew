@@ -18,15 +18,7 @@ import OverlayHost from '../../src/renderer/src/components/OverlayHost.vue'
 import PersonsQueue from '../../src/renderer/src/components/PersonsQueue.vue'
 import { usePersonsQueue, type PersonsQueueRow } from '../../src/renderer/src/lib/persons-queue'
 import type { AttentionDecision, AttentionRequest } from '../../src/renderer/src/lib/attention'
-import {
-  NOTHING_NAMED_THE_WORK,
-  chainReading,
-  chainSentence,
-  decisionReading,
-  escalationChain,
-  readingSentence,
-  aPersonsSince,
-} from '../../src/shared/questions'
+import { decisionReading, readingSentence } from '../../src/shared/questions'
 import type { AgentIdentities } from '../../src/shared/runtime-ipc'
 import {
   contrast,
@@ -42,6 +34,7 @@ import {
   permissionButtons,
   permissionOnQueue,
 } from './harness'
+import { routedProviderQuestion } from '../helpers/queue-fixtures'
 
 /**
  * 🔴 **401 · the queue that ends at a person, measured where a person would see it.**
@@ -123,29 +116,10 @@ function asked(
   openQuestionOf: (sessionId: string) => RoutedRequest | null = () => null,
 ): PersonsQuestion {
   const request = routed(over)
-  const chain = escalationChain(request, openQuestionOf)
-  return {
-    request,
-    // ⚑ **611 · the moment it became a person's** — every row of this fixture is escalated, so it
-    // is that stamp, which is what this fixture's ordering has always been drawn from.
-    aPersonsSince: aPersonsSince(request),
-    chain,
-    reading: chainReading(chain, NAME),
-    sentence: chainSentence(chain, NAME),
-    // ⚑ **Empty by default, and that is the ordinary shape** (434): most conversations that ask a
-    // question hold no piece of work, and the row says so rather than leaving the clause out.
-    work: over.work ?? [],
-    // ⚑ **474 · the ordinary arm** — a provider-raised question names no work, which is what `430`
-    // measured and what every row of this fixture is.
-    about: over.about ?? NOTHING_NAMED_THE_WORK,
-    // ⚑ **602 · and the arm that goes with it** — see `HowItWasRaised`. A provider-raised question
-    // has a card in the asker's transcript, which is what every row of this fixture is.
-    raisedBy: 'the-provider',
-    // ⚑ **619 · a provider-raised question has a card and the card carries its offer** — see
-    // `whatTheAskerOffered`, which answers `null` for every row this fixture builds.
-    offered: null,
-    asked: null,
-  }
+  return routedProviderQuestion(request, NAME, openQuestionOf, {
+    work: over.work,
+    about: over.about,
+  })
 }
 
 const ONE = [asked({ requestId: 'req_1', askedBy: 'sess_worker-7' })]

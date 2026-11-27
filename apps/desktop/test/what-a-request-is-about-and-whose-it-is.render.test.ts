@@ -11,12 +11,7 @@ import { renderToString } from 'vue/server-renderer'
 import PersonsQueue from '../src/renderer/src/components/PersonsQueue.vue'
 import { usePersonsQueue } from '../src/renderer/src/lib/persons-queue'
 import type { PersonsQueueDoors } from '../src/renderer/src/lib/persons-queue'
-import {
-  chainReading,
-  chainSentence,
-  escalationChain,
-  aPersonsSince,
-} from '../src/shared/questions'
+import { routedProviderQuestion } from './helpers/queue-fixtures'
 
 const NOW = 1_760_000_000_000
 
@@ -55,26 +50,11 @@ const asked = (
   work: readonly WorkInHand[],
 ): PersonsQuestion => {
   const request = routed(requestId, askedBy)
-  const chain = escalationChain(request, () => null)
-  return {
-    request,
-    // ⚑ **611 · when it became a person's** — every row here is escalated.
-    aPersonsSince: aPersonsSince(request),
-    chain,
-    reading: chainReading(chain, NAME),
-    sentence: chainSentence(chain, NAME),
+  return routedProviderQuestion(request, NAME, undefined, {
     work,
     about,
-    // ⚑ **602 · the fixture keeps its own world constructable.** Only `ask_parent` records which
-    // work a question is about, so a row that named some is this app's row. ⛔ **The APP derives
-    // neither from the other** — see `HowItWasRaised` for why that coupling is refused; this line
-    // is a fixture choosing a state that can exist, not a claim about the fold.
     raisedBy: about.is === 'nothing-recorded-it' ? 'the-provider' : 'this-app',
-    // ⚑ **619 · this fixture is about WHICH WORK and never about what may be pressed** — a row
-    // that offered something would draw buttons and move the sentences this suite reads.
-    offered: null,
-    asked: null,
-  }
+  })
 }
 
 const walk = <T>(rows: readonly T[]): LedgerWalk<T> => ({

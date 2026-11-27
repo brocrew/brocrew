@@ -6,30 +6,22 @@ import type {
   PersonsDecision,
   PersonsQuestion,
   RaisedQuestion,
-  RoutedRequest,
 } from '../src/shared/question-contracts'
 import { describe, expect, it } from 'vitest'
-import {
-  NOTHING_NAMED_THE_WORK,
-  aPersonsSince,
-  chainReading,
-  chainSentence,
-  escalationChain,
-  whatTheAskerOffered,
-} from '../src/shared/questions'
+import { whatTheAskerOffered } from '../src/shared/questions'
 import type { UserInputQuestion } from '@brobot2/runtime'
 import {
   personsQueueView,
   type PersonsQueueRow,
   type PersonsQueueWorld,
 } from '../src/renderer/src/lib/persons-queue'
-import type { AttentionRequest } from '../src/renderer/src/lib/attention'
 // ⚑ **UI-009 · a question this app asked is answered on its card** — `question-card.ts`.
 import {
   oneAnswer,
   questionOnTheQueue,
   type QuestionCardReading,
 } from '../src/renderer/src/lib/question-card'
+import { askedOfAPerson, personsQueueWorld, routedProviderQuestion } from './helpers/queue-fixtures'
 
 /**
  * 🔴 **619 · answer it where you were told** — `HO-093` §3.1, `HO-082` repair 2.
@@ -102,44 +94,20 @@ function asked(
   raisedBy: HowItWasRaised = 'this-app',
   words: AskedQuestion | null = null,
 ): PersonsQuestion {
-  const request: RoutedRequest = {
-    requestId: 'req_1',
-    askedBy: 'sess_worker',
-    parent: 'sess_pm',
-    went: { is: 'the-person-the-asker-named', to: 'a-person' },
-    at: 1_000,
-    state: 'open',
-    endedAt: null,
-    escalatedAt: null,
-  }
-  const chain = escalationChain(request, () => null)
-  return {
-    request,
-    aPersonsSince: aPersonsSince(request),
-    chain,
-    reading: chainReading(chain, NAME),
-    sentence: chainSentence(chain, NAME),
-    work: [],
-    about: NOTHING_NAMED_THE_WORK,
-    raisedBy,
-    offered,
-    asked: words,
-  }
-}
-
-function world(over: Partial<PersonsQueueWorld> = {}): PersonsQueueWorld {
-  return {
-    held: new Set<string>(),
-    answerable: new Map<string, AttentionRequest>(),
-    now: 91_000,
-    lastLookAnswered: { questions: true, decisions: true },
-    answeredFromHere: new Set<string>(),
-    ...over,
-  }
+  return routedProviderQuestion(
+    askedOfAPerson({ requestId: 'req_1', askedBy: 'sess_worker' }),
+    NAME,
+    undefined,
+    { raisedBy, offered, asked: words },
+  )
 }
 
 function rowOf(question: PersonsQuestion, over: Partial<PersonsQueueWorld> = {}) {
-  const view = personsQueueView(WALK([question]), WALK<PersonsDecision>([]), world(over))
+  const view = personsQueueView(
+    WALK([question]),
+    WALK<PersonsDecision>([]),
+    personsQueueWorld(over),
+  )
   const row = view?.rows[0]
   expect(row, 'the fixture produced no row at all').toBeDefined()
   return row!

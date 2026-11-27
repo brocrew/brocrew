@@ -3,22 +3,14 @@ import type {
   LedgerWalk,
   PersonsQuestion,
   RequestOnlyAPersonCanSettle,
-  RoutedRequest,
 } from '../../src/shared/question-contracts'
 import { nextTick } from 'vue'
 import WaitingOnYou from '../../src/renderer/src/components/WaitingOnYou.vue'
 import { attentionToACardNobodyHolds } from '../../src/renderer/src/lib/attention'
 import { usePersonsQueue } from '../../src/renderer/src/lib/persons-queue'
-import {
-  NOTHING_NAMED_THE_WORK,
-  aPersonsSince,
-  chainReading,
-  chainSentence,
-  decisionReading,
-  escalationChain,
-  readingSentence,
-} from '../../src/shared/questions'
+import { decisionReading, readingSentence } from '../../src/shared/questions'
 import { mount } from './harness'
+import { askedOfAPerson, routedProviderQuestion } from '../helpers/queue-fixtures'
 
 const MARKDOWN_NOW = Date.UTC(2026, 8, 21, 14)
 const MARKDOWN_PROMPT =
@@ -43,30 +35,14 @@ function question(
   raisedBy: PersonsQuestion['raisedBy'],
   asked: AskedQuestion | null,
 ): PersonsQuestion {
-  const request: RoutedRequest = {
+  const request = askedOfAPerson({
     requestId: id,
     askedBy: 'sess_glint',
     parent: null,
-    went: { is: 'the-person-the-asker-named', to: 'a-person' },
     at: MARKDOWN_NOW - 60_000,
-    state: 'open',
-    endedAt: null,
-    escalatedAt: null,
-  }
-  const chain = escalationChain(request, () => null)
+  })
   const name = () => 'Glint'
-  return {
-    request,
-    aPersonsSince: aPersonsSince(request),
-    chain,
-    reading: chainReading(chain, name),
-    sentence: chainSentence(chain, name),
-    work: [],
-    about: NOTHING_NAMED_THE_WORK,
-    raisedBy,
-    offered: null,
-    asked,
-  }
+  return routedProviderQuestion(request, name, undefined, { raisedBy, asked })
 }
 
 /** The real page with made-up questions, a to-do and a command requiring approval. */

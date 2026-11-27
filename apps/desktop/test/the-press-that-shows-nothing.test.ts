@@ -4,6 +4,7 @@ import type {
   PersonsQuestion,
   RoutedRequest,
 } from '../src/shared/question-contracts'
+import { routedProviderQuestion } from './helpers/queue-fixtures'
 import type { PersistedEventInfo } from '../src/shared/conversation-events'
 import { describe, expect, it } from 'vitest'
 import { nextTick } from 'vue'
@@ -20,13 +21,6 @@ import {
 } from '../src/renderer/src/lib/persons-queue'
 import { createSessionStore } from '../src/renderer/src/lib/session-store'
 import { requestDraft, type SessionRecord } from '../src/renderer/src/lib/session-record'
-import {
-  NOTHING_NAMED_THE_WORK,
-  chainReading,
-  chainSentence,
-  escalationChain,
-  aPersonsSince,
-} from '../src/shared/questions'
 import type {
   AnswerAck,
   ResumedSession,
@@ -206,26 +200,8 @@ function walkWithTheRow(): LedgerWalk<PersonsQuestion> {
     endedAt: null,
     escalatedAt: NOW - 500,
   }
-  const chain = escalationChain(request, () => null)
   return {
-    rows: [
-      {
-        request,
-        // ⚑ **611 · when it became a person's** — see PersonsQuestion.aPersonsSince.
-        aPersonsSince: aPersonsSince(request),
-        chain,
-        reading: chainReading(chain, NAME),
-        sentence: chainSentence(chain, NAME),
-        work: [],
-        // ⚑ **474 · a provider-raised question names no work** — see `AboutWork`.
-        about: NOTHING_NAMED_THE_WORK,
-        // ⚑ **602 · and the arm that goes with it** — see `HowItWasRaised`.
-        raisedBy: 'the-provider',
-        // ⚑ **619 · a provider-raised question is answered on its card.**
-        offered: null,
-        asked: null,
-      },
-    ],
+    rows: [routedProviderQuestion(request, NAME)],
     walk: 'every-conversation-that-routed',
     ledgers: 1,
     rowsUnread: 0,
