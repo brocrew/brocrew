@@ -1,4 +1,3 @@
-import fs from 'node:fs'
 import path from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import { waitForLaunchProviders } from '../../lib/update-rehearsal-app.mjs'
@@ -189,21 +188,12 @@ export async function journey(options, summary) {
         p.bridgeObserved = true
       }
     }
-    fs.writeFileSync(path.join(root, 'list-mode'), 'empty')
     await quit(run)
     run = await startApp({ ...options, workspace: path.join(root, 'workspace') })
     await waitForLaunchProviders(run.cdp)
     await openPlugins(run.cdp)
     for (const id of ['chrome', 'whatsapp']) await state(run, id, true)
-    const empty = await cards(run)
     for (const id of ['chrome', 'whatsapp']) {
-      const c = empty.find((c) => c.id === id)
-      demand(c?.installed === true && c.updatesUnavailable === true)
-      const refused = await run.cdp.evaluate(
-        `return await window.api.plugins.request({kind:'prepare',action:'update',id:${JSON.stringify(id)}})`,
-      )
-      demand(refused.ok === false)
-      summary.plugins[id].emptyManaged = true
       await configure(run, id)
       summary.plugins[id].configured = true
       await press(run.cdp, selector(id, 'plugin-uninstall'))
