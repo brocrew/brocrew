@@ -15,14 +15,10 @@ import {
   CodexRuntime,
   createSpawnTransportFactory,
 } from '@brobot2/runtime/codex'
-import { FakeLaunchGate, FakeProviderSessions, FakeRuntime, ResumeError } from '@brobot2/runtime'
-import type {
-  AgentToolset,
-  FakeSessionHandle,
-  ResumeOptions,
-  SessionRef,
-  StartOptions,
-} from '@brobot2/runtime'
+import { ResumeError } from '@brobot2/runtime'
+import { FakeLaunchGate, FakeProviderSessions, FakeRuntime } from '@brobot2/runtime/testing'
+import type { AgentToolset, ResumeOptions, SessionRef, StartOptions } from '@brobot2/runtime'
+import type { FakeSessionHandle } from '@brobot2/runtime/testing'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'

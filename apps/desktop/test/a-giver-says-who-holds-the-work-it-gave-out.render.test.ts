@@ -30,15 +30,15 @@ import {
 import { answerTheCatalogue } from './dom/answered-catalogue'
 import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
-import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime'
+import { FakeProviderSessions, FakeRuntime } from '@brobot2/runtime/testing'
 import type {
   AgentToolset,
   ApprovalMode,
-  FakeSessionHandle,
   ResumeOptions,
   SessionRef,
   StartOptions,
 } from '@brobot2/runtime'
+import type { FakeSessionHandle } from '@brobot2/runtime/testing'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'

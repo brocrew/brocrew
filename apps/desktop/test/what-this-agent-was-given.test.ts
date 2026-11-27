@@ -9,12 +9,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   boundInventory,
   MAX_COMMAND_TEXT,
-  FakeRuntime,
   MAX_TOOL_TEXT,
-  type FakeSessionHandle,
   type AgentToolset,
   type StartOptions,
 } from '@brobot2/runtime'
+import { FakeRuntime, type FakeSessionHandle } from '@brobot2/runtime/testing'
 import { CODEX_TOOL_NAMING } from '../../../packages/runtime/src/codex/tool-naming'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'

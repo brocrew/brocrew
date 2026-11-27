@@ -272,16 +272,6 @@ export {
   type LoginAbsence,
 } from './auth-state'
 
-export {
-  FAKE_PROVIDER_COMMANDS,
-  FakeLaunchGate,
-  FakeProcessExit,
-  FakeProviderSessions,
-  FakeRuntime,
-  FakeSessionHandle,
-  type FakeRuntimeOptions,
-} from './fake-runtime'
-
 export type { LaunchSetting, LaunchSettingValue } from './launch-settings'
 
 export { MAX_SETTINGS_BYTES } from './settings-limits'

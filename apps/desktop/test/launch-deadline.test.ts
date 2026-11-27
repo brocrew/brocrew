@@ -3,13 +3,8 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import {
-  FakeProcessExit,
-  FakeRuntime,
-  type AgentRuntime,
-  type SessionHandle,
-  type StartPhaseSink,
-} from '@brobot2/runtime'
+import { type AgentRuntime, type SessionHandle, type StartPhaseSink } from '@brobot2/runtime'
+import { FakeProcessExit, FakeRuntime } from '@brobot2/runtime/testing'
 import { NULL_SESSION_STORE } from '../src/main/db/session-store'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { gateClose, stillWaiting } from './helpers/provider-close-waits'

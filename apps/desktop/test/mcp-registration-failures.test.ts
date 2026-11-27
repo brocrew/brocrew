@@ -10,8 +10,8 @@ import {
   discoverExternalMcpTools,
   ExternalMcpDiscoveryError,
   EXTERNAL_MCP_DISCOVERY_MS,
-  FakeRuntime,
 } from '@brobot2/runtime'
+import { FakeRuntime } from '@brobot2/runtime/testing'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore } from '../src/main/db/session-store'
