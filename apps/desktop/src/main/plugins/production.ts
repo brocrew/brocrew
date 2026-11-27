@@ -788,7 +788,10 @@ export function productionPluginController() {
             listFailure =
               error instanceof PluginListError
                 ? error
-                : new PluginListError('fetch-error', 'supervisor-unavailable')
+                : new PluginListError(
+                    'fetch-error',
+                    failure === 'path-too-long' ? failure : 'supervisor-unavailable',
+                  )
           markUnavailable()
           if (attempt?.connection) await detach(attempt)
           return false

@@ -157,6 +157,7 @@ export const PLUGIN_UNAVAILABLE_REASONS = [
   'catalogue-response',
   'operation-pending',
   'unsupported',
+  'path-too-long',
 ] as const
 export type PluginUnavailableReason = (typeof PLUGIN_UNAVAILABLE_REASONS)[number]
 export function pluginUnavailableNotice(reason?: PluginUnavailableReason): string {
@@ -191,6 +192,8 @@ export function pluginUnavailableNotice(reason?: PluginUnavailableReason): strin
       return 'A previous plugin operation has not finished. Try again to check its status.'
     case 'unsupported':
       return 'No compatible release is available for this computer and version of BroCrew.'
+    case 'path-too-long':
+      return "The plugin folder's path is too long on this computer."
     default:
       return 'The plugin service did not report why this plugin is unavailable. Try again to reconnect.'
   }
@@ -320,7 +323,7 @@ export type PluginSettingsRequest =
   | { kind: 'bounds'; bounds: PluginScreenBounds }
   | { kind: 'close' }
 export type PluginListState = 'ready' | 'empty' | 'not-published' | 'fetch-error'
-export type PluginListFailureReason = 'supervisor-unavailable'
+export type PluginListFailureReason = 'supervisor-unavailable' | 'path-too-long'
 export type PluginSettingsReply =
   | {
       ok: true
