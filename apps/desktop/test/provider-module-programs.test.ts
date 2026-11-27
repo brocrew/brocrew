@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
-import { FakeRuntime } from '@brobot2/runtime'
+import { FakeRuntime } from '@brobot2/runtime/testing'
 import {
   PROVIDER_DESCRIPTORS,
   SUPPORTED_PROVIDERS,

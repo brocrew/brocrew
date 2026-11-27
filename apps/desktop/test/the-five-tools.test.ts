@@ -12,13 +12,8 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { z } from 'zod'
-import {
-  FakeLaunchGate,
-  FakeProviderSessions,
-  FakeRuntime,
-  type ResumeOptions,
-  type StartOptions,
-} from '@brobot2/runtime'
+import { type ResumeOptions, type StartOptions } from '@brobot2/runtime'
+import { FakeLaunchGate, FakeProviderSessions, FakeRuntime } from '@brobot2/runtime/testing'
 import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'

@@ -1,6 +1,6 @@
 import { rmSync } from 'node:fs'
 import { join } from 'node:path'
-import { FakeProviderSessions } from '@brobot2/runtime'
+import { FakeProviderSessions } from '@brobot2/runtime/testing'
 import type { Provider } from '@brobot2/shared'
 import type { AppDatabase } from '../../src/main/db/connection'
 import { createSessionStore } from '../../src/main/db/session-store'

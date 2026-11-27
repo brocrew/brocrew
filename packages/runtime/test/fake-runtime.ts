@@ -1,5 +1,5 @@
 import { providerValue, type Provider, type SessionStatus } from '@brobot2/shared'
-import { wrapUnknown, type RuntimeEvent, type UnknownCategory } from './events'
+import { wrapUnknown, type RuntimeEvent, type UnknownCategory } from '../src/events'
 import {
   answerToForward,
   persistenceOf,
@@ -10,11 +10,11 @@ import {
   type UserInputOption,
   type UserInputQuestion,
   type UserInputResponse,
-} from './permission'
-import type { SessionRef } from './session-ref'
-import { AnswerRefused } from './answer-refused'
-import { ApprovalModeSwitch, type ApprovalModeState } from './approval-mode'
-import { NextTurnSetting, sessionSettings, requestPlanMode } from './next-turn'
+} from '../src/permission'
+import type { SessionRef } from '../src/session-ref'
+import { AnswerRefused } from '../src/answer-refused'
+import { ApprovalModeSwitch, type ApprovalModeState } from '../src/approval-mode'
+import { NextTurnSetting, sessionSettings, requestPlanMode } from '../src/next-turn'
 import {
   type AgentRuntime,
   type ApprovalMode,
@@ -30,14 +30,14 @@ import {
   type SessionSettingsState,
   type StartOptions,
   type TurnProvenance,
-} from './runtime'
-import type { LaunchSetting } from './launch-settings'
-import { assertNotCancelled } from './internal/bounded'
-import { AsyncQueue } from './internal/async-queue'
-import { RequestBroker } from './internal/request-broker'
-import { isProviderWork } from './internal/provider-work'
-import type { ProviderCommand, ProviderCommandAnswer } from './provider-commands'
-import { SessionMachine } from './internal/session-machine'
+} from '../src/runtime'
+import type { LaunchSetting } from '../src/launch-settings'
+import { assertNotCancelled } from '../src/internal/bounded'
+import { AsyncQueue } from '../src/internal/async-queue'
+import { RequestBroker } from '../src/internal/request-broker'
+import { isProviderWork } from '../src/internal/provider-work'
+import type { ProviderCommand, ProviderCommandAnswer } from '../src/provider-commands'
+import { SessionMachine } from '../src/internal/session-machine'
 
 /**
  * The one tool the representative turn uses (186).

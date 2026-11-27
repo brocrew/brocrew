@@ -4,12 +4,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
-  FakeRuntime,
   type AgentRuntime,
   type RuntimeEvent,
   type SessionHandle,
   type StartOptions,
 } from '@brobot2/runtime'
+import { FakeRuntime } from '@brobot2/runtime/testing'
 import type { SessionRef } from '@brobot2/runtime'
 import type { Provider, SessionStatus } from '@brobot2/shared'
 import {

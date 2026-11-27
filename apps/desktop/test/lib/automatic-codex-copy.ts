@@ -1,4 +1,4 @@
-import type { FakeRuntime } from '@brobot2/runtime'
+import type { FakeRuntime } from '@brobot2/runtime/testing'
 import { expect, it, vi } from 'vitest'
 import type { ProviderAuthOps } from '../../src/main/providers/auth-operations'
 import type { RuntimeHost, RuntimeEventSink } from '../../src/main/runtime/runtime-host'

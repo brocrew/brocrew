@@ -8,13 +8,13 @@ import type { AddressInfo } from 'node:net'
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import {
-  FakeRuntime,
   withManagedPluginAttachments,
   type ManagedPluginAttachment,
   type ManagedPluginMcpServer,
   type SessionHandle,
   type RuntimeEvent,
 } from '@brobot2/runtime'
+import { FakeRuntime } from '@brobot2/runtime/testing'
 import { PLUGIN_ATTACHMENT_WAIT_MS } from '../../../packages/runtime/src/managed-plugin-session'
 import type { PluginStateDisk } from '../src/main/plugins/state/disk'
 import {

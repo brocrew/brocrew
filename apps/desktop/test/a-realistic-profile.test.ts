@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
-import { FakeRuntime } from '@brobot2/runtime'
+import { FakeRuntime } from '@brobot2/runtime/testing'
 import { RuntimeHost } from '../src/main/runtime/runtime-host'
 import { REQUEST_IS_OPEN } from '../src/shared/questions'
 import {

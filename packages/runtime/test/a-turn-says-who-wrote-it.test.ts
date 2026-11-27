@@ -3,7 +3,8 @@ import { describe, expect, it } from 'vitest'
 import { AsyncQueue } from '../src/internal/async-queue'
 import { CLAUDE_CAPABILITIES, ClaudeRuntime, type ClaudeQuery } from '../src/claude'
 import { CODEX_CAPABILITIES } from '../src/codex'
-import { FakeRuntime, type TurnProvenance } from '../src/index'
+import { type TurnProvenance } from '../src/index'
+import { FakeRuntime } from './fake-runtime'
 
 /**
  * 🔴 **662 · what the Claude SDK is handed, for each thing a turn can say about its author.**

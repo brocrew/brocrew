@@ -1,5 +1,6 @@
-import { FakeRuntime, type FakeProviderSessions } from '@brobot2/runtime'
-import type { FakeSessionHandle, StartOptions, ResumeOptions, SessionRef } from '@brobot2/runtime'
+import { FakeRuntime, type FakeProviderSessions } from '@brobot2/runtime/testing'
+import type { StartOptions, ResumeOptions, SessionRef } from '@brobot2/runtime'
+import type { FakeSessionHandle } from '@brobot2/runtime/testing'
 import type { Provider } from '@brobot2/shared'
 
 export class StartHandleKeepingRuntime extends FakeRuntime {

@@ -1,4 +1,5 @@
-import type { FakeSessionHandle, UserInputResponse } from '@brobot2/runtime'
+import type { UserInputResponse } from '@brobot2/runtime'
+import type { FakeSessionHandle } from '@brobot2/runtime/testing'
 import type { TranscriptEvent } from '../../src/shared/conversation-events'
 import { waitFor } from '../lib/f093-host'
 

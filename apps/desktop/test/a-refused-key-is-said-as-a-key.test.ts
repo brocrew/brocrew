@@ -5,12 +5,8 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import {
-  AuthUnavailableError,
-  FakeRuntime,
-  allProviderCapabilities,
-  type RuntimeEvent,
-} from '@brobot2/runtime'
+import { AuthUnavailableError, allProviderCapabilities, type RuntimeEvent } from '@brobot2/runtime'
+import { FakeRuntime } from '@brobot2/runtime/testing'
 import { whyNoClaudeLogin, claudeProjectDirName } from '@brobot2/runtime/claude'
 import type { Provider } from '@brobot2/shared'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'

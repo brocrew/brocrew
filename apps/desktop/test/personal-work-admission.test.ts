@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { TurnInProgress, type FakeSessionHandle } from '@brobot2/runtime'
+import { TurnInProgress } from '@brobot2/runtime'
+import { type FakeSessionHandle } from '@brobot2/runtime/testing'
 import { aServiceWorld, type AServiceWorld } from './helpers/a-service-world'
 import { agentToolsFor } from '../src/main/runtime/agent-tools'
 import { THE_APP_ITSELF, type RuntimeHost } from '../src/main/runtime/runtime-host'
