@@ -121,6 +121,7 @@ for (const route of [
       recoveryCopyVerifier: verifier,
       recoveryCopyHasher: { stop: async () => undefined },
       launchCompaction: { stop: async () => undefined },
+      launchOpening: { stop: async () => undefined },
       recoveryCaptureAbort: new AbortController(),
       recoveryWork: new Set(),
       stoppingRecoveryWork: null,

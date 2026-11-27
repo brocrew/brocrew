@@ -22,6 +22,7 @@ import { verifyInAWorker } from './recovery/copy-check'
 import { StorageService } from './storage/service'
 import { startEventRetention } from './storage/event-retention'
 import { workspaceCompaction } from './storage/workspace-compaction'
+import { workspaceOpening } from './storage/workspace-opening'
 import { clearHttpCache, httpCacheFolder } from './storage/cache'
 import { registerStorageIpc } from './storage/ipc'
 import { StorageFailure } from './storage/engine'
@@ -111,7 +112,7 @@ import {
   createSpawnedReader,
   totalBytes,
 } from './process-tree'
-import type { AppDatabase } from './db/connection'
+import { openDatabase, type AppDatabase } from './db/connection'
 import { workspaceListFile } from './workspaces'
 import { samePath } from './same-folder'
 import {
@@ -121,7 +122,7 @@ import {
   type DockLabelHost,
 } from './dock-label'
 import { DOCK_LABEL_CHANNELS, isDockLabelChange } from '../shared/dock-label'
-import { MigrationFailed, openWorkspaceDatabase } from './db/open-workspace-database'
+import { MigrationFailed } from './db/open-workspace-database'
 import { NewerDatabaseError, UnreadableDatabaseError } from './db/newer-database'
 import type { RecoveryService, StartupVerdict } from '../shared/recovery'
 import {
@@ -286,6 +287,14 @@ const launchCompaction = workspaceCompaction((maintenance) =>
     }),
   ),
 )
+const launchOpening = workspaceOpening((request) =>
+  withWorkerMemory('storage', () =>
+    startStorageWorker({
+      workerData: { maintenance: request },
+      resourceLimits: { maxOldGenerationSizeMb: 64, maxYoungGenerationSizeMb: 8 },
+    }),
+  ),
+)
 const recoveryCopyHasher = verifyInAWorker((request) =>
   withWorkerMemory('recovery-verify', () =>
     startRecoveryVerifier({
@@ -315,6 +324,7 @@ function stopRecoveryWork(): Promise<void> {
     recoveryCaptureAbort.abort()
     await Promise.all([
       launchCompaction.stop(),
+      launchOpening.stop(),
       recoveryCopyHasher.stop(),
       recoveryCopyVerifier.stop(),
     ])
@@ -379,27 +389,51 @@ async function theLastDraftSaves(): Promise<void> {
   if (outcome === 'failed') throw new Error('the last unsent drafts could not be written to disk')
 }
 
+/**
+ * Open, refuse a newer database, migrate and import the side files on the storage worker, so the
+ * window's main thread does none of it; main then opens the database that is ready.
+ */
+async function openTheDatabaseOffMain(): Promise<void> {
+  const existing = workspaceStartup(app)
+  existing?.assertDatabase()
+  // The trace's migration phase spans the worker's migrations only, as it did on main.
+  const migration: { finish?: (error?: unknown) => void } = {}
+  try {
+    await launchOpening.open(
+      {
+        file: databaseFile(app.getPath('userData')),
+        folder: app.getPath('userData'),
+        existing: existing !== undefined,
+        migrationsFolder: resolveMigrationsFolder(),
+        build: theBuildsMigrations(),
+      },
+      {
+        begun: () => {
+          migration.finish = pluginStartupTrace.begin('database-migration', 'startup')
+        },
+        ended: () => migration.finish?.(),
+      },
+    )
+  } catch (error) {
+    if (error instanceof MigrationFailed) migration.finish?.(error)
+    if (error instanceof WorkspaceUnavailable) existing?.assertDatabase()
+    throw error
+  }
+}
+
 function initDatabase(): AppDatabase {
   const existing = workspaceStartup(app)
   existing?.assertDatabase()
-  const database = openWorkspaceDatabase({
-    file: join(app.getPath('userData'), 'brobot2.sqlite'),
-    folder: app.getPath('userData'),
-    existing: existing !== undefined,
-    migrationsFolder: resolveMigrationsFolder(),
-    build: theBuildsMigrations(),
-    openFailed: () => existing?.assertDatabase(),
-    migrate: (apply) => {
-      const finishMigration = pluginStartupTrace.begin('database-migration', 'startup')
-      try {
-        mainThreadWork.timed('database migrations before the window', apply)
-        finishMigration()
-      } catch (error) {
-        finishMigration(error)
-        throw error
-      }
-    },
-  })
+  const dbPath = databaseFile(app.getPath('userData'))
+  const database = (() => {
+    try {
+      return openDatabase(dbPath, { fileMustExist: true })
+    } catch (error) {
+      existing?.assertDatabase()
+      if (existing) throw new WorkspaceUnavailable(dbPath, error)
+      throw error
+    }
+  })()
   db = database
   recoveryStartRecorded = withRecoveryCopies(() =>
     recordSuccessfulStart(app.getPath('userData'), theBuildsMigrations(), {
@@ -1450,6 +1484,8 @@ function start(ownership: HostGateVerdict): void {
           }
         }
       })
+      await openTheDatabaseOffMain()
+      if (memoryJournal.closing) return
       const database = initDatabase()
       const drafts = createSqliteDraftStorage(database)
       host = await createRuntimeHost(database, drafts)

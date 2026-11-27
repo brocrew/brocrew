@@ -9,7 +9,7 @@ import { importTurnsTheAppCutFile } from '../turns-the-app-cut-file'
 import { WorkspaceUnavailable } from '../workspace-startup'
 import { openDatabase, type AppDatabase } from './connection'
 import { applyMigrations } from './migrate'
-import { openOrRefuse } from './newer-database'
+import { NewerDatabaseError, openOrRefuse, UnreadableDatabaseError } from './newer-database'
 
 export class MigrationFailed extends Error {}
 
@@ -67,4 +67,41 @@ export function openWorkspaceDatabase(opening: WorkspaceDatabaseOpening): AppDat
   importDraftsFile(database, opening.folder)
   importProfileExecutionFile(database, opening.folder)
   return database
+}
+
+/** A failed open as it crosses from the worker that opened it: plain data, kind first. */
+export type OpenFailure =
+  | { readonly kind: 'migration'; readonly message: string; readonly cause: string }
+  | { readonly kind: 'newer'; readonly folder: string; readonly fit: NewerDatabaseError['fit'] }
+  | { readonly kind: 'unreadable'; readonly folder: string; readonly detail: string }
+  | { readonly kind: 'unavailable'; readonly file: string; readonly cause: string }
+  | { readonly kind: 'other'; readonly message: string }
+
+export function describeOpenFailure(error: unknown, file: string): OpenFailure {
+  const said = (value: unknown) => (value instanceof Error ? value.message : String(value))
+  if (error instanceof MigrationFailed)
+    return { kind: 'migration', message: error.message, cause: said(error.cause) }
+  if (error instanceof NewerDatabaseError)
+    return { kind: 'newer', folder: error.folder, fit: error.fit }
+  if (error instanceof UnreadableDatabaseError)
+    return { kind: 'unreadable', folder: error.folder, detail: error.detail }
+  if (error instanceof WorkspaceUnavailable)
+    return { kind: 'unavailable', file, cause: said(error.cause) }
+  return { kind: 'other', message: said(error) }
+}
+
+/** The same error the open would have thrown on main. */
+export function openFailureFrom(failure: OpenFailure): Error {
+  switch (failure.kind) {
+    case 'migration':
+      return new MigrationFailed(failure.message, { cause: new Error(failure.cause) })
+    case 'newer':
+      return new NewerDatabaseError(failure.folder, failure.fit)
+    case 'unreadable':
+      return new UnreadableDatabaseError(failure.folder, failure.detail)
+    case 'unavailable':
+      return new WorkspaceUnavailable(failure.file, new Error(failure.cause))
+    case 'other':
+      return new Error(failure.message)
+  }
 }
