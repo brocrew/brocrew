@@ -4,7 +4,7 @@ import { defineComponent, h, nextTick, ref } from 'vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import RunningNowCard from '../../src/renderer/src/components/RunningNowCard.vue'
 import { applyEvent, createTranscript } from '../../src/renderer/src/lib/transcript'
-import { mount, paneProps, record, unmountAll } from './harness'
+import { META, mount, paneProps, record, unmountAll } from './harness'
 
 afterEach(unmountAll)
 const tick = async (): Promise<void> => {
@@ -90,6 +90,98 @@ it('opens the same workflow and input from the conversation and panel without re
   for (const input of m.all('run-input'))
     expect(input.textContent).toContain('Review the map for three walkers.')
   expect(read).not.toHaveBeenCalled()
+})
+
+function workflowCall(canRead: boolean, linked: boolean) {
+  const events = mapWorkflowEvents()
+  const last = events.at(-1)!
+  if (last.type !== 'workflow_run') throw new Error('Missing workflow fixture')
+  const workflow = {
+    ...last,
+    run: { kind: 'workflow' as const, input: 'Review the map for three walkers.' },
+  }
+  const r = record([
+    events[0]!,
+    { type: 'tool_result', id: 'workflow-call', ok: true, summary: 'Workflow started.' },
+    ...(linked ? [workflow] : []),
+  ])
+  if (canRead) r.meta = { ...META, liveness: { ...META.liveness, canReadToolAnswer: true } }
+  return { session: ref(r), workflow }
+}
+
+function mountCall(
+  session: ReturnType<typeof workflowCall>['session'],
+  onReadToolAnswer?: () => Promise<null>,
+) {
+  const Host = defineComponent({
+    setup: () => () =>
+      h(ConversationPane, paneProps({ record: session.value, drawerOpen: true, onReadToolAnswer })),
+  })
+  const m = mount(Host, {}, { width: 1400, height: 900 })
+  const door = (): HTMLElement => m.host.querySelector<HTMLElement>('[data-cy^=tool-answer-open-]')!
+  async function opensTheWorkflowSheet(open: () => void | Promise<void>): Promise<void> {
+    await open()
+    await tick()
+    const sheet = m.q('close-overlay').closest('.sheet-shell')!
+    expect(sheet.textContent).toContain('Workflow')
+    expect(sheet.querySelectorAll('[data-cy=workflow-entry]')).toHaveLength(1)
+    expect(sheet.querySelector('[data-cy=run-input]')?.textContent).toContain(
+      'Review the map for three walkers.',
+    )
+    expect(m.all('tool-answer-viewer')).toHaveLength(0)
+    m.q('close-overlay').click()
+    await tick()
+  }
+  return { m, door, opensTheWorkflowSheet }
+}
+
+it('opens a workflow call from the conversation into the one workflow view Running now and Past runs open', async () => {
+  const { session, workflow } = workflowCall(true, false)
+  let answered: (value: null) => void = () => {}
+  const readAnswer = vi.fn(() => new Promise<null>((resolve) => (answered = resolve)))
+  const { m, door, opensTheWorkflowSheet } = mountCall(session, readAnswer)
+  await tick()
+  // Before its run links, the call is an ordinary tool call in a run of calls; a run that links
+  // while its answer is read still opens as the workflow.
+  m.q('tool-run-toggle').click()
+  await tick()
+  expect(door().textContent?.trim()).toBe('Show the whole answer')
+  await opensTheWorkflowSheet(async () => {
+    door().click()
+    await tick()
+    expect(readAnswer).toHaveBeenCalledTimes(1)
+    applyEvent(session.value.transcript, workflow)
+    await tick()
+    answered(null)
+  })
+  m.host.querySelector<HTMLElement>('[data-cy^=tool-toggle-]')!.click()
+  await tick()
+  expect(door().textContent?.trim()).toBe('Open the workflow')
+  await opensTheWorkflowSheet(() => door().click())
+  await opensTheWorkflowSheet(() => m.q('panel-row').click())
+  applyEvent(session.value.transcript, {
+    ...workflow,
+    outcome: 'completed',
+    run: { kind: 'workflow', result: 'Map review complete' },
+  })
+  await tick()
+  await opensTheWorkflowSheet(async () => {
+    m.q('past-runs-open').click()
+    await tick()
+    m.q('past-runs-dialog').querySelector<HTMLElement>('[data-cy=panel-row]')!.click()
+  })
+  await opensTheWorkflowSheet(() => door().click())
+  expect(readAnswer).toHaveBeenCalledTimes(1)
+})
+
+it('opens a linked workflow call where tool answers cannot be read', async () => {
+  const { session } = workflowCall(false, true)
+  const { m, door, opensTheWorkflowSheet } = mountCall(session)
+  await tick()
+  m.host.querySelector<HTMLElement>('[data-cy^=tool-toggle-]')!.click()
+  await tick()
+  expect(door().textContent?.trim()).toBe('Open the workflow')
+  await opensTheWorkflowSheet(() => door().click())
 })
 
 it('draws the same checklist component inside Running now and the conversation', async () => {
