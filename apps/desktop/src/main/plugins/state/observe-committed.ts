@@ -13,8 +13,11 @@ const canonical = promisify(process.platform === 'win32' ? realpath.native : rea
 const same = (a: BigIntStats, b: BigIntStats) => a.dev === b.dev && a.ino === b.ino
 const stamp = (s: BigIntStats) => [s.dev, s.ino, s.size, s.mtimeNs, s.ctimeNs, s.nlink].join(':')
 
-/** Committed startup evidence only; never opens SQLite or grants mutation/admission authority. */
-async function readStartup(options: PluginDiskOptions) {
+/**
+ * Committed display evidence only; never opens SQLite or grants mutation/admission authority.
+ * Asynchronous, so a long journal never holds the main thread.
+ */
+async function readCommitted(options: PluginDiskOptions) {
   const pins: { path: string; stat: BigIntStats; handle: FileHandle }[] = []
   try {
     const root = resolve(options.root),
@@ -186,18 +189,37 @@ async function readStartup(options: PluginDiskOptions) {
       )
     )
       refuseState('busy')
-    return {
-      installed: [...state.admitted.keys()],
-      pending: state.pending?.request.consent.pluginId ?? null,
-    }
+    return state
   } finally {
     await Promise.all(pins.map((pin) => pin.handle.close()))
   }
 }
 
-export async function observePluginStartup(options: PluginDiskOptions) {
+/** Missing, partial, busy or unsafe data is unknown (null), never an action state. */
+export async function observeInstallations(options: PluginDiskOptions) {
   try {
-    return await readStartup(options)
+    const state = await readCommitted(options)
+    return {
+      installed: [...state.admitted.keys()],
+      pending: state.pending?.request.consent.pluginId ?? null,
+    }
+  } catch {
+    return null
+  }
+}
+
+/** The installed release of one plugin; unknown (null) while any operation is pending. */
+export async function observeInstalledPackage(options: PluginDiskOptions, id: string) {
+  try {
+    const state = await readCommitted(options)
+    if (state.pending !== null) return null
+    const installed = state.admitted.get(id)
+    if (!installed) return null
+    return Object.freeze({
+      version: installed.release.version,
+      archiveSha256: installed.release.archiveSha256,
+      manifestSha256: installed.release.manifestSha256,
+    })
   } catch {
     return null
   }

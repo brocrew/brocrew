@@ -1,16 +1,12 @@
+import './plugin-startup-fixtures'
 import fs from 'node:fs'
+import * as asyncFs from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { expect, it, vi } from 'vitest'
 import { setup, settingsCall } from './plugin-production-fixtures'
 import { fixture } from './plugin-lifecycle-fixtures'
 import { readPluginInstructions } from '../src/main/plugins/instructions'
-import { GlobalPluginState } from '../src/main/plugins/state/store'
-
-vi.mock('node:fs', async (original) => {
-  const actual = await original<typeof import('node:fs')>()
-  const openSync = vi.fn(actual.openSync)
-  return { ...actual, openSync, default: { ...actual, openSync } }
-})
+import * as committed from '../src/main/plugins/state/observe-committed'
 
 async function connected(mixed = false) {
   const owner = await fixture()
@@ -54,7 +50,7 @@ for (const path of ['startup', 'settings', 'agent turn', 'timer', 'mixed fallbac
   it(`does not replay a journal on workspace main for ${path}`, async () => {
     const interval = vi.spyOn(globalThis, 'setInterval')
     const f = await connected(path === 'mixed fallback')
-    const observer = vi.spyOn(GlobalPluginState, 'observeInstallations')
+    const observer = vi.spyOn(committed, 'observeInstallations')
     const before = f.opens()
     f.controller.start(f.options)
     await f.controller.ready!()
@@ -115,7 +111,7 @@ it('legacy agent and timer refresh never request fallback disk evidence', async 
     { id: f.pkg.release.id, name: 'Fictional', installed: false, state: 'Unavailable' },
   ])
   const interval = vi.spyOn(globalThis, 'setInterval')
-  const observe = vi.spyOn(GlobalPluginState, 'observeInstallations')
+  const observe = vi.spyOn(committed, 'observeInstallations')
   f.controller.start(f.options)
   await f.controller.ready!()
   readPluginInstructions(f.controller)
@@ -124,7 +120,7 @@ it('legacy agent and timer refresh never request fallback disk evidence', async 
   tick()
   await new Promise<void>((resolve) => setImmediate(resolve))
   expect(observe).not.toHaveBeenCalled()
-  observe.mockReturnValue({ installed: [f.pkg.release.id], pending: null })
+  observe.mockResolvedValue({ installed: [f.pkg.release.id], pending: null })
   expect(await f.controller.catalogue()).toMatchObject([{ installed: true, state: 'Unavailable' }])
   expect(observe).toHaveBeenCalledOnce()
 })
@@ -148,7 +144,7 @@ it.each(['partial', 'unreadable'] as const)(
         ),
       )
     } else {
-      vi.mocked(fs.openSync).mockImplementationOnce(() => {
+      vi.mocked(asyncFs.open).mockImplementationOnce(async () => {
         throw Object.assign(new Error('fictional unreadable state'), { code: 'EACCES' })
       })
     }

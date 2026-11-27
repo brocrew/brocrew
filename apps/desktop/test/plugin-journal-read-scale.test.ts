@@ -10,8 +10,10 @@ import {
   cleanupLifecycleFixtures,
   fixture,
 } from './plugin-lifecycle-fixtures'
-import { observePluginStartup } from '../src/main/plugins/state/observe-startup'
-import { GlobalPluginState } from '../src/main/plugins/state/store'
+import {
+  observeInstalledPackage,
+  observeInstallations,
+} from '../src/main/plugins/state/observe-committed'
 import type { PluginStateDisk } from '../src/main/plugins/state/disk'
 
 afterEach(async () => {
@@ -19,19 +21,17 @@ afterEach(async () => {
   await cleanupLifecycleFixtures()
 })
 
-it('measures synchronous and asynchronous observation at the saved trace open-count scale using fictional state', async () => {
+// A fictional journal about as long as the longest one seen in use: 1,843 records, 3,686 files.
+it('reads a long journal without synchronous file calls while timers keep running', async () => {
   const f = await fixture()
+  await f.controller.install(f.handle, 'chrome')
   const disk = (f.state as unknown as { disk: PluginStateDisk }).disk
   const head = disk.load(),
     records = 1843
   appendProjectionHistory(f.root, head, randomUUID(), records - head.sequence - 1, null)
   const root = join(f.root, 'state'),
     guard = join(root, 'lifecycle-guard')
-  expect(fs.readdirSync(guard).filter((name) => name.endsWith('.json'))).toHaveLength(records)
-  const options = { root, workspaceRoots: [f.workspace] }
-  const bytes = fs
-    .readdirSync(guard)
-    .reduce((n, name) => n + fs.statSync(join(guard, name)).size, 0)
+  expect(fs.readdirSync(guard)).toHaveLength(records * 2)
   const sync = [
     fs.openSync,
     fs.lstatSync,
@@ -40,53 +40,57 @@ it('measures synchronous and asynchronous observation at the saved trace open-co
     fs.closeSync,
     fs.readdirSync,
   ].map((fn) => vi.mocked(fn))
+  const reads = [
+    {
+      name: 'installations',
+      read: () => observeInstallations({ root, workspaceRoots: [f.workspace] }),
+      expected: { installed: ['chrome'], pending: null },
+    },
+    {
+      name: 'installed package',
+      read: () => observeInstalledPackage({ root, workspaceRoots: [] }, 'chrome'),
+      expected: {
+        version: f.pkg.release.version,
+        archiveSha256: f.pkg.release.archive.sha256,
+        manifestSha256: f.pkg.release.manifestSha256,
+      },
+    },
+  ]
   const results = []
-  for (const mode of ['sync', 'async'] as const) {
+  for (const { name, read, expected } of reads) {
     for (const fn of sync) fn.mockClear()
     vi.mocked(asyncFs.open).mockClear()
-    let last = performance.now(),
+    const began = performance.now()
+    let last = began,
       maxGapMs = 0,
       ticks = 0
-    const tick = () => {
+    const timer = setInterval(() => {
       const now = performance.now()
       maxGapMs = Math.max(maxGapMs, now - last)
       last = now
       ticks++
-    }
-    const timer = setInterval(tick, 1)
-    await new Promise((resolve) => setTimeout(resolve, 5))
-    last = performance.now()
-    maxGapMs = 0
-    ticks = 0
-    const began = last
+    }, 1)
     let result
     try {
-      result =
-        mode === 'sync'
-          ? GlobalPluginState.observeInstallations(options)
-          : await observePluginStartup(options)
+      result = await read()
       maxGapMs = Math.max(maxGapMs, performance.now() - last)
     } finally {
       clearInterval(timer)
     }
-    const elapsedMs = performance.now() - began
-    expect(result).toEqual({ installed: [], pending: null })
-    const syncOpens = vi
-      .mocked(fs.openSync)
-      .mock.calls.filter(([path]) => dirname(String(path)) === guard).length
-    const asyncOpens = vi
+    expect(result).toEqual(expected)
+    const opens = vi
       .mocked(asyncFs.open)
       .mock.calls.filter(([path]) => dirname(String(path)) === guard).length
-    if (mode === 'sync') expect(syncOpens).toBe(records * 2)
-    else {
-      expect(asyncOpens).toBe(records * 2)
-      expect(ticks).toBeGreaterThan(0)
-      for (const fn of sync) expect(fn).not.toHaveBeenCalled()
-    }
-    results.push({ mode, records, bytes, syncOpens, asyncOpens, elapsedMs, maxGapMs, ticks })
+    expect(opens).toBe(records * 2)
+    const elapsedMs = performance.now() - began
+    expect(ticks).toBeGreaterThan(0)
+    // A synchronous replay holds the thread for the whole read; this one yields throughout.
+    expect(maxGapMs).toBeLessThan(elapsedMs / 4)
+    for (const fn of sync) expect(fn).not.toHaveBeenCalled()
+    results.push({ name, records, elapsedMs, maxGapMs, ticks })
   }
   console.info(
-    'STARTUP_SCALE ' +
+    'JOURNAL_READ_SCALE ' +
       JSON.stringify({ platform: process.platform, node: process.version, results }),
   )
 }, 60_000)

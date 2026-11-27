@@ -1,11 +1,10 @@
 import fs from 'node:fs'
 import { syncBuiltinESMExports } from 'node:module'
-import * as privateFiles from '../src/main/plugins/private-files'
 import { afterEach, expect, it, vi } from 'vitest'
-import { readdir, unlink, cp, rm } from 'node:fs/promises'
+import fsPromises, { readdir, unlink, cp, rm, type FileHandle } from 'node:fs/promises'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { GlobalPluginState } from '../src/main/plugins/state/store'
+import { observeInstalledPackage } from '../src/main/plugins/state/observe-committed'
 import { PluginFence } from '../src/main/plugins/state/fence'
 import { cleanupLifecycleFixtures } from './plugin-lifecycle-fixtures'
 import { disclosureFixture, disclosureTree } from './plugin-disclosure-fixtures'
@@ -23,16 +22,24 @@ async function setup() {
   return f
 }
 function snapshot(root: string) {
-  return GlobalPluginState.readInstalledPackage(
-    { root: join(root, 'state'), workspaceRoots: [] },
-    'chrome',
-  )
+  return observeInstalledPackage({ root: join(root, 'state'), workspaceRoots: [] }, 'chrome')
+}
+function trackOpens() {
+  const opened: { path: string; handle: FileHandle }[] = [],
+    open = fsPromises.open
+  vi.spyOn(fsPromises, 'open').mockImplementation(async (...args) => {
+    const handle = await open(...args)
+    opened.push({ path: String(args[0]), handle })
+    return handle
+  })
+  syncBuiltinESMExports()
+  return opened
 }
 it('reads only an immutable verified installed descriptor without a writer fence or effects', async () => {
   const f = await setup(),
     before = await f.snapshot(),
     acquire = vi.spyOn(PluginFence, 'acquire')
-  const descriptor = snapshot(f.f.root)
+  const descriptor = await snapshot(f.f.root)
   expect(descriptor).toEqual({
     version: '1.0.1',
     archiveSha256: f.first.release.archive.sha256,
@@ -48,7 +55,7 @@ it('reads the prior descriptor while the real owner holds its fence without maki
     acquire = vi.spyOn(PluginFence, 'acquire')
   let finished = false
   await f.f.state.withExclusive(async () => {
-    expect(snapshot(f.f.root)).toMatchObject({ version: '1.0.1' })
+    expect(await snapshot(f.f.root)).toMatchObject({ version: '1.0.1' })
     await Promise.resolve()
     finished = true
   })
@@ -67,14 +74,14 @@ it('a missing seal returns unknown without repairing the journal or creating any
   // inspect() would repair the deliberately damaged journal; compare all bytes instead.
   const before = await disclosureTree(f.f.root),
     acquire = vi.spyOn(PluginFence, 'acquire')
-  expect(snapshot(f.f.root)).toBeNull()
+  expect(await snapshot(f.f.root)).toBeNull()
   expect(acquire).not.toHaveBeenCalled()
   expect(await disclosureTree(f.f.root)).toEqual(before)
 })
 it('an absent state root is unknown and is never created by a display read', async () => {
   const f = await setup(),
     before = await f.snapshot()
-  expect(snapshot(join(f.f.root, 'absent'))).toBeNull()
+  expect(await snapshot(join(f.f.root, 'absent'))).toBeNull()
   expect(await f.snapshot()).toEqual(before)
 })
 it('an owner publication in progress is unknown with full state and bytes unchanged by the read', async () => {
@@ -102,7 +109,7 @@ it('an owner publication in progress is unknown with full state and bytes unchan
     })
     const before = await f.snapshot()
     expect(before.state.pending).not.toBeNull()
-    expect(snapshot(f.f.root)).toBeNull()
+    expect(await snapshot(f.f.root)).toBeNull()
     expect(await f.snapshot()).toEqual(before)
     f.f.state.abort(operationId)
   })
@@ -113,36 +120,31 @@ it.each(['EBUSY', 'EPERM'])(
   async (code) => {
     const f = await setup(),
       before = await f.snapshot()
-    const stat = vi.spyOn(fs, 'lstatSync').mockImplementationOnce(() => {
+    const stat = vi.spyOn(fsPromises, 'lstat').mockImplementationOnce(async () => {
       throw Object.assign(new Error('busy'), { code })
     })
     syncBuiltinESMExports()
-    expect(snapshot(f.f.root)).toBeNull()
+    expect(await snapshot(f.f.root)).toBeNull()
     stat.mockRestore()
     syncBuiltinESMExports()
     expect(await f.snapshot()).toEqual(before)
   },
 )
-it('repeated successful and failed display reads close every pinned descriptor', async () => {
+it('repeated successful and failed display reads close every handle they open', async () => {
   const f = await setup(),
-    opened: number[] = [],
-    open = privateFiles.openDirectoryNotThroughALink
-  vi.spyOn(privateFiles, 'openDirectoryNotThroughALink').mockImplementation((...args) => {
-    const fd = open(...args)
-    opened.push(fd)
-    return fd
-  })
+    opened = trackOpens()
   for (let i = 0; i < 20; i++) {
-    expect(snapshot(f.f.root)).toMatchObject({ version: '1.0.1' })
-    for (const fd of opened.splice(0)) expect(() => fs.fstatSync(fd)).toThrow()
+    expect(await snapshot(f.f.root)).toMatchObject({ version: '1.0.1' })
+    expect(opened.length).toBeGreaterThan(0)
+    for (const { handle } of opened.splice(0)) expect(handle.fd).toBe(-1)
   }
   const folder = join(f.f.root, 'state', 'lifecycle-guard'),
     seal = (await readdir(folder)).find((name) => name.endsWith('.seal'))!
   await unlink(join(folder, seal))
   for (let i = 0; i < 20; i++) {
-    expect(snapshot(f.f.root)).toBeNull()
+    expect(await snapshot(f.f.root)).toBeNull()
     expect(opened.length).toBeGreaterThan(0)
-    for (const fd of opened.splice(0)) expect(() => fs.fstatSync(fd)).toThrow()
+    for (const { handle } of opened.splice(0)) expect(handle.fd).toBe(-1)
   }
 })
 it('displaying an incomplete copied state creates neither reservations nor a writer lock', async () => {
@@ -160,18 +162,18 @@ it('displaying an incomplete copied state creates neither reservations nor a wri
     ),
   )
   const before = await disclosureTree(copy)
-  expect(snapshot(copy)).toBeNull()
+  expect(await snapshot(copy)).toBeNull()
   expect(await disclosureTree(copy)).toEqual(before)
 })
 
-it('multiply linked records are unknown and never cause a reservation folder to be pinned', async () => {
+it('a record linked from outside the journal is unknown and opens no reservation', async () => {
   const f = await setup(),
     guard = join(f.f.root, 'state', 'lifecycle-guard')
   const record = (await readdir(guard)).filter((name) => name.endsWith('.json')).sort()[0]!
-  fs.linkSync(join(guard, record), join(guard, `.stage-${randomUUID()}`))
+  fs.linkSync(join(guard, record), join(f.f.root, `outside-${randomUUID()}`))
   const before = await f.snapshot(),
-    open = vi.spyOn(privateFiles, 'openDirectoryNotThroughALink')
-  expect(snapshot(f.f.root)).toBeNull()
-  expect(open.mock.calls.some(([path]) => path.includes('resolution-reservations'))).toBe(false)
+    opened = trackOpens()
+  expect(await snapshot(f.f.root)).toBeNull()
+  expect(opened.some(({ path }) => /resolution-reservations[\\/]./.test(path))).toBe(false)
   expect(await f.snapshot()).toEqual(before)
 })

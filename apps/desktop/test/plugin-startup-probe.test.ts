@@ -7,7 +7,6 @@ import { expect, it, vi } from 'vitest'
 import { setup, seams } from './plugin-production-fixtures'
 import { fixture, deferred } from './plugin-lifecycle-fixtures'
 import { readPluginInstructions } from '../src/main/plugins/instructions'
-import { GlobalPluginState } from '../src/main/plugins/state/store'
 
 async function emptyOffers() {
   const owner = await fixture()
@@ -28,7 +27,6 @@ async function emptyOffers() {
 it('does not synchronously replay an existing empty journal during startup with an active agent', async () => {
   const f = await emptyOffers()
   const at = f.opens()
-  const observe = vi.spyOn(GlobalPluginState, 'observeInstallations')
   f.controller.start(f.options)
   readPluginInstructions(f.controller)
   await f.controller.ready!()
@@ -36,7 +34,6 @@ it('does not synchronously replay an existing empty journal during startup with 
   expect(f.supervisor.start).not.toHaveBeenCalled()
   expect(seams.connect).not.toHaveBeenCalled()
   expect(f.opens() - at).toBe(0)
-  expect(observe).not.toHaveBeenCalled()
 })
 
 it('does not replay on the existing automatic reconnect while an agent is active', async () => {

@@ -139,7 +139,8 @@ export class PluginStateDisk {
       }
       this.pin(this.reservations)
       const fencePath = join(this.root, 'writer-lock.sqlite')
-      this.fence = PluginFence.acquire(fencePath, existingOnly)
+      if (existingOnly) lstatSync(fencePath)
+      this.fence = PluginFence.acquire(fencePath)
       this.check()
       if (create) fsyncSync(this.pins[0]!.fd)
     } catch (error) {

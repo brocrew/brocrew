@@ -1,4 +1,4 @@
-import { observePluginStartup } from './state/observe-startup'
+import { observeInstallations } from './state/observe-committed'
 import {
   pluginStartupTrace,
   PluginStartupError,
@@ -11,7 +11,6 @@ import { ManagedPluginFailure } from '@brobot2/runtime/plugin-failure'
 import { join } from 'node:path'
 import { lstat } from 'node:fs/promises'
 import { PluginListError } from './catalogue/list-error'
-import { GlobalPluginState } from './state/store'
 import type { PluginSettingsController } from './settings'
 import type { PluginInstructionSource, PluginInstructionEntry } from './instructions'
 import { loadRepoPluginList } from './catalogue/repo-list'
@@ -93,12 +92,10 @@ export function productionPluginController() {
   let recovery: ReturnType<typeof setTimeout> | undefined
   let timer: ReturnType<typeof setInterval> | undefined
   let refresh: Promise<void> | undefined
-  let observeInstallations: () => ReturnType<
-    typeof GlobalPluginState.observeInstallations
-  > | null = () => null
+  let observeSaved: () => ReturnType<typeof observeInstallations> = async () => null
   const unavailableCards = (
-    listed: readonly { id: string; name?: string }[] = entries ?? [],
-    evidence = observeInstallations(),
+    listed: readonly { id: string; name?: string }[],
+    evidence: Awaited<ReturnType<typeof observeInstallations>>,
   ): PluginCard[] => {
     const conditionalWindowAdvice =
       acceptingBusy &&
@@ -123,6 +120,11 @@ export function productionPluginController() {
             : false
         : null,
     }))
+  }
+  const unavailable = async () => {
+    const evidence = await observeSaved()
+    if (ended) return fail()
+    return unavailableCards(entries ?? [], evidence)
   }
   let refreshFailed = false
   let listFailure: PluginListError | undefined
@@ -245,7 +247,7 @@ export function productionPluginController() {
         ? await connection.displayCatalogue()
         : {
             cards: await connection.catalogue(),
-            evidence: personRequested ? observeInstallations() : null,
+            evidence: personRequested ? await observeSaved() : null,
           }
       const admittedCards = display.cards
       stage = 'composition'
@@ -353,7 +355,7 @@ export function productionPluginController() {
       await enter()
     if (listFailure) throw listFailure
     if (ended || !entries) return fail()
-    if (!connected || cleanupUncertain) return unavailableCards()
+    if (!connected || cleanupUncertain) return unavailable()
     try {
       const startupStillFresh = () => {
         const now = performance.now()
@@ -403,7 +405,7 @@ export function productionPluginController() {
     } catch (error) {
       if (ended) return fail()
       if (error instanceof PluginListError) throw error
-      return unavailableCards()
+      return unavailable()
     }
   }
   const facade: PluginSettingsController & PluginInstructionSource = {
@@ -461,11 +463,11 @@ export function productionPluginController() {
       recover()
       await enter(true)
       if (ended || !entries) return fail()
-      if (!connected || cleanupUncertain) return unavailableCards()
+      if (!connected || cleanupUncertain) return unavailable()
       try {
         return await facade.catalogue(true)
       } catch {
-        return unavailableCards()
+        return unavailable()
       }
     },
     async action(id, actionId) {
@@ -519,16 +521,11 @@ export function productionPluginController() {
       if (ended || started) return
       started = true
       supervisor = options.supervisor
-      observeInstallations = () => {
-        try {
-          return GlobalPluginState.observeInstallations({
-            root: join(options.root, 'state'),
-            workspaceRoots: [options.workspaceRoot],
-          })
-        } catch {
-          return null
-        }
-      }
+      observeSaved = () =>
+        observeInstallations({
+          root: join(options.root, 'state'),
+          workspaceRoots: [options.workspaceRoot],
+        })
       initialize = async () => {
         pluginStartupTrace.attempt()
         const admission = pluginStartupTrace.begin('controller-admission')
@@ -589,10 +586,7 @@ export function productionPluginController() {
               },
             )
             if (!existing) return false
-            const saved = await observePluginStartup({
-              root: join(options.root, 'state'),
-              workspaceRoots: [options.workspaceRoot],
-            })
+            const saved = await observeSaved()
             if (saved && saved.installed.length === 0 && saved.pending === null) return false
           }
           phase = 'storage'

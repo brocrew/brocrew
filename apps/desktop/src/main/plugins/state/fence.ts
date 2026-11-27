@@ -43,7 +43,7 @@ export class PluginFence {
     private readonly db: Database.Database,
   ) {}
 
-  static acquire(path: string, existingOnly = false): PluginFence {
+  static acquire(path: string): PluginFence {
     if (!isMainThread) refuseState('unsupported')
     let before: BigIntStats | undefined
     try {
@@ -60,14 +60,9 @@ export class PluginFence {
         return existing
       }
     }
-    if (existingOnly && !before) refuseState('unsafe-path')
     // No other holder exists here. Main-thread acquisition has no await/re-entrant callback.
     // Without O_NOFOLLOW (Windows) the open follows a link; the lstat after it refuses one.
-    const fd = openSync(
-      path,
-      constants.O_RDWR | (existingOnly ? 0 : constants.O_CREAT) | constants.O_NOFOLLOW,
-      0o600,
-    )
+    const fd = openSync(path, constants.O_RDWR | constants.O_CREAT | constants.O_NOFOLLOW, 0o600)
     let db: Database.Database | undefined
     try {
       const stat = fstatSync(fd, { bigint: true })

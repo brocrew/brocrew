@@ -66,7 +66,7 @@ interface Counterpart {
 }
 const same = (left: BigIntStats, right: BigIntStats) =>
   left.dev === right.dev && left.ino === right.ino
-/** Shared pinned journal reader. The display entry point never opens the writer disk or fence. */
+/** Pinned journal reader under the writer disk. Display reads use the asynchronous observer. */
 class PluginJournalReader {
   readonly #pins: Pin[] = []
   #pinRevision = 0
@@ -116,13 +116,6 @@ class PluginJournalReader {
       throw error instanceof PluginStateError ? error : new PluginStateError('unsafe-path')
     }
   }
-  protected pinExistingDirectories(): void {
-    this.pin(this.root)
-    this.pin(this.guard)
-    this.pin(this.activations)
-    this.check()
-  }
-
   protected privateDirectory(stat: BigIntStats): void {
     if (!stat.isDirectory() || stat.isSymbolicLink()) refuseState('unsafe-path')
   }
@@ -352,46 +345,6 @@ class PluginJournalReader {
     void _source
     refuseState('corrupt')
   }
-  openForDisplay(): void {
-    this.pinExistingDirectories()
-  }
-  descriptor(id: string) {
-    const stamp = () => {
-      this.check()
-      const names = readdirSync(this.guard).sort()
-      if (names.length > STATE_LIMITS.records * 2) refuseState('limit')
-      return names
-        .map((name) => {
-          const s = lstatSync(join(this.guard, name), { bigint: true })
-          return [name, s.dev, s.ino, s.size, s.mtimeNs, s.ctimeNs].join(':')
-        })
-        .join('\n')
-    }
-    const before = stamp(),
-      state = this.loadLocked(undefined, false)
-    if (state.pending !== null || before !== stamp()) refuseState('busy')
-    const installed = state.admitted.get(id)
-    if (!installed) return null
-    return Object.freeze({
-      version: installed.release.version,
-      archiveSha256: installed.release.archiveSha256,
-      manifestSha256: installed.release.manifestSha256,
-    })
-  }
-}
-/** Display evidence only. No mkdir, SQLite, fence, repair, reclaim or admission. */
-export function readInstalledPluginDescriptor(options: PluginDiskOptions, id: string) {
-  let reader: PluginJournalReader | undefined
-  try {
-    reader = new PluginJournalReader(options)
-    reader.openForDisplay()
-    return reader.descriptor(id)
-  } catch {
-    // Missing, partial, busy or unsafe data is an unknown installed side, never an action state.
-    return null
-  } finally {
-    reader?.close()
-  }
 }
 
 /** Kept-current journal + immutable activation objects, never a workspace DB. */
@@ -407,7 +360,7 @@ export class PluginStateDisk extends PluginJournalReader {
     kept: ReadonlySet<string>
     activation?: ActivationRef & { snapshot: ActivationSnapshot }
   }
-  constructor(options: PluginDiskOptions, create = false, existingOnly = false) {
+  constructor(options: PluginDiskOptions, create = false) {
     super(options, create)
     try {
       if (create) mkdirSync(this.root, { mode: 0o700 })
@@ -422,14 +375,13 @@ export class PluginStateDisk extends PluginJournalReader {
       try {
         lstatSync(this.reservations)
       } catch (error) {
-        if (existingOnly || !(error instanceof Error && 'code' in error && error.code === 'ENOENT'))
-          throw error
+        if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error
         this.check()
         mkdirSync(this.reservations, { mode: 0o700 })
         this.syncPinnedDirectory(this.root)
       }
       this.pin(this.reservations)
-      this.fence = PluginFence.acquire(join(this.root, 'writer-lock.sqlite'), existingOnly)
+      this.fence = PluginFence.acquire(join(this.root, 'writer-lock.sqlite'))
       this.check()
       if (create) this.syncPinnedDirectory(dirname(this.root))
     } catch (error) {
@@ -629,10 +581,6 @@ export class PluginStateDisk extends PluginJournalReader {
     const snapshot = decodeState(this.readActivation(ref), ActivationSnapshot)
     if (this.held) this.held.activation = { ...ref, snapshot }
     return structuredClone(snapshot)
-  }
-  /** Display readers must not finish an interrupted owner publication. */
-  loadForObservation(): LifecycleState {
-    return this.exclusive(() => this.loadLocked(undefined, false))
   }
   private encodedRecord(
     sequence: number,

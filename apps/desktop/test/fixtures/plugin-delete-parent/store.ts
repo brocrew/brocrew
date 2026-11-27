@@ -40,19 +40,6 @@ export class GlobalPluginState {
       throw error
     }
   }
-  /** Display evidence only: no repair, reclaim, prepare, activation or admission. Busy refuses. */
-  static observeInstallations(options: PluginDiskOptions) {
-    const disk = new PluginStateDisk(options, false, true)
-    try {
-      const state = disk.loadForObservation()
-      return {
-        installed: [...state.admitted.keys()],
-        pending: state.pending?.request.consent.pluginId ?? null,
-      }
-    } finally {
-      disk.close()
-    }
-  }
   close(): void {
     this.disk.close()
   }

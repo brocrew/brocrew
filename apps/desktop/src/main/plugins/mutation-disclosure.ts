@@ -2,7 +2,7 @@ import { join } from 'node:path'
 import type { VerifiedPluginPackage } from './package-verifier'
 import { verifiedPluginDigest } from './package-verifier'
 import { pluginSha256 } from './package-digests'
-import { GlobalPluginState } from './state/store'
+import { observeInstalledPackage } from './state/observe-committed'
 import {
   PluginReleaseDetailsSchema,
   canonicalPluginDisclosure,
@@ -31,33 +31,22 @@ export function releaseDisclosure(pkg: VerifiedPluginPackage): PluginReleaseDeta
     permissions,
   })
 }
-export function installedDisclosureIdentity(root: string, id: string) {
-  try {
-    return GlobalPluginState.readInstalledPackage(
-      {
-        root: join(root, 'state'),
-        workspaceRoots: [],
-      },
-      id,
-    )
-  } catch {
-    return null
-  }
-}
 export async function installedDisclosure(root: string, id: string, vault: PluginPackageVault) {
-  const identity = installedDisclosureIdentity(root, id)
-  if (!identity) return { identity, details: null }
+  const installed = await observeInstalledPackage(
+    { root: join(root, 'state'), workspaceRoots: [] },
+    id,
+  )
+  if (!installed) return null
   try {
-    const p = identity
     const pkg = await vault.load({
       id,
-      version: p.version,
-      manifestSha256: p.manifestSha256,
-      archive: { sha256: p.archiveSha256 },
+      version: installed.version,
+      manifestSha256: installed.manifestSha256,
+      archive: { sha256: installed.archiveSha256 },
     })
-    return { identity, details: releaseDisclosure(pkg) }
+    return releaseDisclosure(pkg)
   } catch {
-    return { identity, details: null }
+    return null
   }
 }
 export function disclosureChanges(

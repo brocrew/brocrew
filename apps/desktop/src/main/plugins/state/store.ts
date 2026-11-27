@@ -8,7 +8,7 @@ import {
   type ActivationSnapshot,
   type Operation,
 } from './format'
-import { PluginStateDisk, readInstalledPluginDescriptor, type PluginDiskOptions } from './disk'
+import { PluginStateDisk, type PluginDiskOptions } from './disk'
 import { newLifecycle, planOperation, type LifecycleState } from './machine'
 
 /** Storage only. The later person-command controller owns authentication and consent collection. */
@@ -33,23 +33,6 @@ export class GlobalPluginState {
       disk.close()
       throw error
     }
-  }
-  /** Display evidence only: no repair, reclaim, prepare, activation or admission. Busy refuses. */
-  static observeInstallations(options: PluginDiskOptions) {
-    const disk = new PluginStateDisk(options, false, true)
-    try {
-      const state = disk.loadForObservation()
-      return {
-        installed: [...state.admitted.keys()],
-        pending: state.pending?.request.consent.pluginId ?? null,
-      }
-    } finally {
-      disk.close()
-    }
-  }
-  /** Authenticated display snapshot only. No reclaim, mutation or execution; busy refuses. */
-  static readInstalledPackage(options: PluginDiskOptions, id: string) {
-    return readInstalledPluginDescriptor(options, id)
   }
   close(): void {
     this.disk.close()

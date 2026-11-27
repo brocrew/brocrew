@@ -23,26 +23,24 @@ afterEach(async () => {
 })
 const program = `
 const fs = require('node:fs');
-const { syncBuiltinESMExports } = require('node:module');
-const { displayRead } = require(process.argv[1]);
+const promises = require('node:fs/promises');
 (async () => {
-
-  const read = fs.readSync;
+  const open = promises.open;
   let paused = false;
-  fs.readSync = (fd, ...args) => {
-    if (!paused && fs.fstatSync(fd).nlink === 1) {
+  promises.open = async (path, ...args) => {
+    if (!paused && String(path).endsWith('.json')) {
       paused = true;
       process.send({ kind: 'paused' });
-      const gate = new Int32Array(new SharedArrayBuffer(4)), until = Date.now() + 15000;
+      const until = Date.now() + 15000;
       while (!fs.existsSync(process.argv[3])) {
         if (Date.now() > until) throw Error('fictional reader was not released');
-        Atomics.wait(gate, 0, 0, 10);
+        await new Promise((resolve) => setTimeout(resolve, 10));
       }
     }
-    return read(fd, ...args);
+    return open(path, ...args);
   };
-  syncBuiltinESMExports();
-  const descriptor = displayRead({ root: process.argv[2], workspaceRoots: [] }, 'chrome');
+  const { displayRead } = require(process.argv[1]);
+  const descriptor = await displayRead({ root: process.argv[2], workspaceRoots: [] }, 'chrome');
   process.send({ kind: 'done', descriptor });
 })().catch(() => { process.send({ kind: 'failed' }); process.exitCode = 1; });
 `

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { afterEach, expect, it, vi } from 'vitest'
 import { disclosureFixture, settingsPeer } from './plugin-disclosure-fixtures'
 import { cleanupLifecycleFixtures } from './plugin-lifecycle-fixtures'
+import * as committed from '../src/main/plugins/state/observe-committed'
 import type { PluginMutationReview, PluginReviewTransfer } from '../src/shared/plugin-settings'
 
 const closers: Array<() => Promise<void>> = []
@@ -111,4 +112,15 @@ it('an old terminal answer cannot cancel its same-card replacement', async () =>
   expect(cancel.mock.calls).toHaveLength(cancellations)
   finishes[1]!(shown)
   expect(await second).toMatchObject({ ok: true })
+})
+
+it('an update review reads the installed release once, after the owner prepares', async () => {
+  const { f, c } = await setup()
+  const read = vi.spyOn(committed, 'observeInstalledPackage')
+  const shown = await c.reviewMutation!('update', 'chrome')
+  expect(read).toHaveBeenCalledOnce()
+  expect(read.mock.invocationCallOrder[0]).toBeGreaterThan(
+    f.ownerDownload.mock.invocationCallOrder.at(-1)!,
+  )
+  expect(shown.installed).toMatchObject({ version: f.first.release.version })
 })

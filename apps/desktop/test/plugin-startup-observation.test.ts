@@ -7,8 +7,7 @@ import { randomUUID } from 'node:crypto'
 import { prepareFirst } from './plugin-startup-fixtures'
 import { afterEach, expect, it, vi } from 'vitest'
 import { fixture, cleanupLifecycleFixtures } from './plugin-lifecycle-fixtures'
-import { observePluginStartup } from '../src/main/plugins/state/observe-startup'
-import { GlobalPluginState } from '../src/main/plugins/state/store'
+import { observeInstallations } from '../src/main/plugins/state/observe-committed'
 
 afterEach(async () => {
   vi.restoreAllMocks()
@@ -23,8 +22,7 @@ it('matches committed installed, pending and empty evidence without touching the
   const f = await fixture(),
     opts = options(f)
   for (const installed of [false, true, false]) {
-    expect(await observePluginStartup(opts)).toEqual(GlobalPluginState.observeInstallations(opts))
-    expect(await observePluginStartup(opts)).toEqual({
+    expect(await observeInstallations(opts)).toEqual({
       installed: installed ? ['chrome'] : [],
       pending: null,
     })
@@ -34,10 +32,7 @@ it('matches committed installed, pending and empty evidence without touching the
   const pending = await fixture(),
     pendingOptions = options(pending)
   prepareFirst(pending)
-  expect(await observePluginStartup(pendingOptions)).toEqual({ installed: [], pending: 'chrome' })
-  expect(await observePluginStartup(pendingOptions)).toEqual(
-    GlobalPluginState.observeInstallations(pendingOptions),
-  )
+  expect(await observeInstallations(pendingOptions)).toEqual({ installed: [], pending: 'chrome' })
 })
 
 it.each(['missing seal', 'changed seal', 'truncated record', 'record gap', 'unexpected entry'])(
@@ -53,8 +48,7 @@ it.each(['missing seal', 'changed seal', 'truncated record', 'record gap', 'unex
     if (mode === 'record gap')
       fs.renameSync(join(guard, '00000000.json'), join(guard, '00000001.json'))
     if (mode === 'unexpected entry') fs.writeFileSync(join(guard, 'unexpected'), '')
-    expect(await observePluginStartup(opts)).toBeNull()
-    expect(() => GlobalPluginState.observeInstallations(opts)).toThrow()
+    expect(await observeInstallations(opts)).toBeNull()
   },
 )
 
@@ -71,7 +65,7 @@ it('returns unknown for unreadable data and closes every directory already opene
     return handle
   })
   try {
-    expect(await observePluginStartup(opts)).toBeNull()
+    expect(await observeInstallations(opts)).toBeNull()
     expect(closes.length).toBe(5)
     for (const close of closes) expect(close).toHaveBeenCalledOnce()
   } finally {
@@ -93,12 +87,12 @@ it('returns unknown if the writer publishes during the unlocked observation', as
     return handle
   })
   try {
-    expect(await observePluginStartup(opts)).toBeNull()
+    expect(await observeInstallations(opts)).toBeNull()
   } finally {
     vi.mocked(asyncFs.open).mockImplementation(native)
   }
   expect(published).toBe(true)
-  expect(await observePluginStartup(opts)).toEqual({ installed: [], pending: null })
+  expect(await observeInstallations(opts)).toEqual({ installed: [], pending: null })
 })
 
 it('may skip stable complete empty state under an idle held SQLite fence', async () => {
@@ -107,8 +101,7 @@ it('may skip stable complete empty state under an idle held SQLite fence', async
   const db = new Database(join(opts.root, 'writer-lock.sqlite'), { timeout: 0 })
   db.exec('BEGIN EXCLUSIVE')
   try {
-    expect(() => GlobalPluginState.observeInstallations(opts)).toThrow()
-    expect(await observePluginStartup(opts)).toEqual({ installed: [], pending: null })
+    expect(await observeInstallations(opts)).toEqual({ installed: [], pending: null })
   } finally {
     db.exec('ROLLBACK')
     db.close()
@@ -120,7 +113,7 @@ it('retains a complete journal with a private crash-stage hardlink', async () =>
     opts = options(f),
     guard = join(opts.root, 'lifecycle-guard')
   fs.linkSync(join(guard, '00000000.json'), join(guard, '.stage-' + randomUUID()))
-  expect(await observePluginStartup(opts)).toEqual(GlobalPluginState.observeInstallations(opts))
+  expect(await observeInstallations(opts)).toEqual({ installed: [], pending: null })
 })
 
 it('returns unknown when first pending state publishes after the final enumeration but before its stats', async () => {
@@ -134,10 +127,10 @@ it('returns unknown when first pending state publishes after the final enumerati
     return names
   })
   try {
-    expect(await observePluginStartup(opts)).toBeNull()
+    expect(await observeInstallations(opts)).toBeNull()
   } finally {
     vi.mocked(asyncFs.readdir).mockImplementation(native)
   }
   expect(listings).toBe(2)
-  expect(await observePluginStartup(opts)).toEqual({ installed: [], pending: 'chrome' })
+  expect(await observeInstallations(opts)).toEqual({ installed: [], pending: 'chrome' })
 })

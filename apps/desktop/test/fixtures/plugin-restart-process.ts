@@ -1,4 +1,3 @@
-export { readInstalledPluginDescriptor } from '../../src/main/plugins/state/disk'
 export { PluginSupervisor } from '../../src/main/plugins/supervisor/owner'
 export { PluginLifecycleController } from '../../src/main/plugins/lifecycle/controller'
 export { GlobalPluginState } from '../../src/main/plugins/state/store'

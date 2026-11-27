@@ -4,7 +4,7 @@ import {
   fixture,
   fixtureSettingsClient,
 } from './plugin-lifecycle-fixtures'
-import { GlobalPluginState } from '../src/main/plugins/state/store'
+import { observeInstallations } from '../src/main/plugins/state/observe-committed'
 
 const closers: Array<() => unknown | Promise<unknown>> = []
 afterEach(async () => {
@@ -18,7 +18,7 @@ it('carries fresh owner evidence with cards without changing legacy card replies
   for (const installed of [false, true, false]) {
     const display = await client.displayCatalogue!()
     expect(display.evidence).toEqual(
-      GlobalPluginState.observeInstallations({
+      await observeInstallations({
         root: `${f.root}/state`,
         workspaceRoots: [f.workspace],
       }),

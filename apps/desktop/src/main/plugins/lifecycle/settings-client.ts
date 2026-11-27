@@ -12,7 +12,6 @@ import { PluginVerificationError } from '../verification-error'
 import {
   releaseDisclosure,
   installedDisclosure,
-  installedDisclosureIdentity,
   disclosureChanges,
   displayedDetailsHash,
 } from '../mutation-disclosure'
@@ -674,12 +673,6 @@ export async function connectPluginSettings(options: {
         verifyPluginDigest(archive, entry.archive, PLUGIN_LIMITS.archiveBytes)
         const details = releaseDisclosure(catalogue.verifyPackage(id, entry.version, archive))
         if (!details.authors) return failPolicy()
-        stage = 'installed-disclosure'
-        const previous =
-          action === 'update'
-            ? await installedDisclosure(options.root, id, vault)
-            : { identity: null, details: null }
-        if (!current()) return failPolicy()
         stage = 'owner-prepare'
         const proof = await prepareOwnerMutation(action, id, {
           requestId,
@@ -687,19 +680,19 @@ export async function connectPluginSettings(options: {
           onProgress: (value) => progress(value),
         })
         if (!current()) return failPolicy()
-        if (
-          action === 'update' &&
-          JSON.stringify(installedDisclosureIdentity(options.root, id)) !==
-            JSON.stringify(previous.identity)
-        )
-          return failPolicy()
+        // Read after preparing: the owner's preparation binds the journal sequence, so any later
+        // installed change refuses the update instead of differing from what is shown.
+        stage = 'installed-disclosure'
+        const installed =
+          action === 'update' ? await installedDisclosure(options.root, id, vault) : null
+        if (!current()) return failPolicy()
         const display = {
           id,
           action,
           catalogueDigest: pluginSha256(catalogueProof.bytes),
           details,
-          installed: previous.details,
-          changes: disclosureChanges(details, previous.details),
+          installed,
+          changes: disclosureChanges(details, installed),
         }
         if (
           policyDigest !== pluginSha256(catalogueProof.bytes) ||

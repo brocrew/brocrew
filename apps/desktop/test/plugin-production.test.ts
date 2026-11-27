@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { GlobalPluginState } from '../src/main/plugins/state/store'
+import * as committed from '../src/main/plugins/state/observe-committed'
 import type { PluginCard } from '../src/shared/plugin-settings'
 import { writeFile } from 'node:fs/promises'
 import { repoListFor } from './plugin-repo-list-fixtures'
@@ -836,7 +837,7 @@ describe.skipIf(process.platform === 'win32')(
     })
     it('a blocked owner preserves installed display evidence and retry only reconnects', async () => {
       const f = await setup()
-      vi.spyOn(GlobalPluginState, 'observeInstallations').mockReturnValue({
+      vi.spyOn(committed, 'observeInstallations').mockResolvedValue({
         installed: [f.pkg.release.id],
         pending: null,
       })
@@ -878,7 +879,7 @@ describe.skipIf(process.platform === 'win32')(
     })
     it('a failed list keeps a live channel available for acknowledged quit instead of disconnecting it early', async () => {
       const f = await setup()
-      vi.spyOn(GlobalPluginState, 'observeInstallations').mockReturnValue({
+      vi.spyOn(committed, 'observeInstallations').mockResolvedValue({
         installed: [f.pkg.release.id],
         pending: null,
       })
@@ -989,7 +990,7 @@ describe.skipIf(process.platform === 'win32')(
       async (mode) => {
         const real = await fixture()
         const f = await setup(real.pkg)
-        const observation = vi.spyOn(GlobalPluginState, 'observeInstallations')
+        const observation = vi.spyOn(committed, 'observeInstallations')
         f.peer.catalogue.mockImplementation(async () => (await real.controller.status()).cards)
         f.peer.install.mockImplementation(async () =>
           real.controller.install(real.handle, 'chrome'),
@@ -1012,10 +1013,7 @@ describe.skipIf(process.platform === 'win32')(
         })
         expect(f.peer.install).toHaveBeenCalledOnce()
         expect(real.downloads()).toBe(1)
-        if (mode === 'busy')
-          observation.mockImplementation(() => {
-            throw new Error('fictional-private-busy-path')
-          })
+        if (mode === 'busy') observation.mockResolvedValue(null)
         const readsBeforeDetach = observation.mock.calls.length
         f.peer.close.mockRejectedValue(new Error('fictional-private-detach'))
         const expected = [{ installed: mode === 'readable' ? true : null, state: 'Unavailable' }]
@@ -1042,7 +1040,7 @@ describe.skipIf(process.platform === 'win32')(
         f.peer.catalogue.mockResolvedValue([
           { id: f.pkg.release.id, name: 'Fictional Bakery', installed: true, state: 'Running' },
         ])
-        vi.spyOn(GlobalPluginState, 'observeInstallations').mockReturnValue({
+        vi.spyOn(committed, 'observeInstallations').mockResolvedValue({
           installed: [f.pkg.release.id],
           pending: null,
         })
@@ -1082,9 +1080,6 @@ describe.skipIf(process.platform === 'win32')(
         const f = await setup()
         await mkdir(f.options.root, { mode: 0o700 })
         await writeFile(join(f.options.root, 'lifecycle-state-born'), '1', { mode: 0o600 })
-        vi.spyOn(GlobalPluginState, 'observeInstallations').mockImplementation(() => {
-          throw new Error('fictional-private-path-and-stack')
-        })
         if (connected)
           f.peer.catalogue.mockResolvedValue([
             {
@@ -1131,7 +1126,7 @@ describe.skipIf(process.platform === 'win32')(
           expect(await f.controller.ready!()).toBe(true)
           if (afterUninstall) {
             // The removal completed and nothing is active, then the owner stops cleanly.
-            vi.spyOn(GlobalPluginState, 'observeInstallations').mockReturnValue({
+            vi.spyOn(committed, 'observeInstallations').mockResolvedValue({
               installed: [],
               pending: null,
             })
@@ -1457,7 +1452,7 @@ it.skipIf(process.platform === 'win32')(
     Reflect.deleteProperty(f.peer, 'refreshCatalogue')
     f.controller.start(f.options)
     expect(await f.controller.ready!()).toBe(true)
-    vi.spyOn(GlobalPluginState, 'observeInstallations').mockReturnValue({
+    vi.spyOn(committed, 'observeInstallations').mockResolvedValue({
       installed: ['whatsapp'],
       pending: null,
     })
@@ -1775,7 +1770,7 @@ it.skipIf(process.platform === 'win32')(
     const f = await setup()
     f.controller.start(f.options)
     expect(await f.controller.ready!()).toBe(true)
-    vi.spyOn(GlobalPluginState, 'observeInstallations').mockReturnValue({
+    vi.spyOn(committed, 'observeInstallations').mockResolvedValue({
       installed: [f.pkg.release.id],
       pending: f.pkg.release.id,
     })
