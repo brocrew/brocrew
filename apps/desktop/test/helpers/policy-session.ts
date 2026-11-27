@@ -1,11 +1,7 @@
 import { mkdirSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
-import {
-  FakeProviderSessions,
-  type AgentToolset,
-  type ResumeOptions,
-  type StartOptions,
-} from '@brobot2/runtime'
+import { type AgentToolset, type ResumeOptions, type StartOptions } from '@brobot2/runtime'
+import { FakeProviderSessions } from '@brobot2/runtime/testing'
 import type { Provider } from '@brobot2/shared'
 import { resolveSessionCwd } from '../../src/main/runtime/scratch-cwd'
 import { RuntimeHost, type RuntimeEventSink } from '../../src/main/runtime/runtime-host'

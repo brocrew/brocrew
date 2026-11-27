@@ -11,14 +11,12 @@ import { fileURLToPath } from 'node:url'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { CodexRuntime, type CodexLaunchContext } from '@brobot2/runtime/codex'
 import {
-  FakeProviderSessions,
-  FakeRuntime,
   capabilitiesFor,
   withDeadline,
   type AgentRuntime,
-  type FakeSessionHandle,
   type StartOptions,
 } from '@brobot2/runtime'
+import { FakeProviderSessions, FakeRuntime, type FakeSessionHandle } from '@brobot2/runtime/testing'
 import type { Provider } from '@brobot2/shared'
 import { deferred, ready, route } from '../../../packages/runtime/test/fixtures/plugin-readiness'
 import { ScriptedCodex, Wire } from './lib/scripted-codex-compaction'

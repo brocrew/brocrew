@@ -46,6 +46,10 @@
     "./codex": {
       "types": "./src/codex.ts",
       "default": "./src/codex.ts"
+    },
+    "./testing": {
+      "types": "./test/fake-runtime.ts",
+      "default": "./test/fake-runtime.ts"
     }
   },
   "scripts": {

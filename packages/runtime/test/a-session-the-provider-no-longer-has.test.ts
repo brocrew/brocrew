@@ -14,7 +14,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { ClaudeRuntime, claudeProjectDirName } from '../src/claude/claude-runtime'
 import { CodexRuntime, createSpawnTransportFactory } from '../src/codex/codex-runtime'
 import { CODEX_PROTOCOL_VERSION } from '../src/codex/protocol-version'
-import { FakeProviderSessions, FakeRuntime } from '../src/fake-runtime'
+import { FakeProviderSessions, FakeRuntime } from './fake-runtime'
 import { ResumeError } from '../src/runtime'
 import {
   A_CODEX_THREAD,

@@ -5,7 +5,8 @@ import { join } from 'node:path'
 import type { IpcMainInvokeEvent, WebContents } from 'electron'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { PROVIDER_DESCRIPTORS } from '@brobot2/shared'
-import { allProviderCapabilities, FakeRuntime, SUPPORTED_PROVIDERS } from '@brobot2/runtime'
+import { allProviderCapabilities, SUPPORTED_PROVIDERS } from '@brobot2/runtime'
+import { FakeRuntime } from '@brobot2/runtime/testing'
 import {
   executeRuntimeCommand,
   registerRuntimeIpc,

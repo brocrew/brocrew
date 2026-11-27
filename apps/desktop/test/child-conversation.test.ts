@@ -1,12 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
-import {
-  FakeProviderSessions,
-  FakeRuntime,
-  type FakeSessionHandle,
-  type ChildInputOutcome,
-  type ChildThreadState,
-} from '@brobot2/runtime'
+import { type ChildInputOutcome, type ChildThreadState } from '@brobot2/runtime'
+import { FakeProviderSessions, FakeRuntime, type FakeSessionHandle } from '@brobot2/runtime/testing'
 import type { Provider } from '@brobot2/shared'
 import { NO_DISCOVERY } from '../src/main/adopt/discover-sessions'
 import { NULL_SESSION_STORE, type ResumableSession } from '../src/main/db/session-store'

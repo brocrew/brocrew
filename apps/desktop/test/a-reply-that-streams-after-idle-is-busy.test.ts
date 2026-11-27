@@ -8,7 +8,7 @@ import {
   waitFor,
 } from './lib/host-fixture'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { FakeProviderSessions, type FakeSessionHandle } from '@brobot2/runtime'
+import { FakeProviderSessions, type FakeSessionHandle } from '@brobot2/runtime/testing'
 import type { RuntimeEvent } from '@brobot2/runtime'
 import type { Provider } from '@brobot2/shared'
 import { type AppDatabase } from '../src/main/db/connection'

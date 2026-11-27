@@ -10,13 +10,11 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   CHANNEL_REFUSALS,
-  FakeProviderSessions,
-  FakeRuntime,
-  type FakeSessionHandle,
   type ResumeOptions,
   type SessionRef,
   type StartOptions,
 } from '@brobot2/runtime'
+import { FakeProviderSessions, FakeRuntime, type FakeSessionHandle } from '@brobot2/runtime/testing'
 import type { Provider } from '@brobot2/shared'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createSSRApp, h } from 'vue'

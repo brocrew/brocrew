@@ -1,5 +1,5 @@
 import { expect, it, onTestFinished, vi } from 'vitest'
-import { FakeRuntime } from '@brobot2/runtime'
+import { FakeRuntime } from '@brobot2/runtime/testing'
 import type { RuntimeChangeMessage } from '../src/shared/runtime-ipc'
 import { createAppLifetime } from '../src/main/app-lifetime'
 import { closeDatabase } from '../src/main/db/close-database'

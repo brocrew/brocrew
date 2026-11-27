@@ -9,7 +9,7 @@ import { closeDatabase } from '../../src/main/db/close-database'
 import { createAppLifetime } from '../../src/main/app-lifetime'
 import { RuntimeHost } from '../../src/main/runtime/runtime-host'
 import { NULL_SESSION_STORE } from '../../src/main/db/session-store'
-import { FakeRuntime } from '@brobot2/runtime'
+import { FakeRuntime } from '@brobot2/runtime/testing'
 import { neutralHostDeps, fixtureProviderConfig } from '../lib/host-fixture'
 
 async function main() {

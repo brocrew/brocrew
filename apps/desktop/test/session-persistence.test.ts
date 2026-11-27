@@ -5,12 +5,8 @@ import {
 import { RecordingSink as WindowSink } from './lib/host-fixture'
 import { join } from 'node:path'
 import { beforeEach, describe, expect, it } from 'vitest'
-import {
-  FakeRuntime,
-  parseSessionRef,
-  type AgentRuntime,
-  type RuntimeEvent,
-} from '@brobot2/runtime'
+import { parseSessionRef, type AgentRuntime, type RuntimeEvent } from '@brobot2/runtime'
+import { FakeRuntime } from '@brobot2/runtime/testing'
 import { openDatabase, type AppDatabase } from '../src/main/db/connection'
 import { NULL_SESSION_STORE, type SessionStore } from '../src/main/db/session-store'
 import type {
