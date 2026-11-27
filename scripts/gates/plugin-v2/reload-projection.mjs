@@ -81,10 +81,12 @@ export function projectReload(repo, { root, token, appData, browser, modules }) 
     'let host: RuntimeHost | null = null',
     `// ${RELOAD_MARKER}\nlet reloadGateWindow: BrowserWindow | null = null;\nconst reloadGateToken=${JSON.stringify(token)};\nlet host: RuntimeHost | null = null`,
   )
+  const registerIpc =
+    'function registerIpc(\n  runtimeHost: RuntimeHost,\n  localZone: () => LocalZone | null,\n  drafts: DraftStorage,\n): void {'
   entry = once(
     entry,
-    'function registerIpc(runtimeHost: RuntimeHost, localZone: () => LocalZone | null): void {',
-    `function registerIpc(runtimeHost: RuntimeHost, localZone: () => LocalZone | null): void {\n  // ${RELOAD_MARKER}\n  bindReloadGateHost(runtimeHost);\n  const authorizeReloadRequest=${authorizeReloadRequest.toString()};\n  pluginIpcMain.handle(${JSON.stringify(RELOAD_CHANNEL)}, (_event,payload:unknown)=>reloadGateCommand(authorizeReloadRequest(payload)));`,
+    registerIpc,
+    `${registerIpc}\n  // ${RELOAD_MARKER}\n  bindReloadGateHost(runtimeHost);\n  const authorizeReloadRequest=${authorizeReloadRequest.toString()};\n  pluginIpcMain.handle(${JSON.stringify(RELOAD_CHANNEL)}, (_event,payload:unknown)=>reloadGateCommand(authorizeReloadRequest(payload)));`,
   )
   entry = once(
     entry,
