@@ -323,6 +323,15 @@ export function createSessionStore(bridge: ClientSessionApi): SessionStore {
   }
 
   /**
+   * A hand-over that leaves its record unadopted lets it go only when it is the last one out for it:
+   * a look, reopen, start or claim still on its way adopts it or lets it go in its turn, so a window
+   * the host registered on a look always holds the record that look lands in.
+   */
+  function letGoUnlessAnotherHandOver(record: SessionRecord, sessionId: string): void {
+    if (record.handover === 1) sessions.delete(sessionId)
+  }
+
+  /**
    * The recorded conversations the screen left while a hand-over or a command for them was still
    * out: let go once that settles, unless the screen shows them again first ({@link SessionStore.keep}).
    */
@@ -685,7 +694,7 @@ export function createSessionStore(bridge: ClientSessionApi): SessionStore {
           // also what acceptance 6 asks about (102): a CANCELLED reopen takes the same exit as a
           // refused one, so the record a buffered event may have created goes with it and nothing is
           // left half-attached. `meta === null` is the same "never adopted" test `isLive` uses.
-          if (record.meta === null) sessions.delete(sessionId)
+          if (record.meta === null) letGoUnlessAnotherHandOver(record, sessionId)
           return null
         }
         // ⚑ **D-017 · R10 — the host may hand back the conversation that took this one's place** — one
@@ -694,7 +703,8 @@ export function createSessionStore(bridge: ClientSessionApi): SessionStore {
         const opened = resumed.sessionId
         const into = opened === sessionId ? record : slot(opened)
         adoptHandover(into, resumed, providerReadAt)
-        if (opened !== sessionId && record.meta === null) sessions.delete(sessionId)
+        if (opened !== sessionId && record.meta === null)
+          letGoUnlessAnotherHandOver(record, sessionId)
         // ⛔ **The claim needs a source (039, 149)**: the id answers *"can this window show it"*, and
         // a record no map holds cannot be shown — a refused reopen beside this one deletes the
         // never-adopted record this one then adopts. ⚑ **D-017b · a record that stopped again as it
@@ -736,9 +746,8 @@ export function createSessionStore(bridge: ClientSessionApi): SessionStore {
         return sessions.get(handed.sessionId) === into ? handed.sessionId : null
       } catch (cause) {
         // ⚠️ As `resume` does for a hand-over that did not happen: a record this call made up for a
-        // conversation it does not hold is not left behind — unless another look for it is still on
-        // its way, which adopts it or lets it go in its turn.
-        if (holding.meta === null && holding.handover === 1) sessions.delete(sessionId)
+        // conversation it does not hold is not left behind ({@link letGoUnlessAnotherHandOver}).
+        if (holding.meta === null) letGoUnlessAnotherHandOver(holding, sessionId)
         lookError.value = readableError(cause)
         return null
       } finally {
@@ -791,7 +800,7 @@ export function createSessionStore(bridge: ClientSessionApi): SessionStore {
           }),
         )
         if (answer === undefined) {
-          if (starting.meta === null) sessions.delete(sessionId)
+          if (starting.meta === null) letGoUnlessAnotherHandOver(starting, sessionId)
           // ⚑ **D-017b · the refusal is said where the words were typed**: the conversation's own
           // record, which the composer draws beside the box it gave them back to.
           else if (resumeError.value !== null) starting.error = resumeError.value
@@ -805,7 +814,8 @@ export function createSessionStore(bridge: ClientSessionApi): SessionStore {
         if ('sent' in answer) {
           const went = tookItsPlace(answer.sent)
           adoptHandover(went === null ? starting : slot(went), answer.sent, providerReadAt)
-          if (went !== null && starting.meta === null) sessions.delete(sessionId)
+          if (went !== null && starting.meta === null)
+            letGoUnlessAnotherHandOver(starting, sessionId)
           return {
             sent: true,
             openHere: this.isLive(went ?? sessionId),
@@ -834,7 +844,7 @@ export function createSessionStore(bridge: ClientSessionApi): SessionStore {
         }
         // ⚑ Nothing it started runs here: no half-record is left for the list to show, and the one
         // on screen says why the words came back.
-        if (starting.meta === null) sessions.delete(sessionId)
+        if (starting.meta === null) letGoUnlessAnotherHandOver(starting, sessionId)
         else starting.error = said
         return { sent: false, refusal, openHere: false }
       } finally {
@@ -894,7 +904,7 @@ export function createSessionStore(bridge: ClientSessionApi): SessionStore {
       } catch (error) {
         // ⚠️ As `resume` does for a hand-over that did not happen: a record this call made up for
         // a conversation it does not hold is not left behind to be asked about.
-        if (holding.meta === null) sessions.delete(sessionId)
+        if (holding.meta === null) letGoUnlessAnotherHandOver(holding, sessionId)
         throw error
       } finally {
         holding.handover -= 1

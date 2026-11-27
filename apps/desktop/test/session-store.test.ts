@@ -319,10 +319,9 @@ describe('the session store', () => {
     // whatever the window had done with it, which is how a refused adoption was reported as a
     // reopened conversation. The question it answers now is "is this conversation open HERE".
     //
-    // Reachable, and this is how: two reopens in flight for one session. Both take the same record
-    // — `slot` returns it — and the one that FAILS deletes it, because it was never adopted. The
-    // survivor then adopts a record the map no longer holds: adopted, phase `open`, and invisible to
-    // every list in the app. Reporting success there would strand it exactly as H1 did.
+    // Two reopens in flight for one session take the same record (`slot` returns it). The one that
+    // FAILS no longer deletes it while the other is out (card 611: one rule for every hand-over), so
+    // the survivor adopts a record the map still holds: it is open here, and it is reported.
     const bridge = fakeBridge()
     const store = createSessionStore(bridge)
     const real = bridge.resume
@@ -336,12 +335,12 @@ describe('the session store', () => {
     }
 
     const held = store.resume('sess_x')
-    expect(await store.resume('sess_x')).toBeNull() // the refusal deletes the never-adopted record
+    expect(await store.resume('sess_x')).toBeNull() // refused, and the record stays for the other
     release!()
 
-    expect(await held).toBeNull()
-    expect(store.isLive('sess_x')).toBe(false)
-    expect(store.live.value.map((record) => record.sessionId)).not.toContain('sess_x')
+    expect(await held).toBe('sess_x')
+    expect(store.isLive('sess_x')).toBe(true)
+    expect(store.live.value.map((record) => record.sessionId)).toContain('sess_x')
     store.dispose()
   })
 
