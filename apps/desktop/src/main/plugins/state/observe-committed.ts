@@ -16,9 +16,7 @@ async function readCommitted(options: PluginDiskOptions) {
     if (!current || current.name === tried) break
     tried = current.name
     try {
-      const state = decodeStateFile(await readFile(join(options.root, current.name)))
-      if (state.sequence !== current.sequence) refuseState('corrupt')
-      return state
+      return decodeStateFile(await readFile(join(options.root, current.name)))
     } catch (error) {
       // A newer write may have removed this one after it was listed: list again and read that.
       if (attempt === 2) throw error

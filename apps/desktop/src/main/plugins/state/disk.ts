@@ -117,9 +117,7 @@ export class PluginStateDisk {
   private onDisk(): LifecycleState | undefined {
     const current = stateFilesIn(readdirSync(this.root))[0]
     if (!current) return undefined
-    const state = decodeStateFile(readFileSync(join(this.root, current.name)))
-    if (state.sequence !== current.sequence) refuseState('corrupt')
-    return state
+    return decodeStateFile(readFileSync(join(this.root, current.name)))
   }
   /** Older state files go once a newer one is in place. One a reader still holds stays for later. */
   private sweep(): void {
@@ -167,7 +165,6 @@ export class PluginStateDisk {
     if (this.#state && this.onDisk()?.sequence !== this.#state.sequence) refuseState('conflict')
     // Never a rename onto a name a reader may hold open: the next sequence is a new name.
     const path = join(this.root, stateFileName(next.sequence))
-    if (existsSync(path)) refuseState('conflict')
     const stage = stageAtomicWriteSync(path, bytes)
     try {
       this.fault?.('staged')
