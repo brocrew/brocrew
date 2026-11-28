@@ -99,6 +99,13 @@ function gateChild(child, plugin) {
         '    ]).finally(() => {\n      clearTimeout(timer)\n',
         "    ]).finally(() => {\n      clearInterval(gateSampler);gateView('load-end')\n      clearTimeout(timer)\n",
       )
+      // After a refusal for not loading: how fast does a plain sandboxed page start a renderer?
+      const probe = `const gateProbe=()=>{const t=performance.now();const probe=new WebContentsView({webPreferences:{sandbox:true,contextIsolation:true,nodeIntegration:false}});const pc=probe.webContents;const log=(e)=>{let pid=0;try{pid=pc.getOSProcessId()}catch{}gateView('probe-'+e,{probeMs:Math.round(performance.now()-t),pid})};for(const e of ['did-start-loading','did-navigate','dom-ready','did-finish-load','did-fail-load','render-process-gone'])pc.on(e,()=>log(e));const every=setInterval(()=>log('sample'),500);setTimeout(()=>{clearInterval(every);log('end');try{pc.close()}catch{}},30000);void pc.loadURL('data:text/html,<p>probe</p>').catch(()=>{})};`
+      out = once(
+        out,
+        "timer = setTimeout(() => reject(refusal('load-timeout')), PLUGIN_UI_LIMITS.timeout)",
+        `timer = setTimeout(() => {${probe}gateProbe();reject(refusal('load-timeout'))}, PLUGIN_UI_LIMITS.timeout)`,
+      )
       out = once(
         out,
         "import { session, WebContentsView } from 'electron'\n",
