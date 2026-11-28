@@ -27,9 +27,9 @@ jobs:
       fail-fast: false
       matrix:
         os: ['windows']
-        # Card 621 diagnostic 4 only, never for landing: the app's Codex process-table read with only
-        # its three properties (fix), with every property (baseline), and as a WQL query (query).
-        arm: ['fix', 'baseline', 'query']
+        # Card 621 diagnostic 5 only, never for landing: Gabi's shared Codex process-table read
+        # (shared), and the same with every Codex tree ending held until the first window loads (held).
+        arm: ['shared', 'held']
     runs-on: ${{ matrix.os == 'windows' && 'windows-2022' || vars.MAC_RUNNER || 'macos-15' }}
     timeout-minutes: ${{ matrix.os == 'windows' && 60 || 45 }}
     concurrency:
@@ -66,6 +66,18 @@ jobs:
           REVIEW_CONTROL: ${{ steps.stage.outputs.control }}
           PLUGIN_GATE_PNPM_ENTRY: ${{ steps.gate-pnpm.outputs.dest }}/node_modules/pnpm/bin/pnpm.cjs
         run: node scripts/gates/plugin-v2/owner.mjs install "$REVIEW_CONTROL"
+      # Card 621 diagnostic 5: how long one process-table read takes on this runner with nothing
+      # else of the app running, the exact command the app's Codex ending uses, three times.
+      - name: Time one Codex process-table read alone (diagnostic)
+        shell: pwsh
+        run: |
+          $c = '"at $([DateTime]::UtcNow.ToFileTimeUtc())"; Get-CimInstance Win32_Process | ForEach-Object { $born = if ($_.CreationDate) { $_.CreationDate.ToFileTimeUtc() } else { 0 }; "$($_.ProcessId) $($_.ParentProcessId) $born" }'
+          $e = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($c))
+          1..3 | ForEach-Object {
+            $t = [Diagnostics.Stopwatch]::StartNew()
+            $n = (powershell.exe -NoProfile -NonInteractive -EncodedCommand $e | Measure-Object -Line).Lines
+            "single read alone: $($t.ElapsedMilliseconds) ms, $n lines"
+          }
       - name: Public list over HTTPS, then install, configure and remove in the packaged app
         shell: bash
         env:

@@ -106,33 +106,43 @@ function gateChild(child, plugin) {
       )
       return helper('view-host') + out
     })
-    // Card 621 diagnostic 4 only, never for landing: time every Codex process-table read, and
-    // vary the read by arm (fix: the three properties; baseline: every property; query: WQL).
-    if (process.env.PLUGIN_DIAG_ARM)
-      change('packages/runtime/src/codex/windows-tree.ts', (source) => {
-      const fixRead = 'Get-CimInstance Win32_Process -Property ProcessId,ParentProcessId,CreationDate | '
-      const reads = {
-        fix: fixRead,
-        baseline: 'Get-CimInstance Win32_Process | ',
-        query: 'Get-CimInstance -Query "SELECT ProcessId,ParentProcessId,CreationDate FROM Win32_Process" | ',
-      }
+    // Card 621 diagnostic 5 only, never for landing: time every Codex process-table read; arm
+    // `held` also holds every Codex tree ending until the app's first window has loaded.
+    if (process.env.PLUGIN_DIAG_ARM) {
       const arm = process.env.PLUGIN_DIAG_ARM
-      if (!(arm in reads)) throw new Error('Unknown diagnostic arm')
-      let out = once(source, fixRead, reads[arm])
-      out = once(
-        out,
-        '  return new Promise((resolve) => {\n    execFile(\n',
-        "  const gateReadStart = performance.now(), gateReadWall = new Date().toISOString()\n  return new Promise((resolve) => {\n    execFile(\n",
+      if (!['shared', 'held'].includes(arm)) throw new Error('Unknown diagnostic arm')
+      change('packages/runtime/src/codex/windows-tree.ts', (source) => {
+        let out = once(
+          source,
+          '  return new Promise((resolve) => {\n    execFile(\n',
+          "  const gateReadStart = performance.now(), gateReadWall = new Date().toISOString()\n  return new Promise((resolve) => {\n    execFile(\n",
+        )
+        out = once(
+          out,
+          '      (error, stdout) => resolve(error ? null : parseReading(stdout)),\n',
+          "      (error, stdout) => {\n        gateLog('codex-table-read', { arm: " +
+            JSON.stringify(arm) +
+            ", startedAt: gateReadWall, ms: Math.round(performance.now() - gateReadStart), limitMs: ms, error: error ? String(error.code ?? error.killed ?? error.message) : null, rows: String(stdout ?? '').split('\\n').length - 1 })\n        resolve(error ? null : parseReading(stdout))\n      },\n",
+        )
+        const hold =
+          arm === 'held'
+            ? "  const gateHeldFrom = performance.now()\n  while (!(globalThis as { __gateFirstWindowReady?: boolean }).__gateFirstWindowReady) await new Promise((resolve) => setTimeout(resolve, 100))\n  gateLog('codex-ending-held', { heldMs: Math.round(performance.now() - gateHeldFrom), wall: new Date().toISOString() })\n"
+            : "  gateLog('codex-ending-start', { wall: new Date().toISOString() })\n"
+        out = once(
+          out,
+          'export async function endTree(t: TreeEnding): Promise<boolean> {\n',
+          'export async function endTree(t: TreeEnding): Promise<boolean> {\n' + hold,
+        )
+        return helper('codex-tree') + out
+      })
+      change('apps/desktop/src/main/index.ts', (source) =>
+        once(
+          source,
+          "  window.webContents.once('did-finish-load', () => signalFirstWindowLoad())\n",
+          "  window.webContents.once('did-finish-load', () => {\n    ;(globalThis as { __gateFirstWindowReady?: boolean }).__gateFirstWindowReady = true\n    signalFirstWindowLoad()\n  })\n",
+        ),
       )
-      out = once(
-        out,
-        '      (error, stdout) => resolve(error ? null : parseReading(stdout)),\n',
-        "      (error, stdout) => {\n        gateLog('codex-table-read', { arm: " +
-          JSON.stringify(arm) +
-          ", startedAt: gateReadWall, ms: Math.round(performance.now() - gateReadStart), limitMs: ms, error: error ? String(error.code ?? error.killed ?? error.message) : null, rows: String(stdout ?? '').split('\\n').length - 1 })\n        resolve(error ? null : parseReading(stdout))\n      },\n",
-      )
-      return helper('codex-tree') + out
-    })
+    }
     change('apps/desktop/src/main/plugins/supervisor/entry.ts', (source) => {
       const modern =
         'void runPluginSupervisor(process.argv[2]!, process.argv[3]!).catch((error) => {'
