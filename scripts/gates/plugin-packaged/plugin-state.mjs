@@ -115,7 +115,7 @@ export function chromeDiskState(root, global) {
     let fd
     try {
       directory(state)
-      for (let tried; ; ) {
+      for (let tried; ;) {
         const current = highest()
         if (current === undefined) return { ...absent, diskObserved: true }
         try {

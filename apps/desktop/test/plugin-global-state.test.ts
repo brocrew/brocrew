@@ -403,7 +403,9 @@ describe.skipIf(process.platform === 'win32')(
     it('every write adds a new file, never replaces one a reader may hold, and older ones go', () => {
       const { store, root } = fixture()
       const replaced: string[] = []
+      let renames = 0
       const rename = vi.spyOn(fs, 'renameSync').mockImplementation((from, to) => {
+        renames++
         if (existsSync(to)) replaced.push(String(to))
         actualRename(from, to)
       })
@@ -418,7 +420,8 @@ describe.skipIf(process.platform === 'win32')(
         syncBuiltinESMExports()
       }
       // Windows refuses to replace a file another process holds open, so nothing is replaced.
-      expect(rename).toHaveBeenCalled()
+      // Counted in the mock: restoring the spy clears its recorded calls.
+      expect(renames).toBeGreaterThan(0)
       expect(replaced).toEqual([])
       expect(stateFilesIn(readdirSync(root)).map((one) => one.sequence)).toEqual([
         store.inspect().sequence,
