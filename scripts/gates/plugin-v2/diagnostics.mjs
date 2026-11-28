@@ -68,14 +68,20 @@ function gateChild(child, plugin) {
         ),
     )
     // Gate-only timing of each plugin view: load events, its renderer, asset requests, teardown.
+    // Diagnostic only (card 621), never for landing.
     change('apps/desktop/src/main/plugins/ui/host.ts', (source) => {
       const id = 'options.verified.manifest.id'
       const viewLog = `const gateViewStart=performance.now();const gateView=(event,data={})=>gateLog('view-'+event,{plugin:${id},ms:Math.round(performance.now()-gateViewStart),wall:new Date().toISOString(),...data});`
       const watch = `gateView('created');for(const gateEvent of ['did-start-loading','did-start-navigation','did-navigate','dom-ready','did-finish-load','did-fail-load','did-stop-loading','render-process-gone','unresponsive','responsive','destroyed'])contents.on(gateEvent,(...gateArgs)=>{let pid=null;try{pid=contents.getOSProcessId()}catch{}gateView(gateEvent,{pid,detail:gateEvent==='did-fail-load'?String(gateArgs[1])+' '+String(gateArgs[2]):gateEvent==='did-start-navigation'?String(gateArgs[0]?.url??gateArgs[0]):undefined})});isolated.webRequest.onCompleted((d)=>gateView('request-completed',{url:d.url,status:d.statusCode,type:d.resourceType}));isolated.webRequest.onErrorOccurred((d)=>gateView('request-error',{url:d.url,error:d.error,type:d.resourceType}));`
+      // A plain sandboxed page in the default session, started once a load passes 10 s.
+      const probe = `const gateProbe=()=>{const t=performance.now();const probe=new WebContentsView({webPreferences:{sandbox:true,contextIsolation:true,nodeIntegration:false}});const pc=probe.webContents;const log=(e)=>{let pid=0;try{pid=pc.getOSProcessId()}catch{}gateView('probe-'+e,{probeMs:Math.round(performance.now()-t),pid})};for(const e of ['did-start-loading','did-navigate','dom-ready','did-finish-load','did-fail-load','render-process-gone'])pc.on(e,()=>log(e));const every=setInterval(()=>log('sample'),1000);setTimeout(()=>{clearInterval(every);log('end');try{pc.close()}catch{}},50000);void pc.loadURL('data:text/html,<p>probe</p>').catch(()=>{})};`
+      // How long the OS takes to start and end a trivial process, and the stuck renderer's state.
+      const spawnTime = `const gateSpawn=(label,file,args)=>{const t=performance.now();gateExec(file,args,{windowsHide:true,timeout:120000},(error,stdout)=>gateView('spawn-'+label,{spawnMs:Math.round(performance.now()-t),error:error?String(error.code??error.message):null,out:String(stdout??'').trim().slice(0,300)}))};`
+      const sample = `let gateProbed=false,gateTick=0;const gateSampler=setInterval(()=>{gateTick++;let pid=0;try{pid=contents.getOSProcessId()}catch{}const all=app.getAppMetrics();const m=all.find((row)=>row.pid===pid);const ms=Math.round(performance.now()-gateViewStart);gateView('load-sample',{pid,loading:(()=>{try{return contents.isLoading()}catch{return null}})(),created:m?.creationTime??null,cpu:m?.cpu?.percentCPUUsage??null,type:m?.type??null,processes:all.map((row)=>row.type+':'+row.pid+':'+Math.round(row.cpu.percentCPUUsage)).join(' ')});if(gateTick%4===0)gateSpawn('cmd','cmd.exe',['/c','exit 0']);if(pid>0&&(gateTick===10||gateTick===40))gateSpawn('renderer-state','powershell.exe',['-NoProfile','-NonInteractive','-Command','$p=Get-Process -Id '+pid+' -ErrorAction SilentlyContinue; if($p){"cpu=$($p.CPU) threads=$($p.Threads.Count) handles=$($p.HandleCount) responding=$($p.Responding) start=$($p.StartTime.ToString(\"o\"))"}else{"gone"}']);if(!gateProbed&&ms>10000){gateProbed=true;gateProbe()}},500);`
       let out = once(
         source,
         '  const contents = view.webContents\n',
-        `  const contents = view.webContents\n  ${viewLog}${watch}\n`,
+        `  const contents = view.webContents\n  ${viewLog}${watch}${probe}${spawnTime}\n`,
       )
       out = once(
         out,
@@ -87,32 +93,28 @@ function gateChild(child, plugin) {
         '      if (\n        confirmed &&\n',
         "      gateView('teardown-end',{cleared:cleared.map((c)=>c.status)})\n      if (\n        confirmed &&\n",
       )
-      // Every 500 ms while loading: has the view's renderer launched, when, and is it using CPU?
-      const sample = `const gateSampler=setInterval(()=>{let pid=0;try{pid=contents.getOSProcessId()}catch{}const m=app.getAppMetrics().find((row)=>row.pid===pid);gateView('load-sample',{pid,loading:(()=>{try{return contents.isLoading()}catch{return null}})(),created:m?.creationTime??null,cpu:m?.cpu?.percentCPUUsage??null,idle:m?.cpu?.idleWakeupsPerSecond??null,type:m?.type??null,sandboxed:m?.sandboxed??null,integrity:m?.integrityLevel??null,processes:app.getAppMetrics().map((row)=>row.type+':'+row.pid+':'+Math.round(row.cpu.percentCPUUsage)).join(' ')})},500);`
+      out = once(out, '    await Promise.race([\n', `    gateView('load-start');${sample}\n    await Promise.race([\n`)
       out = once(
         out,
-        '    await Promise.race([\n',
-        `    gateView('load-start');${sample}\n    await Promise.race([\n`,
-      )
-      out = once(
-        out,
-        '    ]).finally(() => {\n      clearTimeout(timer)\n',
-        "    ]).finally(() => {\n      clearInterval(gateSampler);gateView('load-end')\n      clearTimeout(timer)\n",
-      )
-      // After a refusal for not loading: how fast does a plain sandboxed page start a renderer?
-      const probe = `const gateProbe=()=>{const t=performance.now();const probe=new WebContentsView({webPreferences:{sandbox:true,contextIsolation:true,nodeIntegration:false}});const pc=probe.webContents;const log=(e)=>{let pid=0;try{pid=pc.getOSProcessId()}catch{}gateView('probe-'+e,{probeMs:Math.round(performance.now()-t),pid})};for(const e of ['did-start-loading','did-navigate','dom-ready','did-finish-load','did-fail-load','render-process-gone'])pc.on(e,()=>log(e));const every=setInterval(()=>log('sample'),500);setTimeout(()=>{clearInterval(every);log('end');try{pc.close()}catch{}},30000);void pc.loadURL('data:text/html,<p>probe</p>').catch(()=>{})};`
-      out = once(
-        out,
-        "timer = setTimeout(() => reject(refusal('load-timeout')), PLUGIN_UI_LIMITS.timeout)",
-        `timer = setTimeout(() => {${probe}gateProbe();reject(refusal('load-timeout'))}, PLUGIN_UI_LIMITS.timeout)`,
+        '    ]).finally(() => {\n',
+        "    ]).finally(() => {\n      clearInterval(gateSampler);gateView('load-end')\n",
       )
       out = once(
         out,
         "import { session, WebContentsView } from 'electron'\n",
-        "import { app, session, WebContentsView } from 'electron'\n",
+        "import { app, session, WebContentsView } from 'electron'\nimport { execFile as gateExec } from 'node:child_process'\n",
       )
       return helper('view-host') + out
     })
+    // Arm B of the card 621 diagnostic: no Codex process-table read in the first 40 s of the app.
+    if (process.env.PLUGIN_DIAG_ARM === 'codex-hold')
+      change('packages/runtime/src/codex/windows-tree.ts', (source) =>
+        once(
+          source,
+          '  if (ms !== null && ms <= 0) return Promise.resolve(null)\n',
+          '  if (ms !== null && ms <= 0) return Promise.resolve(null)\n  // card 621 diagnostic arm B only\n  if (performance.now() < 40_000) return Promise.resolve(null)\n',
+        ),
+      )
     change('apps/desktop/src/main/plugins/supervisor/entry.ts', (source) => {
       const modern =
         'void runPluginSupervisor(process.argv[2]!, process.argv[3]!).catch((error) => {'
