@@ -1,114 +1,133 @@
 import { describe, expect, it } from 'vitest'
 import { randomUUID } from 'node:crypto'
-import { pluginSha256 } from '../src/main/plugins/package-digests'
 import {
   ActivationSnapshot,
   JournalRecord,
   PluginStateError,
   decodeState,
   encodeState,
-  type Event,
-  type JournalRecord as Record,
   type OperationRequest,
   type Operation,
 } from '../src/main/plugins/state/format'
 import {
-  foldRecord,
+  admitOperation,
+  decodeStateFile,
+  encodeStateFile,
+  keepLatestPerPlugin,
   newLifecycle,
   planOperation,
-  resolvedSnapshot,
-  snapshotReference,
+  resolveOperation,
+  type LifecycleState,
 } from '../src/main/plugins/state/machine'
 
 function fixture() {
-  const state = newLifecycle()
-  function append(event: Event) {
-    const record: Record = {
-      sequence: state.sequence + 1,
-      previous: state.head,
-      publicationId: randomUUID(),
-      event,
-    }
-    foldRecord(state, record, pluginSha256(encodeState(record)))
-    return record
-  }
-  append({ kind: 'created', rootId: randomUUID(), epoch: randomUUID() })
-  const request: OperationRequest = {
+  const state = newLifecycle(randomUUID(), randomUUID())
+  const release = (version: string, digit = 'a') => ({
+    version,
+    archiveSha256: digit.repeat(64),
+    manifestSha256: 'b'.repeat(64),
+    dataSchema: 1,
+  })
+  const request = (
+    action: 'install' | 'update' | 'uninstall',
+    version = '1.0.0',
+    digit = 'a',
+  ): OperationRequest => ({
     operationId: randomUUID(),
     consent: {
-      action: 'install',
+      action,
       pluginId: 'fictional-bakery',
       at: 1000,
-      expectedSequence: 0,
-      expectedInstallId: null,
-      release: {
-        version: '1.0.0',
-        archiveSha256: 'a'.repeat(64),
-        manifestSha256: 'b'.repeat(64),
-        dataSchema: 1,
-      },
+      expectedSequence: state.sequence,
+      expectedInstallId: state.guards.get('fictional-bakery')?.installId ?? null,
+      release: action === 'uninstall' ? null : release(version, digit),
     },
     snapshot: null,
-  }
+  })
   const allocated = (): Operation['allocated'] => ({
     installId: randomUUID(),
     incarnation: randomUUID(),
     epoch: randomUUID(),
   })
-  return { state, append, request, allocated }
+  /** One operation, as the store writes it: prepared, then resolved, one sequence each. */
+  function run(one: OperationRequest, success = true) {
+    admitOperation(state, planOperation(state, one, allocated()))
+    keepLatestPerPlugin(state)
+    state.sequence++
+    resolveOperation(state, success)
+    state.sequence++
+  }
+  return { state, request, allocated, run }
 }
 
-describe('portable plugin lifecycle and receipt data', () => {
-  it('cannot activate a prepared record without the exact matching activation reference', () => {
-    const { state, append, request, allocated } = fixture()
-    append({ kind: 'prepared', operation: planOperation(state, request, allocated()) })
+describe('portable plugin lifecycle data', () => {
+  it('admits a completed install, and an aborted one leaves the plugin removed', () => {
+    const { state, request, allocated, run } = fixture()
+    admitOperation(state, planOperation(state, request('install'), allocated()))
     expect(state.guards.get('fictional-bakery')?.phase).toBe('prepared')
-    const activation = snapshotReference(resolvedSnapshot(state, true), state.sequence + 1)
-    expect(() =>
-      append({
-        kind: 'completed',
-        operationId: request.operationId,
-        activation: { ...activation, sha256: 'c'.repeat(64) },
-      }),
-    ).toThrow(PluginStateError)
-    append({ kind: 'completed', operationId: request.operationId, activation })
+    expect(state.admitted.size).toBe(0)
+    resolveOperation(state, true)
     expect(state.guards.get('fictional-bakery')?.phase).toBe('active')
+    expect([...state.admitted.keys()]).toEqual(['fictional-bakery'])
+    state.sequence++
+    run(request('update', '1.0.1'), false)
+    expect(state.guards.get('fictional-bakery')?.phase).toBe('removed')
+    expect(state.admitted.size).toBe(0)
   })
-  it('refuses identity reuse, stale consent, and interleaved operations', () => {
-    const { state, append, request, allocated } = fixture()
-    expect(() =>
-      planOperation(
-        state,
-        { ...request, consent: { ...request.consent, expectedSequence: 99 } },
-        allocated(),
-      ),
-    ).toThrow(PluginStateError)
-    const allocation = allocated()
-    allocation.installId = state.rootId
-    expect(() =>
-      append({ kind: 'prepared', operation: planOperation(state, request, allocation) }),
-    ).toThrow(PluginStateError)
-    append({ kind: 'prepared', operation: planOperation(state, request, allocated()) })
-    expect(() => planOperation(state, request, allocated())).toThrow(
+  it('refuses stale consent and interleaved operations', () => {
+    const { state, request, allocated } = fixture()
+    const stale = request('install')
+    stale.consent.expectedSequence = 99
+    expect(() => planOperation(state, stale, allocated())).toThrow(PluginStateError)
+    admitOperation(state, planOperation(state, request('install'), allocated()))
+    expect(() => planOperation(state, request('install'), allocated())).toThrow(
       expect.objectContaining({ code: 'busy' }),
     )
   })
-  it('refuses missing/reordered history instead of inventing a fresh lifecycle floor', () => {
-    const { state, request, allocated } = fixture()
-    const record: Record = {
-      sequence: 2,
-      previous: state.head,
-      publicationId: randomUUID(),
-      event: { kind: 'prepared', operation: planOperation(state, request, allocated()) },
-    }
-    expect(() => foldRecord(state, record, 'a'.repeat(64))).toThrow(PluginStateError)
-    record.sequence = 1
-    record.previous = 'b'.repeat(64)
-    expect(() => foldRecord(state, record, 'a'.repeat(64))).toThrow(PluginStateError)
+  it('keeps only the latest operation of each plugin, and of a global restore', () => {
+    const { state, request, run } = fixture()
+    const install = request('install')
+    run(install)
+    const update = request('update', '1.0.1')
+    run(update)
+    expect([...state.operations.keys()]).toEqual([update.operationId])
+    const removal = request('uninstall')
+    run(removal)
+    expect([...state.operations.keys()]).toEqual([removal.operationId])
+    expect(state.guards.get('fictional-bakery')?.phase).toBe('removed')
+  })
+  it('refuses new bytes for an installed version after its operation is no longer kept', () => {
+    const { state, request, allocated, run } = fixture()
+    run(request('install', '1.0.0', 'a'))
+    run(request('uninstall'))
+    // The install's own operation is gone; the removed plugin's entry still pins its release.
+    expect(() => planOperation(state, request('install', '1.0.0', 'c'), allocated())).toThrow(
+      expect.objectContaining({ code: 'conflict' }),
+    )
+    expect(() => planOperation(state, request('install', '1.0.0', 'a'), allocated())).not.toThrow()
+  })
+  it('the state file round-trips and refuses unknown fields, duplicate keys and other formats', () => {
+    const { state, request, run } = fixture()
+    run(request('install'))
+    const bytes = encodeStateFile(state)
+    const read: LifecycleState = decodeStateFile(bytes)
+    expect(read).toEqual(state)
+    const file = JSON.parse(bytes.toString())
+    for (const bad of [
+      JSON.stringify({ ...file, unexpected: true }),
+      JSON.stringify({ ...file, format: 1 }),
+      bytes.toString().replace('{', '{"format":2,'),
+      bytes.toString().slice(0, -1),
+    ])
+      expect(() => decodeStateFile(Buffer.from(bad))).toThrow(PluginStateError)
+  })
+  it('bounds the state file instead of writing past its limit', () => {
+    const { state } = fixture()
+    state.rootId = 'x'.repeat(4 * 1024 * 1024)
+    expect(() => encodeStateFile(state)).toThrow(expect.objectContaining({ code: 'limit' }))
   })
   it('checksum envelopes reject corruption, unknown fields and duplicate JSON keys', () => {
-    const { state } = fixture()
-    const snapshot = { format: 1 as const, rootId: state.rootId, epoch: state.epoch, entries: [] }
+    const snapshot = { format: 1 as const, rootId: randomUUID(), epoch: randomUUID(), entries: [] }
     const bytes = encodeState(snapshot)
     expect(decodeState(bytes, ActivationSnapshot)).toEqual(snapshot)
     expect(() =>
@@ -121,8 +140,6 @@ describe('portable plugin lifecycle and receipt data', () => {
       decodeState(Buffer.from('{"payload":"a","payload":"b","sha256":"x"}'), ActivationSnapshot),
     ).toThrow(PluginStateError)
     expect(() => decodeState(bytes, JournalRecord)).toThrow(PluginStateError)
-  })
-  it('bounds journal records without truncating or forgetting a tombstone', () => {
     expect(() => encodeState({ fictional: 'x'.repeat(128 * 1024) })).toThrow(
       expect.objectContaining({ code: 'limit' }),
     )

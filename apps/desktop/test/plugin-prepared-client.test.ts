@@ -45,7 +45,8 @@ async function client(
   return c
 }
 async function oldOwner(installed: boolean, localVersion = 2) {
-  const f = await fixture(),
+  // The root starts as the journal that an older owner reads.
+  const f = await fixture({}, 'chrome', {}, { journal: true }),
     first = preparedPackageFixture(f.pkg.manifest, '1.0.1'),
     next = preparedPackageFixture(f.pkg.manifest)
   let offered = first

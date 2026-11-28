@@ -41,7 +41,7 @@ function fixture() {
   const options = { root: join(parent, 'plugins'), workspaceRoots: [] }
   const store = GlobalPluginState.create(options)
   stores.push(store)
-  const disk = new PluginStateDisk(options)
+  const disk = PluginStateDisk.open(options)
   disks.push(disk)
   return { options, store, disk }
 }
@@ -49,14 +49,14 @@ const program = `
 const { PluginStateDisk } = require(process.argv[1]);
 let disk;
 try {
-  disk = new PluginStateDisk({ root: process.argv[2], workspaceRoots: [] });
+  disk = PluginStateDisk.open({ root: process.argv[2], workspaceRoots: [] });
   if (process.argv[3] === 'hold') {
     disk.withExclusive(async () => {
       process.send('held');
       await new Promise(() => { setInterval(() => {}, 1000); });
     }).catch(() => { process.send('failed'); process.exit(1); });
   } else {
-    disk.reclaim(); disk.close(); process.send('acquired'); process.exit(0);
+    disk.close(); process.send('acquired'); process.exit(0);
   }
 } catch (error) {
   disk?.close(); process.send(error.code === 'busy' ? 'busy' : 'failed'); process.exit(0);
@@ -149,7 +149,7 @@ describe.skipIf(process.platform === 'win32')(
         let opens = 0; const original = fs.openSync;
         fs.openSync = (...args) => { opens++; return original(...args); };
         require('node:module').syncBuiltinESMExports();
-        try { new PluginStateDisk({ root: workerData.root, workspaceRoots: [] }); parentPort.postMessage({ code: 'allowed', opens }); }
+        try { PluginStateDisk.open({ root: workerData.root, workspaceRoots: [] }); parentPort.postMessage({ code: 'allowed', opens }); }
         catch (error) { parentPort.postMessage({ code: error.code, opens }); }
       `,
         { eval: true, workerData: { root: options.root, bundle } },
@@ -189,7 +189,7 @@ describe.skipIf(process.platform === 'win32')(
     })
     it('queues async callers FIFO while synchronous unrelated callers refuse busy', async () => {
       const { options, disk } = fixture(),
-        second = new PluginStateDisk(options)
+        second = PluginStateDisk.open(options)
       disks.push(second)
       let release: () => void = () => {
         throw new Error('fictional barrier not ready')

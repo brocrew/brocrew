@@ -1,7 +1,6 @@
 import './plugin-startup-fixtures'
 import fs from 'node:fs'
-import * as asyncFs from 'node:fs/promises'
-import { join, dirname } from 'node:path'
+import { join } from 'node:path'
 import { performance } from 'node:perf_hooks'
 import { randomUUID } from 'node:crypto'
 import { afterEach, expect, it, vi } from 'vitest'
@@ -9,28 +8,67 @@ import {
   appendProjectionHistory,
   cleanupLifecycleFixtures,
   fixture,
+  journalHead,
+  reopenLifecycleFixture,
 } from './plugin-lifecycle-fixtures'
 import {
   observeInstalledPackage,
   observeInstallations,
 } from '../src/main/plugins/state/observe-committed'
-import type { PluginStateDisk } from '../src/main/plugins/state/disk'
+import {
+  observeInstalledPackage as journalInstalledPackage,
+  observeInstallations as journalInstallations,
+} from './fixtures/plugin-journal-parent/observe-committed'
 
 afterEach(async () => {
   vi.restoreAllMocks()
   await cleanupLifecycleFixtures()
 })
 
+async function timed<T>(read: () => Promise<T> | T) {
+  const began = performance.now()
+  let last = began,
+    maxGapMs = 0
+  const timer = setInterval(() => {
+    const now = performance.now()
+    maxGapMs = Math.max(maxGapMs, now - last)
+    last = now
+  }, 1)
+  try {
+    const result = await read()
+    maxGapMs = Math.max(maxGapMs, performance.now() - last)
+    return { result, elapsedMs: performance.now() - began, maxGapMs }
+  } finally {
+    clearInterval(timer)
+  }
+}
+
 // A fictional journal about as long as the longest one seen in use: 1,843 records, 3,686 files.
-it('reads a long journal without synchronous file calls while timers keep running', async () => {
-  const f = await fixture()
+it('migrates a long journal once, after which display reads one small file without sync calls', async () => {
+  const f = await fixture({}, 'chrome', {}, { journal: true })
   await f.controller.install(f.handle, 'chrome')
-  const disk = (f.state as unknown as { disk: PluginStateDisk }).disk
-  const head = disk.load(),
+  const head = journalHead(f),
     records = 1843
+  f.state.close()
   appendProjectionHistory(f.root, head, randomUUID(), records - head.sequence - 1, null)
   const root = join(f.root, 'state'),
     guard = join(root, 'lifecycle-guard')
+  expect(fs.readdirSync(guard)).toHaveLength(records * 2)
+  const installed = {
+    version: f.pkg.release.version,
+    archiveSha256: f.pkg.release.archive.sha256,
+    manifestSha256: f.pkg.release.manifestSha256,
+  }
+  const before = {
+    installations: await timed(() => journalInstallations({ root, workspaceRoots: [f.workspace] })),
+    package: await timed(() => journalInstalledPackage({ root, workspaceRoots: [] }, 'chrome')),
+  }
+  expect(before.installations.result).toEqual({ installed: ['chrome'], pending: null })
+  expect(before.package.result).toEqual(installed)
+  const migration = await timed(() => reopenLifecycleFixture(f))
+  expect(migration.result.inspect().guards.map((one) => [one.pluginId, one.phase])).toEqual([
+    ['chrome', 'active'],
+  ])
   expect(fs.readdirSync(guard)).toHaveLength(records * 2)
   const sync = [
     fs.openSync,
@@ -39,58 +77,30 @@ it('reads a long journal without synchronous file calls while timers keep runnin
     fs.readSync,
     fs.closeSync,
     fs.readdirSync,
+    fs.readFileSync,
   ].map((fn) => vi.mocked(fn))
-  const reads = [
-    {
-      name: 'installations',
-      read: () => observeInstallations({ root, workspaceRoots: [f.workspace] }),
-      expected: { installed: ['chrome'], pending: null },
-    },
-    {
-      name: 'installed package',
-      read: () => observeInstalledPackage({ root, workspaceRoots: [] }, 'chrome'),
-      expected: {
-        version: f.pkg.release.version,
-        archiveSha256: f.pkg.release.archive.sha256,
-        manifestSha256: f.pkg.release.manifestSha256,
-      },
-    },
-  ]
-  const results = []
-  for (const { name, read, expected } of reads) {
-    for (const fn of sync) fn.mockClear()
-    vi.mocked(asyncFs.open).mockClear()
-    const began = performance.now()
-    let last = began,
-      maxGapMs = 0,
-      ticks = 0
-    const timer = setInterval(() => {
-      const now = performance.now()
-      maxGapMs = Math.max(maxGapMs, now - last)
-      last = now
-      ticks++
-    }, 1)
-    let result
-    try {
-      result = await read()
-      maxGapMs = Math.max(maxGapMs, performance.now() - last)
-    } finally {
-      clearInterval(timer)
-    }
-    expect(result).toEqual(expected)
-    const opens = vi
-      .mocked(asyncFs.open)
-      .mock.calls.filter(([path]) => dirname(String(path)) === guard).length
-    expect(opens).toBe(records * 2)
-    const elapsedMs = performance.now() - began
-    expect(ticks).toBeGreaterThan(0)
-    // A synchronous replay holds the thread for the whole read; this one yields throughout.
-    expect(maxGapMs).toBeLessThan(elapsedMs / 4)
-    for (const fn of sync) expect(fn).not.toHaveBeenCalled()
-    results.push({ name, records, elapsedMs, maxGapMs, ticks })
+  for (const fn of sync) fn.mockClear()
+  const after = {
+    installations: await timed(() => observeInstallations({ root, workspaceRoots: [f.workspace] })),
+    package: await timed(() => observeInstalledPackage({ root, workspaceRoots: [] }, 'chrome')),
   }
+  expect(after.installations.result).toEqual({ installed: ['chrome'], pending: null })
+  expect(after.package.result).toEqual(installed)
+  for (const fn of sync) expect(fn).not.toHaveBeenCalled()
+  const ms = (one: { elapsedMs: number; maxGapMs: number }) => ({
+    elapsedMs: Math.round(one.elapsedMs * 10) / 10,
+    maxGapMs: Math.round(one.maxGapMs * 10) / 10,
+  })
   console.info(
     'JOURNAL_READ_SCALE ' +
-      JSON.stringify({ platform: process.platform, node: process.version, results }),
+      JSON.stringify({
+        platform: process.platform,
+        node: process.version,
+        records,
+        stateBytes: fs.statSync(join(root, 'plugin-state.json')).size,
+        before: { installations: ms(before.installations), package: ms(before.package) },
+        migration: ms(migration),
+        after: { installations: ms(after.installations), package: ms(after.package) },
+      }),
   )
-}, 60_000)
+}, 120_000)

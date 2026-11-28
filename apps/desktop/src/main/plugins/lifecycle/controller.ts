@@ -1028,8 +1028,6 @@ export class PluginLifecycleController {
         if (bytes) await this.vault.stage(release, bytes, this.options.catalogue)
         this.options.fault?.('staged')
         if (!workspace.live) return refuse()
-        this.options.state.requireUpdateReader()
-        this.options.fault?.('update-fenced')
         const updateState = this.options.state.inspect()
         const operation = this.options.state.prepare({
           operationId,

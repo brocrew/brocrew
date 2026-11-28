@@ -18,25 +18,28 @@ async function emptyOffers() {
     workspaceRoot: owner.workspace,
     target: owner.opts.target,
   }
-  const guard = join(owner.root, 'state/lifecycle-guard')
+  const state = join(owner.root, 'state')
   const opens = () =>
-    vi.mocked(fs.openSync).mock.calls.filter(([path]) => dirname(String(path)) === guard).length
-  return { ...f, owner, options, guard, opens }
+    [
+      ...vi.mocked(fs.openSync).mock.calls.map(([path]) => path),
+      ...vi.mocked(fs.readFileSync).mock.calls.map(([path]) => path),
+    ].filter((path) => dirname(String(path)) === state).length
+  return { ...f, owner, options, state, opens }
 }
 
-it('does not synchronously replay an existing empty journal during startup with an active agent', async () => {
+it('does not synchronously read the plugin state during startup with an active agent', async () => {
   const f = await emptyOffers()
   const at = f.opens()
   f.controller.start(f.options)
   readPluginInstructions(f.controller)
   await f.controller.ready!()
-  console.info(`startup empty: sync journal opens=${f.opens() - at}`)
+  console.info(`startup empty: sync state reads=${f.opens() - at}`)
   expect(f.supervisor.start).not.toHaveBeenCalled()
   expect(seams.connect).not.toHaveBeenCalled()
   expect(f.opens() - at).toBe(0)
 })
 
-it('does not replay on the existing automatic reconnect while an agent is active', async () => {
+it('does not read it synchronously on the existing automatic reconnect while an agent is active', async () => {
   const f = await emptyOffers()
   await f.owner.controller.install(f.owner.handle, 'chrome')
   f.controller.start(f.options)
@@ -53,7 +56,7 @@ it('does not replay on the existing automatic reconnect while an agent is active
   await f.controller.ready!()
   await vi.waitFor(() => expect(f.fetch).toHaveBeenCalledTimes(2))
   await f.controller.ready!()
-  console.info(`reconnect empty: sync journal opens=${f.opens() - at}`)
+  console.info(`reconnect empty: sync state reads=${f.opens() - at}`)
   expect(f.supervisor.start).toHaveBeenCalledOnce()
   expect(f.opens() - at).toBe(0)
 })
@@ -66,42 +69,31 @@ it('keeps the attachment fallback for installed state', async () => {
   expect(f.supervisor.start).toHaveBeenCalledOnce()
 })
 
-it('keeps the attachment fallback for a partial journal', async () => {
+it('keeps the attachment fallback for an unreadable state file', async () => {
   const f = await emptyOffers()
-  fs.unlinkSync(
-    join(
-      f.guard,
-      fs.readdirSync(f.guard).find((name) => name.endsWith('.seal'))!,
-    ),
-  )
+  fs.writeFileSync(join(f.state, 'plugin-state.json'), '{"format":2')
   f.controller.start(f.options)
   expect(await f.controller.ready!()).toBe(true)
   expect(f.supervisor.start).toHaveBeenCalledOnce()
 })
 
-it('recovers on the next existing reconnect when first pending state is published after the final stamp', async () => {
+it('recovers on the next existing reconnect when first pending state is published after the read', async () => {
   const f = await emptyOffers(),
-    native = vi.mocked(asyncFs.open).getMockImplementation()!
+    native = vi.mocked(asyncFs.readFile).getMockImplementation()!
   let published = false
-  vi.mocked(asyncFs.open).mockImplementation(async (...args) => {
-    const handle = await native(...args)
-    if (String(args[0]) === f.owner.root && !published) {
-      const close = handle.close.bind(handle)
-      handle.close = async () => {
-        await close()
-        if (!published) {
-          published = true
-          prepareFirst(f.owner)
-        }
-      }
+  vi.mocked(asyncFs.readFile).mockImplementation(async (...args) => {
+    const bytes = await native(...args)
+    if (dirname(String(args[0])) === f.state && !published) {
+      published = true
+      prepareFirst(f.owner)
     }
-    return handle
+    return bytes
   })
   try {
     f.controller.start(f.options)
     await f.controller.ready!()
   } finally {
-    vi.mocked(asyncFs.open).mockImplementation(native)
+    vi.mocked(asyncFs.readFile).mockImplementation(native)
   }
   expect(published).toBe(true)
   expect(f.supervisor.start).not.toHaveBeenCalled()
@@ -116,19 +108,19 @@ it('recovers on the next existing reconnect when first pending state is publishe
 
 it('does not start an owner after Close while the nonempty startup observation is pending', async () => {
   const f = await emptyOffers(),
-    native = vi.mocked(asyncFs.open).getMockImplementation()!
+    native = vi.mocked(asyncFs.readFile).getMockImplementation()!
   await f.owner.controller.install(f.owner.handle, 'chrome')
   const opened = deferred<void>(),
     resume = deferred<void>()
   let held = false
-  vi.mocked(asyncFs.open).mockImplementation(async (...args) => {
-    const handle = await native(...args)
-    if (!held && dirname(String(args[0])) === f.guard) {
+  vi.mocked(asyncFs.readFile).mockImplementation(async (...args) => {
+    const bytes = await native(...args)
+    if (!held && dirname(String(args[0])) === f.state) {
       held = true
       opened.resolve()
       await resume.promise
     }
-    return handle
+    return bytes
   })
   try {
     f.controller.start(f.options)
@@ -140,6 +132,6 @@ it('does not start an owner after Close while the nonempty startup observation i
     expect(seams.connect).not.toHaveBeenCalled()
   } finally {
     resume.resolve()
-    vi.mocked(asyncFs.open).mockImplementation(native)
+    vi.mocked(asyncFs.readFile).mockImplementation(native)
   }
 })

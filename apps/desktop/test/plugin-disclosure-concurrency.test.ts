@@ -1,10 +1,9 @@
 import { afterEach, expect, it } from 'vitest'
 import { spawn, type ChildProcess } from 'node:child_process'
-import { mkdir, writeFile, readdir } from 'node:fs/promises'
+import { mkdir, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { once } from 'node:events'
 import { randomUUID } from 'node:crypto'
-import { PluginStateDisk } from '../src/main/plugins/state/disk'
 import { cleanupLifecycleFixtures } from './plugin-lifecycle-fixtures'
 import { disclosureFixture } from './plugin-disclosure-fixtures'
 import { bundleAWorker } from './helpers/bundle-a-worker'
@@ -25,19 +24,24 @@ const program = `
 const fs = require('node:fs');
 const promises = require('node:fs/promises');
 (async () => {
-  const open = promises.open;
+  const readFile = promises.readFile;
   let paused = false;
-  promises.open = async (path, ...args) => {
-    if (!paused && String(path).endsWith('.json')) {
-      paused = true;
+  promises.readFile = async (path, ...args) => {
+    if (paused || !String(path).endsWith('.json')) return readFile(path, ...args);
+    paused = true;
+    // Hold the state file open while the owner replaces it.
+    const handle = await promises.open(path, 'r');
+    try {
       process.send({ kind: 'paused' });
       const until = Date.now() + 15000;
       while (!fs.existsSync(process.argv[3])) {
         if (Date.now() > until) throw Error('fictional reader was not released');
         await new Promise((resolve) => setTimeout(resolve, 10));
       }
+      return await handle.readFile(...args);
+    } finally {
+      await handle.close();
     }
-    return open(path, ...args);
   };
   const { displayRead } = require(process.argv[1]);
   const descriptor = await displayRead({ root: process.argv[2], workspaceRoots: [] }, 'chrome');
@@ -61,7 +65,7 @@ function message(child: ChildProcess): Promise<{ kind: string; descriptor?: unkn
     child.once('error', failed)
   })
 }
-it('another process holding display reader pins cannot block real owner reclaim', async () => {
+it('another process holding the state file open mid-read cannot block the owner writing', async () => {
   const f = await disclosureFixture({ installed: true })
   closers.push(f.close)
   const folder = join(f.f.parent, 'display-reader-worker')
@@ -85,7 +89,6 @@ it('another process holding display reader pins cannot block real owner reclaim'
   const first = await message(child)
   expect(first, stderr).toEqual({ kind: 'paused' })
   const result = message(child)
-  const owner = new PluginStateDisk({ root, workspaceRoots: [f.f.workspace] })
   try {
     for (let cycle = 0; cycle < 2; cycle++) {
       const state = f.f.state.inspect(),
@@ -109,15 +112,12 @@ it('another process holding display reader pins cannot block real owner reclaim'
         snapshot: null,
       })
       f.f.state.complete(operationId)
-      owner.reclaim()
-      expect(owner.load().pending).toBeNull()
+      expect(f.f.state.inspect().pending).toBeNull()
       expect(f.f.state.inspect().guards.find((one) => one.pluginId === pluginId)?.phase).toBe(
         'active',
       )
-      expect(await readdir(join(root, 'resolution-reservations'))).toEqual([])
     }
   } finally {
-    owner.close()
     await writeFile(release, '')
   }
   const observed = await result

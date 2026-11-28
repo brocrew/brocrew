@@ -1,478 +1,177 @@
 import { randomUUID } from 'node:crypto'
-import { isMainThread } from 'node:worker_threads'
+import { closeSync, existsSync, lstatSync, mkdirSync, readFileSync } from 'node:fs'
+import { dirname, isAbsolute, join, resolve } from 'node:path'
+import { stageAtomicWriteSync, writeAtomicallySync } from '@brobot2/runtime/atomic-write'
+import { openDirectoryNotThroughALink, realPath, syncDirectory } from '../private-files'
 import { PluginFence } from './fence'
-import { journalEntries, stageName, recordName } from './journal'
-import {
-  closeSync,
-  constants,
-  fstatSync,
-  fsyncSync,
-  linkSync,
-  lstatSync,
-  mkdirSync,
-  openSync,
-  readSync,
-  readdirSync,
-  rmdirSync,
-  unlinkSync,
-  writeFileSync,
-  type BigIntStats,
-} from 'node:fs'
-import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path'
-import { createFreshFile, openNotThroughALink } from '@brobot2/runtime/provider-home'
-import {
-  isWithinOrSame,
-  openDirectoryNotThroughALink,
-  realPath,
-  syncDirectory,
-} from '../private-files'
-import { pluginSha256 } from '../package-digests'
-import {
-  decodeState,
-  encodeState,
-  equalState,
-  JournalRecord,
-  PluginStateError,
-  STATE_LIMITS,
-  refuseState,
-  ActivationSnapshot,
-  type ActivationRef,
-  type Operation,
-  type ResolutionReservation,
-} from './format'
-import {
-  foldRecord,
-  newLifecycle,
-  resolvedSnapshot,
-  snapshotReference,
-  type LifecycleState,
-} from './machine'
+import { PluginStateError, refuseState, STATE_FILE } from './format'
+import { readJournal } from './journal'
+import { decodeStateFile, encodeStateFile, newLifecycle, type LifecycleState } from './machine'
 
 export interface PluginDiskOptions {
   /** Explicit global plugin root. There is deliberately no workspace/live-root fallback. */
   root: string
   workspaceRoots: readonly string[]
-  /** Fault seam for inert scratch-folder controls only. */
-  fault?: (point: 'staged' | 'published' | 'durable') => void
+  /** Fault seam for fictional-root tests: the new state is written but not yet in place, or in place. */
+  fault?: (point: 'staged' | 'published') => void
 }
-interface Pin {
-  readonly path: string
-  readonly stat: BigIntStats
-  readonly fd: number
-}
-interface Counterpart {
-  folder: string
-  name: string
-}
-const same = (left: BigIntStats, right: BigIntStats) =>
-  left.dev === right.dev && left.ino === right.ino
-/** Pinned journal reader under the writer disk. Display reads use the asynchronous observer. */
-class PluginJournalReader {
-  readonly #pins: Pin[] = []
-  #pinRevision = 0
-  readonly root: string
-  readonly guard: string
-  readonly activations: string
-  readonly reservations: string
-  protected closed = false
-  private readonly readIdentities = new WeakMap<Buffer, BigIntStats>()
-  constructor(
-    protected readonly options: PluginDiskOptions,
-    create = false,
-  ) {
-    this.root = resolve(options.root)
-    this.guard = join(this.root, 'lifecycle-guard')
-    this.activations = join(this.root, 'activations')
-    this.reservations = join(this.root, 'resolution-reservations')
-    try {
-      if (!isMainThread) refuseState('unsupported')
-      if (!isAbsolute(options.root)) refuseState('unsafe-path')
-      const parent = dirname(this.root)
-      const canonicalParent = realPath(parent)
-      if (canonicalParent !== parent) refuseState('unsafe-path')
+/**
+ * Written next to the old journal once its migration is done. Older builds refuse any name in
+ * this folder that is not an operation id, so an older app stops with "Plugin recovery is
+ * required" instead of acting on the journal as it was on the day of the migration.
+ */
+export const MOVED_MARKER = 'moved-to-plugin-state'
 
-      const canonicalRoot = create
-        ? join(canonicalParent, basename(this.root))
-        : realPath(this.root)
-      const workspaces = options.workspaceRoots.map((workspace) => {
-        const path = realPath(workspace)
-        const stat = lstatSync(path, { bigint: true })
-        if (!stat.isDirectory()) refuseState('unsafe-path')
-        return { path, stat }
-      })
-      if (workspaces.some((workspace) => isWithinOrSame(workspace.path, canonicalRoot)))
-        refuseState('unsafe-path')
-      // Canonical string comparison is supplemented by physical ancestry for case aliases.
-      for (let ancestor = create ? canonicalParent : canonicalRoot; workspaces.length > 0;) {
-        const stat = lstatSync(ancestor, { bigint: true })
-        if (workspaces.some((workspace) => same(stat, workspace.stat))) refuseState('unsafe-path')
-        const above = dirname(ancestor)
-        if (above === ancestor) break
-        ancestor = above
-      }
-      this.pin(parent)
-    } catch (error) {
-      this.close()
-      throw error instanceof PluginStateError ? error : new PluginStateError('unsafe-path')
-    }
+function unsafe(error: unknown): PluginStateError {
+  return error instanceof PluginStateError ? error : new PluginStateError('unsafe-path')
+}
+/** The state stays out of every workspace, so no workspace backup or restore carries it. */
+function checkedRoot(options: PluginDiskOptions, create: boolean): string {
+  if (!isAbsolute(options.root)) refuseState('unsafe-path')
+  const root = resolve(options.root),
+    parent = dirname(root)
+  if (realPath(parent) !== parent) refuseState('unsafe-path')
+  const workspaces = options.workspaceRoots.map((path) =>
+    lstatSync(realPath(path), { bigint: true }),
+  )
+  // Physical ancestry, so a differently cased spelling of a workspace is still found.
+  for (let at = create ? parent : realPath(root); workspaces.length > 0;) {
+    const stat = lstatSync(at, { bigint: true })
+    if (workspaces.some((one) => one.dev === stat.dev && one.ino === stat.ino))
+      refuseState('unsafe-path')
+    const above = dirname(at)
+    if (above === at) break
+    at = above
   }
-  protected privateDirectory(stat: BigIntStats): void {
-    if (!stat.isDirectory() || stat.isSymbolicLink()) refuseState('unsafe-path')
+  return root
+}
+
+/** The plugin service's one state file, written atomically by its one writer. */
+export class PluginStateDisk {
+  #state: LifecycleState | undefined
+  private fence: PluginFence | undefined
+  private readonly path: string
+  private readonly lock: string
+  private constructor(
+    private readonly root: string,
+    private readonly fault: PluginDiskOptions['fault'],
+  ) {
+    this.path = join(root, STATE_FILE)
+    this.lock = join(root, 'writer-lock.sqlite')
+    this.fence = PluginFence.acquire(this.lock)
   }
-  protected pin(path: string): void {
-    const stat = lstatSync(path, { bigint: true })
-    this.privateDirectory(stat)
-    const fd = openDirectoryNotThroughALink(path)
+  static create(options: PluginDiskOptions): PluginStateDisk {
+    let root: string
     try {
-      const held = fstatSync(fd, { bigint: true })
-      this.privateDirectory(held)
-      if (!same(stat, held)) refuseState('unsafe-path')
-      this.#pins.push({ path, stat, fd })
-      this.#pinRevision++
+      root = checkedRoot(options, true)
+      mkdirSync(root, { mode: 0o700 })
+      const parent = openDirectoryNotThroughALink(dirname(root))
+      try {
+        syncDirectory(parent)
+      } finally {
+        closeSync(parent)
+      }
     } catch (error) {
-      closeSync(fd)
+      throw unsafe(error)
+    }
+    return PluginStateDisk.opened(root, options, (file) =>
+      file.write(newLifecycle(randomUUID(), randomUUID())),
+    )
+  }
+  /** Reads the state file, or migrates the old journal once when there is none yet. */
+  static open(options: PluginDiskOptions): PluginStateDisk {
+    let root: string
+    try {
+      root = checkedRoot(options, false)
+    } catch (error) {
+      throw unsafe(error)
+    }
+    return PluginStateDisk.opened(root, options, (file) => file.readOrMigrate())
+  }
+  private static opened(
+    root: string,
+    options: PluginDiskOptions,
+    first: (file: PluginStateDisk) => void,
+  ): PluginStateDisk {
+    let file: PluginStateDisk
+    try {
+      file = new PluginStateDisk(root, options.fault)
+    } catch (error) {
+      throw unsafe(error)
+    }
+    try {
+      file.exclusive(() => first(file))
+      return file
+    } catch (error) {
+      file.close()
       throw error
     }
   }
-  protected check(): void {
-    const revision = ++this.#pinRevision
-    this.checkPins(true)
-    this.checkFence()
-    if (revision !== this.#pinRevision) refuseState('conflict')
-  }
-  /** The writer adds its unchanged SQLite fence proof to every directory check. */
-  protected checkFence(): void {}
-  private checkPins(held: boolean): void {
-    if (this.closed) refuseState('unsafe-path')
-    for (const pin of this.#pins) {
-      const now = lstatSync(pin.path, { bigint: true })
-      this.privateDirectory(now)
-      if (!same(now, pin.stat) || (held && !same(fstatSync(pin.fd, { bigint: true }), pin.stat)))
-        refuseState('unsafe-path')
-    }
-  }
-  private checkAfterRead(revision: number): void {
-    // Only this uninterrupted read frame may reuse the held directory identity.
-    // Reentry or any ownership transition restores the entire check instead.
-    if (revision !== this.#pinRevision) return this.check()
-    const checked = ++this.#pinRevision
-    this.checkPins(false)
-    this.checkFence()
-    if (checked !== this.#pinRevision) this.check()
-  }
-  protected syncPinnedDirectory(path: string): void {
-    const pin = this.#pins.find((pin) => pin.path === path)
-    if (this.closed || !pin) refuseState('unsafe-path')
-    syncDirectory(pin.fd)
-  }
-  protected unpin(path: string): void {
-    this.#pinRevision++
-    if (this.closed) return
-    if (this.#pins.at(-1)?.path !== path) refuseState('unsafe-path')
-    closeSync(this.#pins.pop()!.fd)
-  }
-  protected file(stat: BigIntStats): void {
-    if (!stat.isFile() || stat.nlink !== 1n || stat.size > BigInt(STATE_LIMITS.recordBytes))
-      refuseState('unsafe-path')
-  }
-  protected links(
-    folder: string,
-    name: string,
-    held: BigIntStats,
-    counterparts: readonly Counterpart[],
-  ): void {
-    if (held.nlink !== 2n) return
-    if (
-      counterparts.some((candidate) => {
-        try {
-          const stat = lstatSync(join(candidate.folder, candidate.name), { bigint: true })
-          return stat.isFile() && same(stat, held)
-        } catch {
-          return false
-        }
-      })
-    )
-      return
-    // Prove the second link is our private crash stage before reading any bytes.
-    const names = readdirSync(folder)
-    if (names.length > STATE_LIMITS.records * 2) refuseState('limit')
-    if (
-      !names.some((candidate) => {
-        if (candidate === name || !stageName.test(candidate)) return false
-        const stat = lstatSync(join(folder, candidate), { bigint: true })
-        return stat.isFile() && same(stat, held)
-      })
-    )
-      refuseState('unsafe-path')
-  }
-  protected read(folder: string, name: string, counterparts: readonly Counterpart[] = []): Buffer {
-    return this.readWithProof(folder, name, (_held, read) => read(counterparts))
-  }
-  /** One fresh safe open owns both link dispatch and the complete bounded read. */
-  protected readWithProof(
-    folder: string,
-    name: string,
-    prove: (held: BigIntStats, read: (counterparts: readonly Counterpart[]) => Buffer) => Buffer,
-  ): Buffer {
-    this.check()
-    const initialRevision = this.#pinRevision
-    const path = join(folder, name)
-    const noFollow = constants.O_NOFOLLOW as number | undefined
-    const fd = openSync(path, constants.O_RDONLY | constants.O_NONBLOCK | (noFollow ?? 0))
+  private onDisk(): LifecycleState | undefined {
+    let bytes: Buffer
     try {
-      // Windows follows links at open. Prove the regular path against this same
-      // immediate held observation before dispatch or any file bytes are read.
-      const before = noFollow === undefined ? lstatSync(path, { bigint: true }) : undefined
-      const held = fstatSync(fd, { bigint: true })
-      if (before && (!before.isFile() || !same(before, held)))
-        throw Object.assign(new Error(`ELOOP: ${path} is a link, so it was not read`), {
-          code: 'ELOOP',
-          path,
-          syscall: 'open',
-        })
-      this.file(held)
-      return prove(held, (counterparts) => {
-        // Reservation dispatch may add a temporary directory pin after the open.
-        // It must be checked before bytes, and remains pinned through the post-check.
-        let revision = initialRevision
-        if (counterparts.length) {
-          this.check()
-          revision = this.#pinRevision
-        }
-        this.links(folder, name, held, counterparts)
-        const bytes = Buffer.alloc(Number(held.size) + 1)
-        let at = 0
-        for (;;) {
-          const n = readSync(fd, bytes, at, bytes.length - at, null)
-          if (n === 0) break
-          at += n
-          if (at === bytes.length) refuseState('corrupt')
-        }
-        const after = fstatSync(fd, { bigint: true })
-        if (
-          at !== Number(held.size) ||
-          !same(held, after) ||
-          held.size !== after.size ||
-          !same(lstatSync(path, { bigint: true }), held)
-        )
-          refuseState('corrupt')
-        this.checkAfterRead(revision)
-        const result = bytes.subarray(0, at)
-        this.readIdentities.set(result, held)
-        return result
-      })
-    } finally {
-      closeSync(fd)
-    }
-  }
-  protected readPublished(
-    folder: string,
-    name: string,
-    _reservation: string,
-    _source: string,
-  ): Buffer {
-    void _reservation
-    void _source
-    return this.read(folder, name)
-  }
-  protected readJournal(name: string, _prior: ResolutionReservation | null): Buffer {
-    void _prior
-    return this.read(this.guard, name)
-  }
-  protected loadLocked(keptActivations?: Set<string>, repair = false): LifecycleState {
-    try {
-      this.check()
-      const { records, seals } = journalEntries(readdirSync(this.guard))
-      const state = newLifecycle()
-      let total = 0
-      records.forEach((name, index) => {
-        if (name !== `${String(index).padStart(8, '0')}.json`) refuseState('corrupt')
-        const priorReservation = state.reservation
-        const bytes = this.readJournal(name, priorReservation)
-        if (!this.readIdentities.get(bytes)) refuseState('corrupt')
-        total += bytes.length
-        if (total > STATE_LIMITS.journalBytes) refuseState('limit')
-        const checksum = pluginSha256(bytes)
-        const record = decodeState(bytes, JournalRecord)
-        foldRecord(state, record, checksum)
-        if (record.event.kind === 'completed' || record.event.kind === 'aborted')
-          keptActivations?.add(record.event.activation.name)
-        const expectedSeal = `${name.slice(0, 8)}-${checksum}.seal`
-        const existingSeal = seals.get(name.slice(0, 8))
-        if (existingSeal !== undefined && existingSeal !== expectedSeal) refuseState('corrupt')
-        if (existingSeal === undefined && !repair) refuseState('corrupt')
-        const reservation =
-          record.event.kind === 'prepared' ? record.event.reservation : priorReservation
-        const reservedName =
-          record.event.kind === 'prepared'
-            ? 'prepare.seal'
-            : record.event.kind === 'completed'
-              ? 'complete.seal'
-              : 'abort.seal'
-        if (existingSeal === undefined) this.repairSeal(expectedSeal, reservation?.id, reservedName)
-        else if (
-          (reservation
-            ? this.readPublished(this.guard, expectedSeal, reservation.id, reservedName)
-            : this.read(this.guard, expectedSeal)
-          ).length !== 0
-        )
-          refuseState('corrupt')
-      })
-      this.check()
-      return state
+      bytes = readFileSync(this.path)
     } catch (error) {
-      throw error instanceof PluginStateError ? error : new PluginStateError('corrupt')
+      if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return undefined
+      throw error
+    }
+    return decodeStateFile(bytes)
+  }
+  private readOrMigrate(): void {
+    const guard = join(this.root, 'lifecycle-guard'),
+      reservations = join(this.root, 'resolution-reservations'),
+      marker = join(reservations, MOVED_MARKER)
+    const current = this.onDisk()
+    if (current) this.#state = current
+    else {
+      // The marker means the migration finished, so the journal is stale: never rebuild from it.
+      if (existsSync(marker)) refuseState('missing-guard')
+      // A crash before the state file is in place leaves the journal untouched and current, so
+      // the next start migrates again.
+      this.write(readJournal(guard))
+    }
+    // Written after the state file, so a crash between the two leaves a journal that is still
+    // current, and the next start finishes here.
+    if (existsSync(guard) && !existsSync(marker)) {
+      mkdirSync(reservations, { recursive: true, mode: 0o700 })
+      writeAtomicallySync(
+        marker,
+        'The plugin state moved to ../plugin-state.json. Older apps stop here.\n',
+      )
     }
   }
-  readActivation(ref: ActivationRef): Buffer {
+  /** Under the writer fence. A copy that changed the file since this one read it wins. */
+  private write(next: LifecycleState): void {
+    const bytes = encodeStateFile(next)
+    if (this.#state && this.onDisk()?.sequence !== this.#state.sequence) refuseState('conflict')
+    const stage = stageAtomicWriteSync(this.path, bytes)
     try {
-      const bytes = this.read(this.activations, ref.name)
-      if (pluginSha256(bytes) !== ref.sha256) refuseState('corrupt')
-      return bytes
+      this.fault?.('staged')
+      stage.commit()
     } catch (error) {
-      throw error instanceof PluginStateError ? error : new PluginStateError('corrupt')
-    }
-  }
-  close(): void {
-    this.#pinRevision++
-    if (this.closed) return
-    this.closed = true
-    for (const pin of this.#pins.splice(0)) closeSync(pin.fd)
-  }
-  protected repairSeal(_name: string, _reservation: string | undefined, _source: string): void {
-    void _name
-    void _reservation
-    void _source
-    refuseState('corrupt')
-  }
-}
-
-/** Kept-current journal + immutable activation objects, never a workspace DB. */
-export class PluginStateDisk extends PluginJournalReader {
-  private fence: PluginFence | undefined
-  /**
-   * The state as last read, held by its one writer. Only this process writes the journal while
-   * it holds the plugin service's owner lock, so the state is read once and again only after
-   * this writer changes the journal.
-   */
-  private held?: {
-    state: LifecycleState
-    kept: ReadonlySet<string>
-    activation?: ActivationRef & { snapshot: ActivationSnapshot }
-  }
-  constructor(options: PluginDiskOptions, create = false) {
-    super(options, create)
-    try {
-      if (create) mkdirSync(this.root, { mode: 0o700 })
-      this.pin(this.root)
-      if (create) {
-        mkdirSync(this.guard, { mode: 0o700 })
-        mkdirSync(this.activations, { mode: 0o700 })
-        this.syncPinnedDirectory(this.root)
-      }
-      this.pin(this.guard)
-      this.pin(this.activations)
+      // The rename can land before a later step fails: hold whatever is on disk now.
       try {
-        lstatSync(this.reservations)
-      } catch (error) {
-        if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error
-        this.check()
-        mkdirSync(this.reservations, { mode: 0o700 })
-        this.syncPinnedDirectory(this.root)
+        this.#state = this.onDisk()
+      } catch {
+        this.#state = undefined
       }
-      this.pin(this.reservations)
-      this.fence = PluginFence.acquire(join(this.root, 'writer-lock.sqlite'))
-      this.check()
-      if (create) this.syncPinnedDirectory(dirname(this.root))
-    } catch (error) {
-      this.close()
-      throw error instanceof PluginStateError ? error : new PluginStateError('unsafe-path')
-    }
-  }
-  protected override checkFence(): void {
-    this.fence?.check(join(this.root, 'writer-lock.sqlite'))
-  }
-  protected override file(stat: BigIntStats): void {
-    if (
-      !stat.isFile() ||
-      (stat.nlink !== 1n && stat.nlink !== 2n) ||
-      stat.size > BigInt(STATE_LIMITS.recordBytes)
-    )
-      refuseState('unsafe-path')
-  }
-  protected withReservation<T>(id: string, create: boolean, run: (folder: string) => T): T {
-    if (!/^[a-f0-9-]{36}$/.test(id)) refuseState('corrupt')
-    this.check()
-    const folder = join(this.reservations, id)
-    if (create) {
-      if (readdirSync(this.reservations).length >= STATE_LIMITS.records * 2) refuseState('limit')
-      mkdirSync(folder, { mode: 0o700 })
-      this.syncPinnedDirectory(this.reservations)
-    }
-    this.pin(folder)
-    try {
-      return run(folder)
+      throw error
     } finally {
-      this.unpin(folder)
+      stage.discard()
     }
+    this.#state = next
+    this.fault?.('published')
   }
-  protected override repairSeal(
-    name: string,
-    reservation: string | undefined,
-    source: string,
-  ): void {
-    if (reservation)
-      this.withReservation(reservation, false, (folder) => {
-        this.publishReserved(this.guard, name, folder, source, Buffer.alloc(0))
-      })
-    else this.put(this.guard, name, Buffer.alloc(0))
-  }
-  protected override readPublished(
-    folder: string,
-    name: string,
-    reservation: string,
-    source: string,
-  ): Buffer {
-    return this.readWithProof(folder, name, (held, read) =>
-      held.nlink === 1n
-        ? read([])
-        : this.withReservation(reservation, false, (reserved) =>
-            read([{ folder: reserved, name: source }]),
-          ),
-    )
-  }
-  protected override readJournal(name: string, prior: ResolutionReservation | null): Buffer {
-    return this.readWithProof(this.guard, name, (held, read) => {
-      if (held.nlink === 1n) return read([])
-      if (prior)
-        return this.withReservation(prior.id, false, (folder) =>
-          read([
-            { folder, name: 'complete.record' },
-            { folder, name: 'abort.record' },
-          ]),
-        )
-      for (const id of readdirSync(this.reservations)) {
-        const found = this.withReservation(id, false, (folder) => {
-          try {
-            if (!same(lstatSync(join(folder, 'prepare.record'), { bigint: true }), held))
-              return null
-          } catch (error) {
-            if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return null
-            throw error
-          }
-          return read([{ folder, name: 'prepare.record' }])
-        })
-        if (found !== null) return found
-      }
-      // Completed legacy publications may still have their verified guard-local crash stage.
-      return read([])
-    })
+  private held(): LifecycleState {
+    if (!this.#state) return refuseState('unsafe-path')
+    return this.#state
   }
   private exclusive<T>(run: () => T): T {
-    this.check()
     try {
-      return this.fence!.sync(this, () => {
-        this.check()
+      if (!this.fence) refuseState('unsafe-path')
+      const fence = this.fence
+      return fence.sync(this, () => {
+        fence.check(this.lock)
         return run()
       })
     } catch (error) {
@@ -480,386 +179,34 @@ export class PluginStateDisk extends PluginJournalReader {
     }
   }
   async withExclusive<T>(run: () => Promise<T>): Promise<T> {
-    this.check()
     try {
-      return await this.fence!.async(this, async () => {
-        this.check()
+      if (!this.fence) refuseState('unsafe-path')
+      const fence = this.fence
+      return await fence.async(this, async () => {
+        fence.check(this.lock)
         return run()
       })
     } catch (error) {
       throw error instanceof PluginStateError ? error : new PluginStateError('corrupt')
     }
   }
-  private publishReserved(
-    folder: string,
-    name: string,
-    reservedFolder: string,
-    reservedName: string,
-    bytes: Buffer,
-  ): void {
-    if (folder === this.guard) this.held = undefined
-    this.check()
-    if (!this.read(reservedFolder, reservedName, [{ folder, name }]).equals(bytes))
-      refuseState('corrupt')
-    this.options.fault?.('staged')
-    this.check()
-    try {
-      linkSync(join(reservedFolder, reservedName), join(folder, name))
-    } catch (error) {
-      if (!(error instanceof Error && 'code' in error && error.code === 'EEXIST')) throw error
-      if (!this.read(folder, name, [{ folder: reservedFolder, name: reservedName }]).equals(bytes))
-        refuseState('conflict')
-    }
-    this.options.fault?.('published')
-    this.syncPinnedDirectory(folder)
-    this.options.fault?.('durable')
-    this.check()
+  load(): LifecycleState {
+    return this.exclusive(() => structuredClone(this.held()))
   }
-  private put(folder: string, name: string, bytes: Buffer): void {
-    if (folder === this.guard) this.held = undefined
-    this.check()
-    if (bytes.length > STATE_LIMITS.recordBytes) refuseState('limit')
-    if (readdirSync(folder).length >= STATE_LIMITS.records * 2) refuseState('limit')
-    const stage = join(folder, `.stage-${randomUUID()}`)
-    const fd = createFreshFile(stage, 0o600)
-    try {
-      const held = fstatSync(fd, { bigint: true })
-      this.file(held)
-      if (held.nlink !== 1n) refuseState('unsafe-path')
-      writeFileSync(fd, bytes)
-      fsyncSync(fd)
-      this.options.fault?.('staged')
-      this.check()
-      if (!same(lstatSync(stage, { bigint: true }), held)) refuseState('unsafe-path')
-      try {
-        linkSync(stage, join(folder, name))
-      } catch (error) {
-        if (!(error instanceof Error && 'code' in error && error.code === 'EEXIST')) throw error
-        if (!this.read(folder, name).equals(bytes)) {
-          this.check()
-          if (!same(lstatSync(stage, { bigint: true }), held)) refuseState('unsafe-path')
-          unlinkSync(stage)
-          this.syncPinnedDirectory(folder)
-          refuseState('conflict')
-        }
-      }
-      this.options.fault?.('published')
-      this.syncPinnedDirectory(folder)
-      this.options.fault?.('durable')
-      this.check()
-      if (!same(lstatSync(stage, { bigint: true }), held)) refuseState('unsafe-path')
-      unlinkSync(stage)
-      this.syncPinnedDirectory(folder)
-    } finally {
-      closeSync(fd)
-    }
-  }
-  load(keptActivations?: Set<string>): LifecycleState {
-    return this.exclusive(() => {
-      if (!this.held) {
-        const kept = new Set<string>()
-        this.held = { state: this.loadLocked(kept, true), kept }
-      }
-      for (const name of this.held.kept) keptActivations?.add(name)
-      // Maps, Sets and nested event objects never escape the held state.
-      return structuredClone(this.held.state)
-    })
-  }
-  /**
-   * The service's sole writer publishes synchronously and invalidates held state before each
-   * publication. Admission can read between its awaits without taking its async writer lock.
-   * A cold read never repairs an interrupted publication.
-   */
+  /** Admission reads between the owner's awaits, without taking its writer lock. */
   loadForAdmission(): LifecycleState {
-    this.check()
-    return structuredClone(this.held?.state ?? this.loadLocked(undefined, false))
+    return structuredClone(this.held())
   }
-  /** The current activation snapshot, read once with the state it belongs to. */
-  activationSnapshot(ref: ActivationRef): ActivationSnapshot {
-    const held = this.held?.activation
-    if (held?.name === ref.name && held.sha256 === ref.sha256) return structuredClone(held.snapshot)
-    const snapshot = decodeState(this.readActivation(ref), ActivationSnapshot)
-    if (this.held) this.held.activation = { ...ref, snapshot }
-    return structuredClone(snapshot)
-  }
-  private encodedRecord(
-    sequence: number,
-    previous: string | null,
-    publicationId: string,
-    event: JournalRecord['event'],
-  ): Buffer {
-    return encodeState({ sequence, previous, publicationId, event })
-  }
-  /** Only called with kernel exclusion: no other process can still be preparing these objects. */
-  reclaim(): void {
-    this.exclusive(() => this.reclaimLocked())
-  }
-  private removeFile(folder: string, name: string): void {
-    this.check()
-    const path = join(folder, name)
-    const fd = openNotThroughALink(path, constants.O_RDONLY | constants.O_NONBLOCK)
-    try {
-      const held = fstatSync(fd, { bigint: true })
-      this.file(held)
-      if (held.nlink === 2n)
-        this.links(folder, name, held, [
-          ...readdirSync(folder)
-            .filter((candidate) => candidate !== name)
-            .map((candidate) => ({ folder, name: candidate })),
-          ...(folder.startsWith(this.reservations + sep)
-            ? readdirSync(this.guard).map((candidate) => ({ folder: this.guard, name: candidate }))
-            : []),
-        ])
-      if (!same(lstatSync(path, { bigint: true }), held)) refuseState('unsafe-path')
-      unlinkSync(path)
-    } finally {
-      closeSync(fd)
-    }
-  }
-  private reclaimLocked(): void {
-    const keep = new Set<string>(),
-      state = this.load(keep)
-    if (state.reservation) {
-      keep.add(state.reservation.complete.name)
-      keep.add(state.reservation.abort.name)
-    }
-    const names = readdirSync(this.reservations)
-    if (names.length > STATE_LIMITS.records * 2) refuseState('limit')
-    for (const id of names) {
-      if (id === state.reservation?.id) continue
-      this.withReservation(id, false, (folder) => {
-        const files = readdirSync(folder)
-        if (
-          files.length > STATE_LIMITS.records * 2 ||
-          files.some(
-            (name) =>
-              !stageName.test(name) &&
-              ![
-                'prepare.record',
-                'complete.record',
-                'abort.record',
-                'prepare.seal',
-                'complete.seal',
-                'abort.seal',
-              ].includes(name),
-          )
-        )
-          refuseState('corrupt')
-        for (const name of files) this.removeFile(folder, name)
-        this.syncPinnedDirectory(folder)
-        this.check()
-        rmdirSync(folder)
-      })
-      this.syncPinnedDirectory(this.reservations)
-    }
-    const activations = readdirSync(this.activations)
-    if (activations.length > STATE_LIMITS.records * 2) refuseState('limit')
-    for (const name of activations) {
-      if (keep.has(name)) continue
-      if (!stageName.test(name) && !/^\d{8}-[a-f0-9]{64}\.json$/.test(name)) refuseState('corrupt')
-      this.removeFile(this.activations, name)
-    }
-    this.syncPinnedDirectory(this.activations)
-  }
-  private journalSize(): number {
-    return readdirSync(this.guard)
-      .filter((name) => recordName.test(name))
-      .reduce((sum, name) => sum + lstatSync(join(this.guard, name)).size, 0)
-  }
-  /** Reserve the whole two-record operation, both activation outcomes and publication inputs. */
-  prepare(previous: LifecycleState, operation: Operation): void {
+  /** Replaces the state the caller read with the next one, one sequence later. */
+  update(previous: LifecycleState, next: LifecycleState): void {
     this.exclusive(() => {
-      this.reclaimLocked()
-      try {
-        this.prepareLocked(previous, operation)
-      } finally {
-        this.reclaimLocked()
-      }
+      if (previous.sequence !== this.held().sequence) refuseState('conflict')
+      this.write({ ...next, sequence: previous.sequence + 1 })
     })
   }
-  private prepareLocked(previous: LifecycleState, operation: Operation): void {
-    try {
-      if (previous.sequence + 2 >= STATE_LIMITS.records) refuseState('limit')
-      const future: LifecycleState = {
-        ...previous,
-        guards: new Map(previous.guards),
-        pending: operation,
-      }
-      if (operation.next !== null) future.guards.set(operation.next.pluginId, operation.next)
-      const complete = resolvedSnapshot(future, true),
-        abort = resolvedSnapshot(future, false)
-      const completeRef = snapshotReference(complete, previous.sequence + 2),
-        abortRef = snapshotReference(abort, previous.sequence + 2)
-      const id = operation.request.operationId
-      const completeEvent: JournalRecord['event'] = {
-        kind: 'completed',
-        operationId: operation.request.operationId,
-        activation: completeRef,
-      }
-      const abortEvent: JournalRecord['event'] = {
-        kind: 'aborted',
-        operationId: operation.request.operationId,
-        activation: abortRef,
-      }
-      const recordBytes = Math.max(
-        this.encodedRecord(previous.sequence + 2, '0'.repeat(64), id, completeEvent).length,
-        this.encodedRecord(previous.sequence + 2, '0'.repeat(64), id, abortEvent).length,
-      )
-      const reservation: ResolutionReservation = {
-        id,
-        complete: completeRef,
-        abort: abortRef,
-        recordBytes,
-        records: 1,
-        guardNames: 2,
-        activationNames: 0,
-      }
-      const prepared = this.encodedRecord(previous.sequence + 1, previous.head, id, {
-        kind: 'prepared',
-        operation,
-        reservation,
-      })
-      const head = pluginSha256(prepared)
-      const completeRecord = this.encodedRecord(previous.sequence + 2, head, id, completeEvent),
-        abortRecord = this.encodedRecord(previous.sequence + 2, head, id, abortEvent)
-      if (Math.max(completeRecord.length, abortRecord.length) !== recordBytes)
-        refuseState('corrupt')
-      const current = this.load()
-      if (current.sequence !== previous.sequence || current.head !== previous.head)
-        refuseState('conflict')
-      if (
-        this.journalSize() + prepared.length + recordBytes > STATE_LIMITS.journalBytes ||
-        readdirSync(this.guard).length + 6 > STATE_LIMITS.records * 2 ||
-        readdirSync(this.activations).length + 4 > STATE_LIMITS.records * 2
-      )
-        refuseState('limit')
-      this.withReservation(id, true, (folder) => {
-        this.put(folder, 'prepare.record', prepared)
-        this.put(folder, 'complete.record', completeRecord)
-        this.put(folder, 'abort.record', abortRecord)
-        for (const name of ['prepare.seal', 'complete.seal', 'abort.seal'])
-          this.put(folder, name, Buffer.alloc(0))
-        // Both possible snapshots are durable before prepare can start the global barrier.
-        this.putActivation(complete, completeRef)
-        this.putActivation(abort, abortRef)
-        const checked = this.load()
-        if (checked.sequence !== previous.sequence || checked.head !== previous.head)
-          refuseState('conflict')
-        if (readdirSync(this.guard).length + 6 > STATE_LIMITS.records * 2) refuseState('limit')
-        const name = `${String(previous.sequence + 1).padStart(8, '0')}.json`
-        this.publishReserved(this.guard, name, folder, 'prepare.record', prepared)
-        this.publishReserved(
-          this.guard,
-          `${name.slice(0, 8)}-${head}.seal`,
-          folder,
-          'prepare.seal',
-          Buffer.alloc(0),
-        )
-      })
-    } catch (error) {
-      throw error instanceof PluginStateError ? error : new PluginStateError('corrupt')
-    }
-  }
-  /** No fresh bytes, stage names, activation files or reservation directories are allocated. */
-  resolve(previous: LifecycleState, success: boolean): void {
-    this.exclusive(() => {
-      try {
-        this.resolveLocked(previous, success)
-      } finally {
-        this.reclaimLocked()
-      }
-    })
-  }
-  private resolveLocked(previous: LifecycleState, success: boolean): void {
-    try {
-      const reservation = previous.reservation,
-        operation = previous.pending
-      if (!reservation || !operation) refuseState('corrupt')
-      const snapshot = resolvedSnapshot(previous, success),
-        ref = snapshotReference(snapshot, previous.sequence + 1)
-      if (
-        !equalState(ref, success ? reservation.complete : reservation.abort) ||
-        !this.readActivation(ref).equals(encodeState(snapshot))
-      )
-        refuseState('corrupt')
-      const event: JournalRecord['event'] = success
-        ? { kind: 'completed', operationId: operation.request.operationId, activation: ref }
-        : { kind: 'aborted', operationId: operation.request.operationId, activation: ref }
-      const bytes = this.encodedRecord(previous.sequence + 1, previous.head, reservation.id, event)
-      if (bytes.length > reservation.recordBytes) refuseState('corrupt')
-      const current = this.load()
-      if (current.sequence !== previous.sequence || current.head !== previous.head)
-        refuseState('conflict')
-      this.withReservation(reservation.id, false, (folder) => {
-        const name = `${String(previous.sequence + 1).padStart(8, '0')}.json`,
-          choice = success ? 'complete' : 'abort'
-        this.publishReserved(this.guard, name, folder, `${choice}.record`, bytes)
-        this.publishReserved(
-          this.guard,
-          `${name.slice(0, 8)}-${pluginSha256(bytes)}.seal`,
-          folder,
-          `${choice}.seal`,
-          Buffer.alloc(0),
-        )
-      })
-    } catch (error) {
-      throw error instanceof PluginStateError ? error : new PluginStateError('corrupt')
-    }
-  }
-  append(previous: LifecycleState, event: JournalRecord['event']): void {
-    this.exclusive(() => this.appendLocked(previous, event))
-  }
-  private appendLocked(previous: LifecycleState, event: JournalRecord['event']): void {
-    try {
-      if (
-        event.kind === 'created'
-          ? previous.sequence !== -1
-          : !['projected', 'reader-floor'].includes(event.kind) ||
-            previous.sequence < 0 ||
-            previous.pending !== null
-      )
-        refuseState('conflict')
-      if (previous.sequence + 1 >= STATE_LIMITS.records) refuseState('limit')
-      const bytes = encodeState({
-        sequence: previous.sequence + 1,
-        previous: previous.head,
-        publicationId: randomUUID(),
-        event,
-      })
-      const current = this.loadIfAny()
-      if (current.sequence !== previous.sequence || current.head !== previous.head)
-        refuseState('conflict')
-      const total = readdirSync(this.guard)
-        .filter((name) => recordName.test(name))
-        .reduce((sum, name) => sum + lstatSync(join(this.guard, name)).size, 0)
-      if (total + bytes.length > STATE_LIMITS.journalBytes) refuseState('limit')
-      this.put(this.guard, `${String(previous.sequence + 1).padStart(8, '0')}.json`, bytes)
-      this.put(
-        this.guard,
-        `${String(previous.sequence + 1).padStart(8, '0')}-${pluginSha256(bytes)}.seal`,
-        Buffer.alloc(0),
-      )
-    } catch (error) {
-      throw error instanceof PluginStateError ? error : new PluginStateError('corrupt')
-    }
-  }
-  private loadIfAny(): LifecycleState {
-    if (readdirSync(this.guard).every((name) => stageName.test(name))) return newLifecycle()
-    return this.load()
-  }
-  private putActivation(snapshot: ActivationSnapshot, ref: ActivationRef): void {
-    try {
-      const bytes = encodeState(snapshot)
-      if (pluginSha256(bytes) !== ref.sha256) refuseState('corrupt')
-      this.put(this.activations, ref.name, bytes)
-    } catch (error) {
-      throw error instanceof PluginStateError ? error : new PluginStateError('corrupt')
-    }
-  }
-  override close(): void {
-    this.held = undefined
+  close(): void {
+    this.#state = undefined
     this.fence?.release()
     this.fence = undefined
-    super.close()
   }
 }

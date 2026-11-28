@@ -1,16 +1,11 @@
-import { pluginSha256 } from '../package-digests'
+import { strictPluginJson } from '../strict-json'
 import {
-  type ActivationRef,
   type ActivationSnapshot,
   type Installation,
-  type JournalRecord,
   type Operation,
   type OperationRequest,
-  type ResolutionReservation,
-  type ProjectionReceipt,
   STATE_LIMITS,
-  installationProjection,
-  encodeState,
+  StateFile,
   equalState,
   refuseState,
 } from './format'
@@ -18,39 +13,25 @@ import {
 export interface LifecycleState {
   rootId: string
   epoch: string
+  /** Goes up by one with every change. A consent names the sequence it was given against. */
   sequence: number
-  head: string | null
+  /** Every plugin ever installed, removed ones too. */
   guards: Map<string, Installation>
   admitted: Map<string, Installation>
+  /** The latest operation of each plugin, and of a global restore. */
   operations: Map<string, { operation: Operation; status: 'prepared' | 'completed' | 'aborted' }>
   pending: Operation | null
-  reservation: ResolutionReservation | null
-  activation: ActivationRef | null
-  projections: Map<string, ProjectionReceipt>
-  updateReader: boolean
-  usedIds: Set<string>
 }
-export function newLifecycle(): LifecycleState {
+export function newLifecycle(rootId: string, epoch: string): LifecycleState {
   return {
-    rootId: '',
-    epoch: '',
-    sequence: -1,
-    head: null,
+    rootId,
+    epoch,
+    sequence: 0,
     guards: new Map(),
     admitted: new Map(),
     operations: new Map(),
     pending: null,
-    reservation: null,
-    activation: null,
-    projections: new Map(),
-    updateReader: false,
-    usedIds: new Set(),
   }
-}
-function reserve(state: LifecycleState, ids: readonly string[]): void {
-  if (new Set(ids).size !== ids.length || ids.some((id) => state.usedIds.has(id)))
-    refuseState('corrupt')
-  for (const id of ids) state.usedIds.add(id)
 }
 /** Replayed operations keep their original allocation; retries never mint another install. */
 export function planOperation(
@@ -60,32 +41,22 @@ export function planOperation(
 ): Operation {
   if (state.pending !== null) refuseState('busy')
   const consent = request.consent
-  if (request.workspaces !== undefined) {
-    if (
-      !['install', 'update', 'uninstall'].includes(consent.action) ||
-      new Set(request.workspaces).size !== request.workspaces.length ||
-      (consent.action !== 'uninstall' && request.workspaces.length === 0)
-    )
-      refuseState('conflict')
-    const additions =
-      consent.action !== 'uninstall'
-        ? request.workspaces.filter((id) => !state.projections.has(`${id}/${consent.pluginId}`))
-            .length
-        : 0
-    if (state.projections.size + additions > STATE_LIMITS.projections) refuseState('limit')
-  }
   if (consent.expectedSequence !== state.sequence) refuseState('conflict')
   if (consent.release !== null) {
-    for (const { operation } of state.operations.values()) {
-      const prior = operation.request.consent
-      if (
-        prior.pluginId === consent.pluginId &&
-        prior.release?.version === consent.release.version &&
-        (prior.release.archiveSha256 !== consent.release.archiveSha256 ||
-          prior.release.manifestSha256 !== consent.release.manifestSha256)
+    const known = [
+      ...[...state.operations.values()].map(({ operation }) => operation.request.consent),
+      ...state.guards.values(),
+    ]
+    if (
+      known.some(
+        (prior) =>
+          prior.pluginId === consent.pluginId &&
+          prior.release?.version === consent.release!.version &&
+          (prior.release.archiveSha256 !== consent.release!.archiveSha256 ||
+            prior.release.manifestSha256 !== consent.release!.manifestSha256),
       )
-        refuseState('conflict')
-    }
+    )
+      refuseState('conflict')
   }
   let next: Installation | null = null
   if (consent.action === 'global-restore') {
@@ -152,7 +123,7 @@ export function planOperation(
   }
   return { request, allocated, next }
 }
-export function resolvedSnapshot(state: LifecycleState, success: boolean): ActivationSnapshot {
+function resolvedSnapshot(state: LifecycleState, success: boolean): ActivationSnapshot {
   const operation = state.pending
   if (operation === null) refuseState('conflict')
   const restore = operation.request.consent.action === 'global-restore'
@@ -178,130 +149,76 @@ export function resolvedSnapshot(state: LifecycleState, success: boolean): Activ
   )
   return { format: 1, rootId: state.rootId, epoch, entries }
 }
-export function snapshotReference(snapshot: ActivationSnapshot, sequence: number): ActivationRef {
-  const sha256 = pluginSha256(encodeState(snapshot))
-  return { name: `${String(sequence).padStart(8, '0')}-${sha256}.json`, sha256 }
+/** The operation becomes pending: its plugin's guard already names the next state. */
+export function admitOperation(state: LifecycleState, operation: Operation): void {
+  state.pending = operation
+  state.operations.set(operation.request.operationId, { operation, status: 'prepared' })
+  if (operation.next !== null) state.guards.set(operation.next.pluginId, operation.next)
 }
-export function foldRecord(state: LifecycleState, record: JournalRecord, checksum: string): void {
-  if (record.sequence !== state.sequence + 1 || record.previous !== state.head)
-    refuseState('corrupt')
-  const event = record.event
-  if (event.kind === 'created') {
-    if (state.sequence !== -1) refuseState('corrupt')
-    reserve(state, [event.rootId, event.epoch])
-    state.rootId = event.rootId
-    state.epoch = event.epoch
-  } else {
-    if (state.sequence === -1) refuseState('corrupt')
-    if (event.kind === 'reader-floor') {
-      if (state.pending || state.updateReader) refuseState('corrupt')
-      state.updateReader = true
-    } else if (event.kind === 'projected') {
-      if (state.pending !== null) refuseState('corrupt')
-      const key = `${event.workspaceId}/${event.pluginId}`
-      if (event.receipt === null) state.projections.delete(key)
-      else {
-        const current = state.admitted.get(event.pluginId)
-        const receipt = event.receipt
-        if (
-          !current ||
-          receipt.rootId !== state.rootId ||
-          receipt.epoch !== state.epoch ||
-          receipt.workspaceId !== event.workspaceId ||
-          receipt.pluginId !== event.pluginId ||
-          receipt.installId !== current.installId ||
-          receipt.incarnation !== current.incarnation ||
-          receipt.lifecycleSequence !== current.lifecycleSequence ||
-          receipt.releaseRevision !== current.releaseRevision ||
-          receipt.configRevision !== current.configRevision
-        )
-          refuseState('corrupt')
-        if (!state.projections.has(key) && state.projections.size >= STATE_LIMITS.projections)
-          refuseState('limit')
-        state.projections.set(key, receipt)
-      }
-    } else if (event.kind === 'prepared') {
-      const operation = event.operation
-      if (state.operations.has(operation.request.operationId)) refuseState('corrupt')
-      const expected = planOperation(state, operation.request, operation.allocated)
-      if (!equalState(expected, operation)) refuseState('corrupt')
-      reserve(state, Object.values(operation.allocated))
-      state.pending = operation
-      state.reservation = event.reservation ?? null
-      state.operations.set(operation.request.operationId, { operation, status: 'prepared' })
-      if (operation.next !== null) state.guards.set(operation.next.pluginId, operation.next)
-      if (event.reservation) {
-        const reservation = event.reservation
-        const complete = snapshotReference(resolvedSnapshot(state, true), record.sequence + 1)
-        const abort = snapshotReference(resolvedSnapshot(state, false), record.sequence + 1)
-        const sizes = [
-          encodeState({
-            sequence: record.sequence + 1,
-            previous: checksum,
-            publicationId: reservation.id,
-            event: {
-              kind: 'completed',
-              operationId: operation.request.operationId,
-              activation: complete,
-            },
-          }).length,
-          encodeState({
-            sequence: record.sequence + 1,
-            previous: checksum,
-            publicationId: reservation.id,
-            event: {
-              kind: 'aborted',
-              operationId: operation.request.operationId,
-              activation: abort,
-            },
-          }).length,
-        ]
-        if (
-          record.sequence + reservation.records >= STATE_LIMITS.records ||
-          !equalState(complete, reservation.complete) ||
-          !equalState(abort, reservation.abort) ||
-          Math.max(...sizes) !== reservation.recordBytes
-        )
-          refuseState('corrupt')
-      }
-    } else {
-      const pending = state.pending
-      if (pending === null || pending.request.operationId !== event.operationId)
-        refuseState('corrupt')
-      const snapshot = resolvedSnapshot(state, event.kind === 'completed')
-      if (!equalState(snapshotReference(snapshot, record.sequence), event.activation))
-        refuseState('corrupt')
-      if (pending.next !== null)
-        state.guards.set(pending.next.pluginId, {
-          ...pending.next,
-          phase:
-            event.kind === 'completed' && pending.request.consent.action !== 'uninstall'
-              ? 'active'
-              : 'removed',
-        })
-      state.epoch = snapshot.epoch
-      state.admitted = new Map(snapshot.entries.map((entry) => [entry.pluginId, entry]))
-      state.activation = event.activation
-      for (const workspaceId of pending.request.workspaces ?? []) {
-        const pluginId = pending.request.consent.pluginId!
-        const key = `${workspaceId}/${pluginId}`
-        const current = state.admitted.get(pluginId)
-        if (
-          event.kind === 'completed' &&
-          ['install', 'update'].includes(pending.request.consent.action) &&
-          current
-        )
-          state.projections.set(
-            key,
-            installationProjection(state.rootId, state.epoch, workspaceId, current),
-          )
-        else state.projections.delete(key)
-      }
-      state.pending = null
-      state.reservation = null
-      state.operations.set(event.operationId, { operation: pending, status: event.kind })
-    }
+/** The pending operation completes or aborts, and the admitted set becomes its outcome. */
+export function resolveOperation(state: LifecycleState, success: boolean): void {
+  const pending = state.pending
+  if (pending === null) refuseState('conflict')
+  const snapshot = resolvedSnapshot(state, success)
+  if (pending.next !== null)
+    state.guards.set(pending.next.pluginId, {
+      ...pending.next,
+      phase: success && pending.request.consent.action !== 'uninstall' ? 'active' : 'removed',
+    })
+  state.epoch = snapshot.epoch
+  state.admitted = new Map(snapshot.entries.map((entry) => [entry.pluginId, entry]))
+  state.pending = null
+  state.operations.set(pending.request.operationId, {
+    operation: pending,
+    status: success ? 'completed' : 'aborted',
+  })
+}
+/**
+ * Only each plugin's latest operation is kept; retrying an earlier id is refused as a conflict.
+ * Recovery loses nothing: a new operation starts only when nothing is pending, the controller
+ * settles an operation's effect before completing it, and an abort leaves the plugin removed, so
+ * the next operation is a fresh install whose new installId recovery never confuses with the old.
+ */
+export function keepLatestPerPlugin(state: LifecycleState): void {
+  const latest = new Map<string, string>()
+  for (const [id, { operation }] of state.operations)
+    latest.set(operation.request.consent.pluginId ?? '*', id)
+  const kept = new Set(latest.values())
+  for (const id of [...state.operations.keys()]) if (!kept.has(id)) state.operations.delete(id)
+}
+export function encodeStateFile(state: LifecycleState): Buffer {
+  const file: StateFile = {
+    format: 2,
+    rootId: state.rootId,
+    epoch: state.epoch,
+    sequence: state.sequence,
+    plugins: [...state.guards.values()],
+    active: [...state.admitted.values()],
+    pending: state.pending,
+    operations: [...state.operations.values()],
   }
-  state.sequence = record.sequence
-  state.head = checksum
+  const bytes = Buffer.from(JSON.stringify(file))
+  if (bytes.length > STATE_LIMITS.stateBytes) refuseState('limit')
+  return bytes
+}
+export function decodeStateFile(bytes: Uint8Array): LifecycleState {
+  let file: StateFile
+  try {
+    const parsed = StateFile.safeParse(strictPluginJson(bytes, STATE_LIMITS.stateBytes))
+    if (!parsed.success) refuseState('corrupt')
+    file = parsed.data
+  } catch {
+    return refuseState('corrupt')
+  }
+  return {
+    rootId: file.rootId,
+    epoch: file.epoch,
+    sequence: file.sequence,
+    guards: new Map(file.plugins.map((entry) => [entry.pluginId, entry])),
+    admitted: new Map(file.active.map((entry) => [entry.pluginId, entry])),
+    operations: new Map(
+      file.operations.map((entry) => [entry.operation.request.operationId, entry]),
+    ),
+    pending: file.pending,
+  }
 }

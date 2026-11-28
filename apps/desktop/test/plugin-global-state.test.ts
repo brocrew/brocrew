@@ -1,15 +1,15 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
+import fs from 'node:fs'
+import { syncBuiltinESMExports } from 'node:module'
 import { randomUUID } from 'node:crypto'
 import {
   chmodSync,
   existsSync,
-  linkSync,
   mkdtempSync,
   mkdirSync,
   readFileSync,
   readdirSync,
   realpathSync,
-  renameSync,
   rmSync,
   symlinkSync,
   unlinkSync,
@@ -20,12 +20,12 @@ import { tmpdir } from 'node:os'
 import { GlobalPluginState } from '../src/main/plugins/state/store'
 import {
   PluginStateError,
-  ActivationSnapshot,
-  decodeState,
   type Consent,
   type OperationRequest,
 } from '../src/main/plugins/state/format'
 
+const actualRename = fs.renameSync,
+  actualFsync = fs.fsyncSync
 const roots: string[] = []
 const stores: GlobalPluginState[] = []
 afterEach(() => {
@@ -37,7 +37,7 @@ function folder() {
   roots.push(path)
   return path
 }
-function fixture(fault?: (point: 'staged' | 'published' | 'durable') => void) {
+function fixture(fault?: (point: 'staged' | 'published') => void) {
   const parent = folder(),
     root = join(parent, 'plugins')
   const options = { root, workspaceRoots: [], fault }
@@ -236,14 +236,6 @@ describe.skipIf(process.platform === 'win32')(
       next.complete(first.operationId)
       expect(active(next)).not.toBeNull()
     })
-    it('still reads a legacy publication with its verified guard-local crash stage', () => {
-      const { root, store, open } = fixture()
-      const guard = join(root, 'lifecycle-guard')
-      const stage = join(guard, `.stage-${randomUUID()}`)
-      linkSync(join(guard, '00000000.json'), stage)
-      expect(open().inspect()).toEqual(store.inspect())
-      expect(existsSync(stage)).toBe(true)
-    })
     it('aborts fail closed, remain idempotent, and require a fresh install identity', () => {
       const { store } = fixture(),
         input = request(store),
@@ -268,8 +260,8 @@ describe.skipIf(process.platform === 'win32')(
       changed.consent.release = { ...release(), archiveSha256: 'c'.repeat(64) }
       expect(() => store.prepare(changed)).toThrow(PluginStateError)
     })
-    it.each(['staged', 'published', 'durable'] as const)(
-      'a crash at journal %s cannot activate a half-install and can be retried',
+    it.each(['staged', 'published'] as const)(
+      'a crash at a prepare write %s cannot activate a half-install and can be retried',
       (point) => {
         let armed = false
         const { store, open } = fixture((at) => {
@@ -289,8 +281,8 @@ describe.skipIf(process.platform === 'win32')(
         expect(active(next)).not.toBeNull()
       },
     )
-    it.each(['staged', 'published', 'durable'] as const)(
-      'a crash at reserved resolution %s stays denying or commits exactly the recorded allocation',
+    it.each(['staged', 'published'] as const)(
+      'a crash at a resolution write %s stays denying or commits exactly the recorded allocation',
       (point) => {
         let armed = false
         const { store, open } = fixture((at) => {
@@ -366,55 +358,98 @@ describe.skipIf(process.platform === 'win32')(
       restore.snapshot = { ...store.exportActivation(), rootId: randomUUID() }
       expect(() => store.prepare(restore)).toThrow(PluginStateError)
     })
-    it('an activation lost in global restore disables execution without erasing the lifecycle floor', () => {
-      const { store, root } = fixture()
-      install(store)
-      const guard = store.inspect().guards[0]
-      const name = readdirSync(join(root, 'activations')).find((name) =>
-        decodeState(readFileSync(join(root, 'activations', name)), ActivationSnapshot).entries.some(
-          (entry) => entry.installId === guard?.installId,
-        ),
-      )!
-      const path = join(root, 'activations', name)
-      unlinkSync(path)
-      expect(() => active(store)).toThrow(PluginStateError)
-      expect(store.inspect().guards[0]).toEqual(guard)
-    })
-    it('missing, truncated or changed guard data is never recreated or treated as empty', () => {
+    it('missing, truncated or changed state is never recreated or treated as empty', () => {
       for (const mode of ['missing', 'truncated', 'changed']) {
         const { store, root, options } = fixture()
         install(store)
         store.close()
-        const path = join(root, 'lifecycle-guard', '00000000.json')
+        const path = join(root, 'plugin-state.json')
         if (mode === 'missing') unlinkSync(path)
         else if (mode === 'truncated') writeFileSync(path, '{')
-        else writeFileSync(path, readFileSync(path, 'utf8').replace('created', 'changed'))
+        else writeFileSync(path, readFileSync(path, 'utf8').replace('"format":2', '"format":3'))
         expect(() => GlobalPluginState.open(options)).toThrow(PluginStateError)
         expect(() => GlobalPluginState.create(options)).toThrow(PluginStateError)
       }
     })
-    it('ignores a partially written stage without replaying or deleting it', () => {
+    it('ignores an interrupted write left beside the state file', () => {
       const { store, root, open } = fixture()
-      const stage = join(root, 'lifecycle-guard', `.stage-${randomUUID()}`)
-      writeFileSync(stage, '{"incomplete fictional record":', { mode: 0o600 })
+      store.close()
+      const stage = join(root, 'plugin-state.json.0123456789ab.tmp')
+      writeFileSync(stage, '{"incomplete fictional state":', { mode: 0o600 })
       const next = open()
       expect(next.inspect().guards).toEqual([])
       install(next)
-      expect(readFileSync(stage, 'utf8')).toBe('{"incomplete fictional record":')
-      expect(store.inspect().guards[0]?.phase).toBe('active')
+      next.close()
+      expect(readFileSync(stage, 'utf8')).toBe('{"incomplete fictional state":')
+      expect(open().inspect().guards[0]?.phase).toBe('active')
     })
-    it('a missing final uninstall record cannot roll the floor back to the active install', () => {
-      const { store, root, options } = fixture()
+    it('a pending removal reopens pending, never as the active install', () => {
+      const { store, open } = fixture()
       install(store)
-      store.prepare(request(store, 'uninstall'))
-      const records = readdirSync(join(root, 'lifecycle-guard'))
-        .filter((name) => name.endsWith('.json'))
-        .sort()
-      unlinkSync(join(root, 'lifecycle-guard', records.at(-1)!))
-      expect(() => GlobalPluginState.open(options)).toThrow(
-        expect.objectContaining({ code: 'corrupt' }),
-      )
-      expect(() => active(store)).toThrow(PluginStateError)
+      const remove = request(store, 'uninstall')
+      store.prepare(remove)
+      store.close()
+      const next = open()
+      expect(next.inspect().pending?.request.operationId).toBe(remove.operationId)
+      expect(next.inspect().guards[0]?.phase).toBe('removed')
+      expect(() => active(next)).toThrow(PluginStateError)
+      next.complete(remove.operationId)
+      next.close()
+      expect(open().inspect().guards[0]?.phase).toBe('removed')
+    })
+    it('a write that fails after its rename holds what the file now says', () => {
+      const { store, open } = fixture()
+      const input = request(store)
+      store.prepare(input)
+      // The folder flush after the rename fails, as a full or unplugged disk can make it.
+      let renamed = false
+      const rename = vi.spyOn(fs, 'renameSync').mockImplementation((from, to) => {
+        actualRename(from, to)
+        renamed = true
+      })
+      const flush = vi.spyOn(fs, 'fsyncSync').mockImplementation((fd) => {
+        if (renamed) throw Object.assign(new Error('fictional flush failure'), { code: 'EIO' })
+        actualFsync(fd)
+      })
+      syncBuiltinESMExports()
+      try {
+        expect(() => store.complete(input.operationId)).toThrow()
+      } finally {
+        rename.mockRestore()
+        flush.mockRestore()
+        syncBuiltinESMExports()
+      }
+      expect(store.inspect().pending).toBeNull()
+      expect(active(store)).not.toBeNull()
+      store.close()
+      expect(open().inspect().guards[0]?.phase).toBe('active')
+    })
+    it('a copy that wrote since this one read wins, and this one refuses as a conflict', () => {
+      const { store, open } = fixture()
+      const other = open()
+      install(other)
+      expect(() => install(store)).toThrow(expect.objectContaining({ code: 'conflict' }))
+      other.close()
+      expect(open().inspect().guards).toHaveLength(1)
+    })
+    it('keeps only the latest operation of each plugin, and refuses a retry of an earlier one', () => {
+      const { store, open } = fixture()
+      const first = install(store)
+      const update = request(store, 'update')
+      update.consent.release = release('2.0.0')
+      store.prepare(update)
+      store.complete(update.operationId)
+      const other = request(store, 'install', 'fictional-orchard')
+      store.prepare(other)
+      store.complete(other.operationId)
+      store.close()
+      const next = open()
+      expect(next.inspect().operations.map((one) => one.operation.request.operationId)).toEqual([
+        update.operationId,
+        other.operationId,
+      ])
+      expect(() => next.prepare(first)).toThrow(expect.objectContaining({ code: 'conflict' }))
+      expect(next.prepare(update).request).toEqual(update)
     })
     it('refuses global storage under a workspace or a shared parent without changing its permissions', () => {
       const parent = folder(),
@@ -428,40 +463,24 @@ describe.skipIf(process.platform === 'win32')(
       shared.close()
       expect(readdirSync(parent).sort()).toEqual(['plugins', 'workspace'])
     })
-    it('never follows a substituted guard folder or a journal-file symlink', () => {
-      const { store, root, parent } = fixture(),
-        outside = join(parent, 'outside')
-      mkdirSync(outside, { mode: 0o700 })
-      const sentinel = join(outside, 'sentinel')
-      writeFileSync(sentinel, 'fictional outside bytes', { mode: 0o600 })
-      const input = request(store)
-      const guard = join(root, 'lifecycle-guard')
-      renameSync(guard, join(root, 'old-guard'))
-      symlinkSync(outside, guard, 'dir')
-      expect(() => store.prepare(input)).toThrow(PluginStateError)
-      expect(readFileSync(sentinel, 'utf8')).toBe('fictional outside bytes')
-      const other = fixture(),
-        record = join(other.root, 'lifecycle-guard', '00000000.json')
-      unlinkSync(record)
-      symlinkSync(sentinel, record)
-      expect(() => other.open()).toThrow(PluginStateError)
-      expect(readFileSync(sentinel, 'utf8')).toBe('fictional outside bytes')
-    })
-    it('refuses an outside hardlink and strips raw filesystem errors', () => {
-      const { store, root, parent, options } = fixture()
-      store.close()
-      const original = join(root, 'lifecycle-guard', '00000000.json'),
-        outside = join(parent, 'outside.json')
-      renameSync(original, outside)
-      linkSync(outside, original)
-      expect(() => GlobalPluginState.open(options)).toThrow(PluginStateError)
-      try {
-        GlobalPluginState.open(options)
-      } catch (error) {
-        expect(String(error)).not.toContain(parent)
-        expect(error).not.toHaveProperty('cause')
-      }
-      expect(readFileSync(outside).length).toBeGreaterThan(0)
-    })
+    it.skipIf(process.getuid?.() === 0)(
+      'refuses an unreadable state and strips raw filesystem errors',
+      () => {
+        const { store, root, parent, options } = fixture()
+        store.close()
+        chmodSync(join(root, 'plugin-state.json'), 0)
+        try {
+          expect(() => GlobalPluginState.open(options)).toThrow(PluginStateError)
+          try {
+            GlobalPluginState.open(options)
+          } catch (error) {
+            expect(String(error)).not.toContain(parent)
+            expect(error).not.toHaveProperty('cause')
+          }
+        } finally {
+          chmodSync(join(root, 'plugin-state.json'), 0o600)
+        }
+      },
+    )
   },
 )

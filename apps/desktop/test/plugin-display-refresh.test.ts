@@ -34,20 +34,17 @@ async function connected(mixed = false) {
     workspaceRoot: owner.workspace,
     target: owner.opts.target,
   }
+  // Synchronous reads of the plugin state on workspace main.
   const opens = () =>
-    vi
-      .mocked(fs.openSync)
-      .mock.calls.filter(
-        ([path]) => dirname(String(path)) === join(owner.root, 'state/lifecycle-guard'),
-      ).length
-  const records = fs
-    .readdirSync(join(owner.root, 'state/lifecycle-guard'))
-    .filter((name) => name.endsWith('.json')).length
-  return { ...f, owner, display, options, opens, records }
+    [
+      ...vi.mocked(fs.openSync).mock.calls.map(([path]) => path),
+      ...vi.mocked(fs.readFileSync).mock.calls.map(([path]) => path),
+    ].filter((path) => dirname(String(path)) === join(owner.root, 'state')).length
+  return { ...f, owner, display, options, opens }
 }
 
 for (const path of ['startup', 'settings', 'agent turn', 'timer', 'mixed fallback']) {
-  it(`does not replay a journal on workspace main for ${path}`, async () => {
+  it(`does not read the plugin state synchronously on workspace main for ${path}`, async () => {
     const interval = vi.spyOn(globalThis, 'setInterval')
     const f = await connected(path === 'mixed fallback')
     const observer = vi.spyOn(committed, 'observeInstallations')
@@ -55,7 +52,7 @@ for (const path of ['startup', 'settings', 'agent turn', 'timer', 'mixed fallbac
     f.controller.start(f.options)
     await f.controller.ready!()
     const startup = f.opens() - before
-    if (path === 'startup') expect(startup, `startup: ${f.records} records`).toBe(0)
+    if (path === 'startup') expect(startup).toBe(0)
     const at = f.opens(),
       displayCalls = f.display.mock.calls.length,
       calls = displayCalls + f.peer.catalogue.mock.calls.length
@@ -74,16 +71,12 @@ for (const path of ['startup', 'settings', 'agent turn', 'timer', 'mixed fallbac
         ),
       )
     await new Promise<void>((resolve) => setImmediate(resolve))
-    console.info(
-      `display ${path}: N=${f.records}, refresh journal opens=${f.opens() - at}, startup journal opens=${startup}`,
-    )
     expect(f.opens() - at).toBe(0)
     expect(observer).not.toHaveBeenCalled()
     expect(f.display.mock.calls.length).toBeGreaterThan(path === 'startup' ? 0 : displayCalls)
     expect(await f.controller.catalogue()).toMatchObject([
       { installed: true, state: path === 'mixed fallback' ? 'Unavailable' : 'Running' },
     ])
-    console.info(`display ${path}: N=${f.records}, journal opens=${f.opens() - before}`)
   })
 }
 
@@ -135,16 +128,10 @@ it.each(['partial', 'unreadable'] as const)(
     expect(await f.controller.catalogue()).toMatchObject([
       { installed: true, state: 'Unavailable' },
     ])
-    const guard = join(f.owner.root, 'state/lifecycle-guard')
     if (mode === 'partial') {
-      fs.unlinkSync(
-        join(
-          guard,
-          fs.readdirSync(guard).find((name) => name.endsWith('.seal'))!,
-        ),
-      )
+      fs.writeFileSync(join(f.owner.root, 'state/plugin-state.json'), '{"format":2')
     } else {
-      vi.mocked(asyncFs.open).mockImplementationOnce(async () => {
+      vi.mocked(asyncFs.readFile).mockImplementationOnce(async () => {
         throw Object.assign(new Error('fictional unreadable state'), { code: 'EACCES' })
       })
     }

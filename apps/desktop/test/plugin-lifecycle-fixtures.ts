@@ -15,8 +15,12 @@ import {
   installationProjection,
   type JournalRecord,
   type ProjectionReceipt,
-} from '../src/main/plugins/state/format'
-import { foldRecord, type LifecycleState } from '../src/main/plugins/state/machine'
+} from './fixtures/plugin-journal-parent/format'
+import {
+  foldRecord,
+  type LifecycleState as JournalState,
+} from './fixtures/plugin-journal-parent/machine'
+import { GlobalPluginState as JournalStore } from './fixtures/plugin-journal-parent/store'
 import { pluginSha256 } from '../src/main/plugins/package-digests'
 const homes: string[] = [],
   stores: GlobalPluginState[] = []
@@ -47,6 +51,8 @@ export async function fixture(
   change: Partial<LifecycleOptions> = {},
   id = 'chrome',
   declaration: Partial<ReturnType<typeof manifestFor>> = {},
+  /** Starts the root as the journal that earlier builds kept, before its migration. */
+  { journal = false } = {},
 ) {
   // POSIX needs short Unix socket paths; Windows uses named pipes and its own temp directory.
   const temp = process.platform === 'win32' ? tmpdir() : '/tmp'
@@ -58,7 +64,10 @@ export async function fixture(
   await mkdir(root, { mode: 0o700 })
   await mkdir(workspace, { mode: 0o700 })
 
-  const state = GlobalPluginState.create({ root: join(root, 'state'), workspaceRoots: [workspace] })
+  const options = { root: join(root, 'state'), workspaceRoots: [workspace] }
+  const state = journal
+    ? (JournalStore.create(options) as unknown as GlobalPluginState)
+    : GlobalPluginState.create(options)
   stores.push(state)
   const manifest = manifestFor()
   manifest.id = id
@@ -155,6 +164,62 @@ export async function cleanupLifecycleFixtures() {
   for (const store of stores.splice(0)) store.close()
   for (const root of homes.splice(0)) await rm(root, { recursive: true, force: true })
 }
+/** The state calls both the current and the journal-era stores share. */
+interface StateCalls {
+  inspect(): {
+    sequence: number
+    guards: readonly { pluginId: string; installId: string; phase: string }[]
+  }
+  prepare(input: unknown): unknown
+  complete(operationId: string): void
+  abort(operationId: string): void
+}
+/** A store-level operation request: the plugin's current install, at the current sequence. */
+export function stateRequest(
+  state: StateCalls,
+  action: 'install' | 'update' | 'uninstall',
+  pluginId: string,
+  version = '1.0.0',
+  digit = 'a',
+) {
+  const view = state.inspect()
+  return {
+    operationId: randomUUID(),
+    snapshot: null,
+    consent: {
+      action,
+      pluginId,
+      at: 1000,
+      expectedSequence: view.sequence,
+      expectedInstallId: view.guards.find((one) => one.pluginId === pluginId)?.installId ?? null,
+      release:
+        action === 'uninstall'
+          ? null
+          : {
+              version,
+              archiveSha256: digit.repeat(64),
+              manifestSha256: 'b'.repeat(64),
+              dataSchema: 1,
+            },
+    },
+  }
+}
+/** Prepares and resolves one store-level operation; returns its operation id. */
+export function runOperation(
+  state: StateCalls,
+  ...args: Parameters<typeof stateRequest> extends [unknown, ...infer Rest] ? Rest : never
+) {
+  const request = stateRequest(state, ...args)
+  state.prepare(request)
+  state.complete(request.operationId)
+  return request.operationId
+}
+/** An unrelated state change: another plugin's install is prepared and aborted. */
+export function moveTheSequence(state: GlobalPluginState) {
+  const request = stateRequest(state, 'install', 'fictional-other')
+  state.prepare(request)
+  state.abort(request.operationId)
+}
 export function reopenLifecycleFixture(f: Awaited<ReturnType<typeof fixture>>) {
   f.state.close()
   stores.splice(stores.indexOf(f.state), 1)
@@ -166,9 +231,14 @@ export function reopenLifecycleFixture(f: Awaited<ReturnType<typeof fixture>>) {
   return reopened
 }
 
+/** The journal's state as its earlier builds held it; the root must start as a journal. */
+export function journalHead(f: Awaited<ReturnType<typeof fixture>>): JournalState {
+  return (f.state as unknown as { disk: { load(): JournalState } }).disk.load()
+}
+/** Workspace receipts as an earlier reconnect path wrote them, one record each, into the journal. */
 export function appendProjectionHistory(
   root: string,
-  head: LifecycleState,
+  head: JournalState,
   workspaceId: string,
   history: number,
   receipt: ProjectionReceipt | null = installationProjection(
