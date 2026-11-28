@@ -234,8 +234,8 @@ export interface SessionHandle {
     servers: readonly ManagedPluginMcpServer[],
     reconnect?: readonly string[],
   ): Promise<void>
-  /** Await only currently served managed routes; configured routes still starting are not awaited. */
-  awaitManagedPlugins?(names: readonly string[]): void
+  /** Await only served routes this handle was configured with exactly; a retired route under the same name, or one still starting, is not awaited. */
+  awaitManagedPlugins?(servers: readonly ManagedPluginMcpServer[]): void
   /** Fresh failed managed-server names; empty means ready, undefined means unknown. */
   managedPluginHealth?(
     servers: readonly ManagedPluginMcpServer[],

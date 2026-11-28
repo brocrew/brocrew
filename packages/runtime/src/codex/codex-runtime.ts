@@ -122,7 +122,7 @@ import { ensureCodexMemoryConfig, type CodexMemoryConfigResult } from './memory-
 import { removeStaleCodexPermissionConfig } from './stale-permission-config'
 import { elicitationCard } from './runtime-parts/request-cards'
 import { nativeAccountTag } from './account-identity'
-import type { ManagedPluginMcpServer } from '../managed-plugin-mcp'
+import { sameManagedRoute, type ManagedPluginMcpServer } from '../managed-plugin-mcp'
 import type { ManagedPluginObserver } from '../managed-plugin-observation'
 import { BUILT_IN_SKILLS_FAILURE } from '../built-in-skills'
 import { registerCodexBuiltInSkills } from './built-in-skills'
@@ -1460,9 +1460,11 @@ export class CodexSessionHandle implements SessionHandle {
 
   private managedPluginsAwaited?: readonly string[]
 
-  awaitManagedPlugins(names: readonly string[]): void {
-    const configured = new Set(this.managedPluginMcp?.map((server) => server.name))
-    this.managedPluginsAwaited = names.filter((name) => configured.has(name))
+  awaitManagedPlugins(servers: readonly ManagedPluginMcpServer[]): void {
+    const configured = this.managedPluginMcp ?? []
+    this.managedPluginsAwaited = servers
+      .filter((served) => configured.some((one) => sameManagedRoute(one, served)))
+      .map((served) => served.name)
   }
 
   private awaitedManagedPlugins(): readonly string[] {

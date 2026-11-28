@@ -1394,7 +1394,7 @@ it('a turn may wait only on what the latest read served, even when its routes co
   await a.send('fictional words')
   expect(f.raw.resume).toHaveBeenCalledTimes(1)
   expect(f.opened[0]!.send).toHaveBeenCalledWith('fictional words')
-  expect(awaited).toHaveBeenLastCalledWith(['plugin-aster'])
+  expect(awaited).toHaveBeenLastCalledWith([aster])
   await a.close()
 })
 it('a read that fails says nothing new about what a turn may wait on', async () => {
@@ -1454,7 +1454,7 @@ it('a route from a reply that named no plugin stays while a named reply cannot s
   await a.send('fictional words once named')
   expect(refresh).not.toHaveBeenCalled()
   expect(f.raw.resume).not.toHaveBeenCalled()
-  expect(awaited).toHaveBeenLastCalledWith([route.name])
+  expect(awaited).toHaveBeenLastCalledWith([fern])
   // Named now, it goes as any named route does: when its plugin is off.
   f.change({
     revision: 'five',
@@ -1482,7 +1482,7 @@ it('a route kept while its scope could not be read is not awaited, and is awaite
     plugins: { pending: [], none: [], unknown: false },
   })
   await a.send('fictional words once served')
-  expect(awaited).toHaveBeenLastCalledWith([route.name])
+  expect(awaited).toHaveBeenLastCalledWith([fern])
   expect(f.raw.resume).not.toHaveBeenCalled()
   await a.close()
 })

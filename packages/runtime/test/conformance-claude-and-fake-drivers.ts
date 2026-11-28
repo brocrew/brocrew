@@ -179,7 +179,7 @@ const CONTRACT_MEMBERS: Record<keyof SessionHandle, string> = {
   builtInSkillsConfirmed:
     'whether SDK init confirmed the installed skill catalogue for this launch',
   refreshManagedPlugins: 'refresh managed tool attachments at a turn boundary where supported',
-  awaitManagedPlugins: 'names the configured managed servers a turn may wait on',
+  awaitManagedPlugins: 'the served managed routes, matched exactly, a turn may wait on',
   managedPluginHealth: 'fresh public status identifies failed managed tool connections',
   ref: 'stable identity, or null until the provider gives one (011)',
   launchedAs: 'the id a launch asked for, before any init names it — never a ref (722 · R79)',

@@ -1,5 +1,5 @@
 import { route, readinessHomes, deferred, ready, tick, Wire } from './fixtures/plugin-readiness'
-import { expect, it } from 'vitest'
+import { expect, it, vi } from 'vitest'
 import { CodexRuntime } from '../src/codex/codex-runtime'
 import {
   withManagedPluginAttachments,
@@ -181,4 +181,51 @@ it('a route served at launch that turns pending on the same handle stays configu
   expect(wire.requests.filter((one) => one.method === 'thread/start')).toHaveLength(1)
   expect(wire.requests.filter((one) => one.method === 'thread/resume')).toHaveLength(0)
   expect(handle.ref).toEqual(saved)
+})
+
+it('does not wait on the retired route when reopening with its replacement fails', async () => {
+  const location = home()
+  const oldWire = new Wire(location)
+  const replacementWire = new Wire(location)
+  const request = replacementWire.request.bind(replacementWire)
+  vi.spyOn(replacementWire, 'request').mockImplementation(async (method, params) => {
+    if (method === 'thread/resume') throw new Error('fictional resume failed')
+    return request(method, params)
+  })
+  let opened = 0
+  const runtime = new CodexRuntime(() => (opened++ === 0 ? oldWire : replacementWire))
+  const fern = { ...route, pluginId: 'fern' }
+  let reply: ManagedPluginAttachment = {
+    revision: 'old',
+    servers: [fern],
+    plugins: { pending: [], none: [], unknown: false },
+  }
+  const handle = await withManagedPluginAttachments(runtime, {
+    read: async () => reply,
+    close: async () => {},
+  }).start(location)
+  handles.push(handle)
+  const oldRef = handle.ref
+  const retired = deferred<unknown>()
+  oldWire.discovery = () => retired.promise
+  reply = {
+    ...reply,
+    revision: 'new',
+    servers: [{ ...fern, url: 'http://127.0.0.1:8124/mcp' }],
+  }
+
+  try {
+    await handle.send('fictional words after the plugin restarted')
+    await tick()
+
+    expect(replacementWire.request).toHaveBeenCalledWith('thread/resume', expect.anything())
+    expect(handle.ref).toEqual(oldRef)
+    expect({
+      retiredRouteReads: oldWire.requests.filter(({ method }) => method === 'mcpServerStatus/list'),
+      ordinaryTurns: oldWire.catalogsAtTurns.length,
+    }).toEqual({ retiredRouteReads: [], ordinaryTurns: 1 })
+  } finally {
+    retired.resolve({ data: [] })
+    await tick()
+  }
 })
