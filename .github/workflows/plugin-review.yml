@@ -21,16 +21,19 @@ permissions:
 
 jobs:
   review:
-    name: Plugin review (${{ matrix.os }})
+    name: Plugin review (${{ matrix.os }}, ${{ matrix.arm }})
     if: github.repository == 'brocrew/brocrew'
     strategy:
       fail-fast: false
       matrix:
         os: ['windows']
+        # Card 621 diagnostic only: A excludes the gate's folders from Defender, B holds the app's
+        # Codex process-table reads for its first 40 s. Never for landing.
+        arm: ['defender', 'codex-hold']
     runs-on: ${{ matrix.os == 'windows' && 'windows-2022' || vars.MAC_RUNNER || 'macos-15' }}
     timeout-minutes: ${{ matrix.os == 'windows' && 60 || 45 }}
     concurrency:
-      group: plugin-review-${{ matrix.os }}-${{ github.ref }}
+      group: plugin-review-${{ matrix.os }}-${{ matrix.arm }}-${{ github.ref }}
       cancel-in-progress: false
     steps:
       - name: Preserve committed line endings
@@ -63,10 +66,23 @@ jobs:
           REVIEW_CONTROL: ${{ steps.stage.outputs.control }}
           PLUGIN_GATE_PNPM_ENTRY: ${{ steps.gate-pnpm.outputs.dest }}/node_modules/pnpm/bin/pnpm.cjs
         run: node scripts/gates/plugin-v2/owner.mjs install "$REVIEW_CONTROL"
+      # Card 621 diagnostic arm A: a hosted runner is disposable, so excluding the gate's own
+      # scratch and checkout from Defender's scanning is safe here and tests whether scanning new
+      # processes is what stops renderers starting. Never on a person's computer.
+      - name: Exclude the gate's folders from Defender (diagnostic arm A)
+        if: matrix.arm == 'defender'
+        shell: pwsh
+        run: Add-MpPreference -ExclusionPath $env:RUNNER_TEMP, $env:GITHUB_WORKSPACE
+      - name: Record Defender's state
+        shell: pwsh
+        run: |
+          Get-MpComputerStatus | Select-Object AMServiceEnabled, AntivirusEnabled, RealTimeProtectionEnabled, BehaviorMonitorEnabled, IoavProtectionEnabled, OnAccessProtectionEnabled | Format-List
+          (Get-MpPreference).ExclusionPath
       - name: Public list over HTTPS, then install, configure and remove in the packaged app
         shell: bash
         env:
           REVIEW_CONTROL: ${{ steps.stage.outputs.control }}
+          PLUGIN_DIAG_ARM: ${{ matrix.arm }}
         run: node scripts/gates/plugin-v2/owner.mjs run "$REVIEW_CONTROL"
       - name: Stage dedicated main-app reload source
         if: matrix.os == 'windows'
@@ -92,7 +108,7 @@ jobs:
         if: always() && matrix.os == 'windows' && steps.reload-stage.outputs.control != ''
         uses: actions/upload-artifact@v4
         with:
-          name: plugin-reload-windows
+          name: plugin-reload-windows-${{ matrix.arm }}
           path: ${{ steps.reload-stage.outputs.control }}/reload-summary.json
           if-no-files-found: error
           retention-days: 7
@@ -100,7 +116,7 @@ jobs:
         if: always() && steps.stage.outputs.control != ''
         uses: actions/upload-artifact@v4
         with:
-          name: plugin-review-${{ matrix.os }}
+          name: plugin-review-${{ matrix.os }}-${{ matrix.arm }}
           path: ${{ steps.stage.outputs.control }}/summary.json
           if-no-files-found: error
           retention-days: 7
