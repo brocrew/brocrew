@@ -54,6 +54,7 @@ export class RendererCdp {
   #socket
   #id = 0
   #pending = new Map()
+  #boundMs = null
 
   static async attach(port, { launchMs, pollMs }) {
     const target = await waitFor(
@@ -128,5 +129,81 @@ export class RendererCdp {
 
   close() {
     this.#socket?.close()
+  }
+
+  /**
+   * A target the caller found itself, with every wait bounded: the socket must open within
+   * `boundMs`, each {@link call} must be answered within it, and a socket that closes fails what is
+   * still waiting. Nothing is enabled on the target.
+   */
+  static async connect(url, { boundMs }) {
+    const cdp = new RendererCdp()
+    cdp.#boundMs = boundMs
+    let timer
+    try {
+      await Promise.race([
+        cdp.#connect(url).catch(() => {
+          throw new Error('the DevTools socket failed to open')
+        }),
+        new Promise((resolve, reject) => {
+          timer = setTimeout(
+            () => reject(new Error(`the DevTools socket did not open in ${cdp.#seconds()}`)),
+            boundMs,
+          )
+        }),
+      ])
+    } finally {
+      clearTimeout(timer)
+    }
+    cdp.#socket.addEventListener('close', () => {
+      for (const pending of cdp.#pending.values()) {
+        pending.reject(new Error('the DevTools socket closed'))
+      }
+      cdp.#pending.clear()
+    })
+    return cdp
+  }
+
+  /**
+   * A request on a {@link connect}ed target. Unanswered in time, it fails naming its method and its
+   * registration is dropped, so a late answer finds nothing waiting.
+   */
+  call(method, params = {}) {
+    const id = ++this.#id
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.#pending.delete(id)
+        reject(new Error(`${method}: no answer in ${this.#seconds()}`))
+      }, this.#boundMs)
+      this.#pending.set(id, {
+        resolve: (result) => {
+          clearTimeout(timer)
+          resolve(result)
+        },
+        reject: (error) => {
+          clearTimeout(timer)
+          reject(new Error(`${method}: ${error.message}`))
+        },
+      })
+      this.#socket.send(JSON.stringify({ id, method, params }))
+    })
+  }
+
+  /** What `expression` evaluates to in the page, as written, where {@link evaluate} takes a body. */
+  async evaluateExpression(expression) {
+    const result = await this.call('Runtime.evaluate', {
+      expression,
+      returnByValue: true,
+      awaitPromise: true,
+    })
+    if (result.exceptionDetails) {
+      const said = result.exceptionDetails.exception?.description ?? result.exceptionDetails.text
+      throw new Error(`in the page: ${said}`)
+    }
+    return result.result.value
+  }
+
+  #seconds() {
+    return `${String(this.#boundMs / 1000)} s`
   }
 }
