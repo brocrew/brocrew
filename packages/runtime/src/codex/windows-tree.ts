@@ -42,10 +42,15 @@ export interface TreeLeader {
 /**
  * `at <now>`, the time just before the table is listed, then each process as `pid ppid created`,
  * the times as FILETIMEs, a creation time of 0 for the system's own.
+ *
+ * ⚑ **Only the three properties it prints are asked for.** Asked for none, Windows fills in every
+ * property of every process, the command line among them, which it reads out of each process in
+ * turn: on a loaded PC that is seconds of work that slows every other process start. The three come
+ * from the system's own list and cost a small part of that.
  */
 const TABLE_COMMAND =
   '"at $([DateTime]::UtcNow.ToFileTimeUtc())"; ' +
-  'Get-CimInstance Win32_Process | ForEach-Object { ' +
+  'Get-CimInstance Win32_Process -Property ProcessId,ParentProcessId,CreationDate | ForEach-Object { ' +
   '$born = if ($_.CreationDate) { $_.CreationDate.ToFileTimeUtc() } else { 0 }; ' +
   '"$($_.ProcessId) $($_.ParentProcessId) $born" }'
 

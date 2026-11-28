@@ -88,7 +88,7 @@ describe('the Windows process table adapter', () => {
         '-NoProfile',
         '-NonInteractive',
         '-Command',
-        '"at $([DateTime]::UtcNow.ToFileTimeUtc())"; Get-CimInstance Win32_Process | ForEach-Object { $born = if ($_.CreationDate) { $_.CreationDate.ToFileTimeUtc() } else { 0 }; "$($_.ProcessId) $($_.ParentProcessId) $born" }',
+        '"at $([DateTime]::UtcNow.ToFileTimeUtc())"; Get-CimInstance Win32_Process -Property ProcessId,ParentProcessId,CreationDate | ForEach-Object { $born = if ($_.CreationDate) { $_.CreationDate.ToFileTimeUtc() } else { 0 }; "$($_.ProcessId) $($_.ParentProcessId) $born" }',
       ],
       { timeout: 127, maxBuffer: 16 * 1024 * 1024, encoding: 'utf8', windowsHide: true },
       expect.any(Function),
