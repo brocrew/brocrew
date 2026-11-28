@@ -55,6 +55,7 @@ interface LibraryImportHost {
   slots(): ReadonlyMap<string, SessionSlot>
   startupRepairs(): ReadonlySet<string>
   archived(): ArchivedConversations
+  recordedTitle(recordId: string): string | null
   workRunningElsewhere(): ReadonlySet<string>
   runningStateOf(sessionId: string): RunningState
   theWorldMoved(what: RuntimeChangeMessage['what']): void
@@ -627,6 +628,7 @@ export class LibraryImport {
       userHomeSessions: this.deps.userHomeSessions ?? (() => ({ found: [], skipped: [] })),
       indexedDescriptions: this.deps.indexedDescriptions ?? (() => Promise.resolve(new Map())),
       archivedAt: (recordId) => this.host.archived().archivedAt(recordId),
+      recordedTitle: (recordId) => this.host.recordedTitle(recordId),
     }
   }
 

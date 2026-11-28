@@ -1,14 +1,16 @@
 import { afterEach, expect, it, vi } from 'vitest'
 import SessionLibrary from '../../src/renderer/src/components/SessionLibrary.vue'
-import type {
-  AdoptionReport,
-  ExportedSession,
-  ImportedFromHome,
-  ImportedRecording,
-  LibraryEntry,
-  LibraryQuery,
-  ResumableSessionInfo,
-  UnresumableSessionInfo,
+import {
+  DEFAULT_PROFILE_ID,
+  DEFAULT_PROFILE_LABEL,
+  type AdoptionReport,
+  type ExportedSession,
+  type ImportedFromHome,
+  type ImportedRecording,
+  type LibraryEntry,
+  type LibraryQuery,
+  type ResumableSessionInfo,
+  type UnresumableSessionInfo,
 } from '../../src/shared/runtime-ipc'
 import { mount, unmountAll } from './harness'
 import { entry, page } from './library-filter-fixture'
@@ -53,7 +55,8 @@ function fixture() {
       recordId: id === 'external' ? null : `record-${id}`,
       provider: 'codex',
       providerSessionId: id,
-      title: '',
+      title: id === 'recorded' ? 'Release notes' : '',
+      ...(id === 'recorded' ? { profileId: DEFAULT_PROFILE_ID } : {}),
       preview: '',
       cwd: `/example/${id}`,
       origin:
@@ -150,6 +153,16 @@ it('draws the six kinds once through the shared row and applies the same search 
     kinds.map((id) => `library-row-library-${id}`),
   )
   for (const row of rows()) expect(row.querySelectorAll('.conversation-row')).toHaveLength(1)
+  const recorded = view.q('library-row-library-recorded')
+  expect(recorded.querySelector('.row-title-line strong')?.textContent).toBe('Release notes')
+  expect(
+    recorded.querySelector('.rail-standing-profile:not(.rail-standing-provider)')?.textContent,
+  ).toBe(DEFAULT_PROFILE_LABEL)
+  expect(
+    view
+      .q('library-row-library-external')
+      .querySelector('.rail-standing-profile:not(.rail-standing-provider)'),
+  ).toBeNull()
   expect(view.host.textContent).not.toContain('Recorded conversations')
 
   const search = view.q('library-search') as HTMLInputElement

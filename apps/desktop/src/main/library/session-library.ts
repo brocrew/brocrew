@@ -44,9 +44,8 @@ export type { LibraryCounts, LibraryEntry, LibraryFilters, LibraryPage, LibraryQ
  *
  * ## Nothing here is invented
  *
- * Every caption is a field some provider actually populates, checked against the real corpus before
- * it was surfaced. Where a provider has nothing to say, the entry says nothing — an empty title is
- * shown as an empty title, never back-filled from a path, an id, or the first line of a file.
+ * Recorded conversations use the app's conversation title when it has one. Provider captions
+ * still describe provider-only conversations and recordings without an app title.
  */
 
 export interface LibraryDeps {
@@ -58,6 +57,8 @@ export interface LibraryDeps {
   indexedDescriptions(): Promise<Map<string, ProviderDescription>>
   /** When a person archived one of our conversations, epoch ms, or null when it is not archived. */
   archivedAt(recordId: string): number | null
+  /** The app's title reader, when the source has conversation identities. */
+  recordedTitle?(recordId: string): string | null
 }
 
 /** A page is bounded so a corpus of two thousand conversations cannot arrive as one IPC message. */
@@ -77,20 +78,30 @@ export async function readLibrary(
 ): Promise<LibraryPage> {
   const { entries, skipped } = await resolveLibrary(deps)
   const counts = tally(entries)
-  const matched = entries.filter(
+  const candidates = entries.filter(
     (entry) =>
       (query.recordId === undefined || entry.recordId === query.recordId) &&
-      matches(entry, query.query) &&
       passesFilters(entry, query.filters),
   )
+  const searching = Boolean(query.query?.trim())
+  const matched = searching
+    ? candidates.filter((entry) => {
+        const title = displayTitle(entry, deps)
+        if (!matches(entry, query.query, title)) return false
+        entry.title = title
+        return true
+      })
+    : candidates
   const offset = Math.max(0, query.offset ?? 0)
   const limit = Math.max(0, query.limit ?? DEFAULT_LIBRARY_LIMIT)
   if (query.revealEntryId !== undefined) {
     const index = matched.findIndex((entry) => entry.id === query.revealEntryId)
     if (index > 0) matched.unshift(...matched.splice(index, 1))
   }
+  const page = matched.slice(offset, offset + limit)
+  if (!searching) fillRecordedTitles(page, deps)
   return {
-    entries: matched.slice(offset, offset + limit),
+    entries: page,
     matched: matched.length,
     counts,
     skipped: skipped.slice(0, MAX_SKIPPED_REPORTED),
@@ -103,7 +114,19 @@ export async function readStarredLibrary(
   starred: ReadonlySet<string>,
 ): Promise<readonly LibraryEntry[]> {
   if (starred.size === 0) return []
-  return (await resolveLibrary(deps, starred)).entries
+  const { entries } = await resolveLibrary(deps, starred)
+  fillRecordedTitles(entries, deps)
+  return entries
+}
+
+function fillRecordedTitles(entries: LibraryEntry[], deps: LibraryDeps): void {
+  for (const entry of entries) entry.title = displayTitle(entry, deps)
+}
+
+function displayTitle(entry: LibraryEntry, deps: LibraryDeps): string {
+  return entry.recordId === null
+    ? entry.title
+    : (deps.recordedTitle?.(entry.recordId) ?? entry.title)
 }
 
 async function resolveLibrary(deps: LibraryDeps, starred?: ReadonlySet<string>) {
@@ -231,9 +254,8 @@ async function resolveLibrary(deps: LibraryDeps, starred?: ReadonlySet<string>) 
  * second loop's body.
  *
  * ⚠️ **What makes it sound is WHICH rows reach it, and that question lives at the caller.**
- * Everything here is a fact about the row; the fields a home would have added — `title`, `preview`,
- * `bytes`, `onDisk`, and `origin` becoming `user-home` — are absent because no home offered this
- * conversation, which the loop establishes by skipping every row the first one claimed. Called on a
+ * The provider caption, preview, size and on-disk status are absent because no home offered
+ * this conversation. The loop establishes that by skipping every row the first one claimed. Called on a
  * row the user's own home still holds, this would be honest about the row and silent about the
  * file, which is not the same thing.
  */
@@ -365,10 +387,11 @@ function stableId(row: RecordedSession): string {
  * searches transcript CONTENT: the archive holds gigabytes of frames and a substring scan over it
  * would be a different feature with a different cost, not a bigger version of this one.
  */
-function matches(entry: LibraryEntry, query: string | undefined): boolean {
+function matches(entry: LibraryEntry, query: string | undefined, displayTitle: string): boolean {
   const needle = (query ?? '').trim().toLowerCase()
   if (needle === '') return true
   return (
+    displayTitle.toLowerCase().includes(needle) ||
     entry.title.toLowerCase().includes(needle) ||
     entry.preview.toLowerCase().includes(needle) ||
     entry.cwd.toLowerCase().includes(needle) ||

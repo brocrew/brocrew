@@ -270,7 +270,7 @@ export interface LibraryEntry {
   /** Our row, or null when we have never recorded this conversation. */
   recordId: string | null
   cwd: string
-  /** What the provider calls it. Empty when it has never said — never back-filled from a path. */
+  /** The recorded conversation title, falling back to the provider's title when available. */
   title: string
   /** The first user message, as the provider recorded it. Empty when there is none. */
   preview: string

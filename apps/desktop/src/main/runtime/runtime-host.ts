@@ -2183,6 +2183,10 @@ export class RuntimeHost implements LiveHost {
       slots: () => this.slots,
       startupRepairs: () => this.startupRepairs,
       archived: () => this.archived,
+      recordedTitle: (recordId) => {
+        const identity = this.readConversationIdentity(recordId)
+        return identity && !identity.profileFallback ? identity.title : null
+      },
       workRunningElsewhere: () => workRunningElsewhere(this),
       runningStateOf: (sessionId) => this.runningStateOf(sessionId),
       theWorldMoved: (what) => this.theWorldMoved(what),

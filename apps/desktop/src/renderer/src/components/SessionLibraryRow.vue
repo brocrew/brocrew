@@ -65,6 +65,7 @@ import ConversationRow from './ConversationRow.vue'
 const props = defineProps<{
   entry: LibraryEntry
   providerLabel: string | null
+  profileLabel?: string
   updatedAgo: string
   outcome?: ImportedFromHome['outcome']
   outcomeNote?: string
@@ -222,6 +223,7 @@ function rowView(entry: LibraryEntry): ConversationRowView {
         : []),
     ],
     status: {
+      profile: props.profileLabel,
       provider: entry.provider,
       place: entry.cwd,
       tail: [

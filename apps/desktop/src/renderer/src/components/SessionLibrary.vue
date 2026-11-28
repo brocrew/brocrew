@@ -557,6 +557,9 @@ const groups = computed(() => {
                 :key="entry.id"
                 :entry="entry"
                 :provider-label="nameOfProvider(entry.provider) ?? null"
+                :profile-label="
+                  entry.profileId === undefined ? undefined : profileName(entry.profileId)
+                "
                 :updated-ago="ago(entry.updatedAt)"
                 :outcome="outcomes[entry.id]?.outcome"
                 :outcome-note="outcomeNote(outcomes[entry.id])"

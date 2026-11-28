@@ -15,6 +15,7 @@ import { type AppDatabase, openDatabase } from '../src/main/db/connection'
 import { applyMigrations } from '../src/main/db/migrate'
 import { createSessionStore, type SessionStore } from '../src/main/db/session-store'
 import { RuntimeHost } from './helpers/giver-notice-host'
+import type { RuntimeHostDeps } from '../src/main/runtime/host-dependencies'
 import type { ToolName } from '../src/main/runtime/agent-tools'
 import { executeRuntimeCommand } from '../src/main/runtime/ipc'
 import { REPLY_SUMMARY_LIMIT } from '../src/main/runtime/reply-rails'
@@ -68,10 +69,11 @@ describe('671 · what main hands the cards', () => {
   let claimed: Set<string>
   const tick = (): number => clock++
 
-  const buildHost = (): RuntimeHost => {
+  const buildHost = (userHomeSessions?: RuntimeHostDeps['userHomeSessions']): RuntimeHost => {
     const built = new RuntimeHost({
       store,
       ...neutralHostDeps(() => userData),
+      userHomeSessions,
       createRuntime: (provider: Provider) => new ToolWatchingRuntime(provider, handed, issued),
       prepareProviderHome: syntheticProviderHome(() => userData),
       providerHomePath: (provider: Provider) => join(userData, 'provider-homes', provider),
@@ -495,6 +497,82 @@ describe('671 · what main hands the cards', () => {
   /* ═════════════════════════════ §3 · G4a — a recording names its agent ═════════════════════════ */
 
   describe('§3 · G4a — `LibraryEntry.profileId`, on the entries this app RAN and no other', () => {
+    it('gives 47 recordings from one profile the titles read by the rail', async () => {
+      const titles = new Map<string, string>()
+      for (let i = 0; i < 47; i++) {
+        const id = `sess_library_${i}`
+        store.create({
+          id,
+          provider: 'claude',
+          cwd: join(root, 'brobot'),
+          approvalMode: 'ask',
+          profileId: DEFAULT_PROFILE_ID,
+        })
+        store.append(id, 0, { type: 'status', state: 'idle' }, tick())
+        const title = `Release notes ${String(i).padStart(2, '0')}`
+        store.titleConversation(
+          id,
+          1,
+          { type: 'titled', title, author: { kind: 'person' } },
+          tick(),
+        )
+        titles.set(id, title)
+      }
+      const { entries } = await host.listLibrary()
+      expect(entries).toHaveLength(47)
+      for (const entry of entries) {
+        const expected = titles.get(entry.recordId!)
+        expect(expected).toBeDefined()
+        expect(entry.title).toBe(expected)
+        expect(entry.title).toBe(host.readConversationIdentity(entry.recordId!)?.title)
+        expect(entry.profileId).toBe(DEFAULT_PROFILE_ID)
+      }
+      const found = await host.listLibrary({ query: 'release notes 41' })
+      expect(found.entries.map((entry) => entry.recordId)).toEqual(['sess_library_41'])
+    })
+
+    it('finds an imported recording by its displayed title and its provider caption', async () => {
+      const recordId = 'sess_imported'
+      store.adopt({
+        id: recordId,
+        provider: 'claude',
+        sessionId: 'thread-imported',
+        cwd: root,
+        profileId: null,
+        updatedAt: tick(),
+        createdAt: 1,
+      })
+      const title = 'Current conversation title'
+      store.titleConversation(
+        recordId,
+        1,
+        { type: 'titled', title, author: { kind: 'person' } },
+        tick(),
+      )
+      const recordingHost = buildHost(() => ({
+        skipped: [],
+        found: [
+          {
+            provider: 'claude',
+            sessionId: 'thread-imported',
+            cwd: root,
+            path: join(root, 'thread-imported.jsonl'),
+            bytes: 128,
+            updatedAt: tick(),
+            createdAt: 1,
+            profileId: null,
+            description: { title: 'Provider caption', preview: '' },
+          },
+        ],
+      }))
+      for (const query of ['provider caption', 'current conversation title']) {
+        const { entries } = await recordingHost.listLibrary({ query })
+        expect(entries.map(({ recordId, title }) => ({ recordId, title }))).toEqual([
+          { recordId, title },
+        ])
+      }
+    })
+
     it('🔴 ours names the identity it ran as; a pre-profile row names the default; user-home and restored name none', async () => {
       const ran = await personOpens('Dev')
       const ranAgain = await personOpens('Dev')
