@@ -53,10 +53,18 @@ export function projectReload(repo, { root, token, appData, browser, modules }) 
       path.join(repo, 'scripts/gates/plugin-packaged/provider-fixture.mjs').replaceAll('\\', '/'),
     ),
   )
+  const reloadRuntime = `(provider === 'claude' ? createReloadGateRuntime({ownedRoot:${JSON.stringify(root)}}) : (()=>{throw new Error('Reload gate is Claude only')})())`
   composition = once(
     composition,
     `/* packaged-plugin-gate-only */ new PackagedGateRuntime(provider, ${JSON.stringify(path.dirname(appData))})`,
-    `(provider === 'claude' ? createReloadGateRuntime({ownedRoot:${JSON.stringify(root)}}) : (()=>{throw new Error('Reload gate is Claude only')})())`,
+    reloadRuntime,
+  )
+  // Since 6879d63f a session's runtime comes from the provider's launch preparation, and
+  // createRuntime only serves the paths without one, so both must hand out the reload runtime.
+  composition = once(
+    composition,
+    `runtime: new PackagedGateRuntime(provider, ${JSON.stringify(path.dirname(appData))}) })`,
+    `runtime: ${reloadRuntime} })`,
   )
   const reloadImports = `// ${RELOAD_MARKER}\nimport * as reloadGateFs from 'node:fs';\nimport {createReloadGateRuntime,bindReloadGateHost,reloadGateCommand} from ${JSON.stringify(path.join(destination, 'main-app-controller.mjs').replaceAll('\\', '/'))};\n`
   composition = once(

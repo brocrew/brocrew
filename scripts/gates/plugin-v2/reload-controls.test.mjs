@@ -111,6 +111,9 @@ test('real reload projection uses actual host/factory/preload and restores ordin
       'utf8',
     )
     assert.ok(composition.includes('createReloadGateRuntime({ownedRoot:'))
+    // Every way the host gets a Claude runtime, launch preparation included, is the reload one.
+    assert.equal(composition.split('createReloadGateRuntime({ownedRoot:').length, 3)
+    assert.ok(!composition.includes('new PackagedGateRuntime('))
     assert.ok(!entry.includes('fixtureSource:'))
     assert.ok(entry.includes('reload-native-db-closed.json'))
     const start = entry.indexOf('    const reloadHeldDb=db;')
