@@ -30,6 +30,9 @@ export interface PluginDiskOptions {
  */
 export const MOVED_MARKER = 'moved-to-plugin-state'
 
+/** A state file staged for the atomic rename, as the atomic-write helper names it. */
+const stageName = /^plugin-state\.\d{12}\.json\.[0-9a-f]{12}\.tmp$/
+
 function unsafe(error: unknown): PluginStateError {
   return error instanceof PluginStateError ? error : new PluginStateError('unsafe-path')
 }
@@ -119,18 +122,24 @@ export class PluginStateDisk {
     if (!current) return undefined
     return decodeStateFile(readFileSync(join(this.root, current.name)))
   }
-  /** Older state files go once a newer one is in place. One a reader still holds stays for later. */
+  /**
+   * Older state files go once a newer one is in place, and so does a half-written one a crash
+   * left: only this writer stages them, under its lock, so none is still being written. A file a
+   * reader still holds stays for a later write.
+   */
   private sweep(): void {
     const current = this.#state?.sequence
     if (current === undefined) return
     try {
-      for (const older of stateFilesIn(readdirSync(this.root)))
-        if (older.sequence < current)
-          try {
-            unlinkSync(join(this.root, older.name))
-          } catch {
-            // Removed at a later write; the current file is always the highest.
-          }
+      const names = readdirSync(this.root)
+      const older = stateFilesIn(names).filter((one) => one.sequence < current)
+      const halfWritten = names.filter((name) => stageName.test(name))
+      for (const name of [...older.map((one) => one.name), ...halfWritten])
+        try {
+          unlinkSync(join(this.root, name))
+        } catch {
+          // Removed at a later write; the current file is always the highest.
+        }
     } catch {
       // The new state is already in place; a later write removes what is left.
     }

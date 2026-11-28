@@ -374,17 +374,55 @@ describe.skipIf(process.platform === 'win32')(
         expect(() => GlobalPluginState.create(options)).toThrow(PluginStateError)
       }
     })
-    it('ignores an interrupted write left beside the state file', () => {
+    it('never reads a half-written state, and the next start removes it', () => {
       const { store, root, open } = fixture()
       store.close()
       const stage = join(root, stateFileName(1) + '.0123456789ab.tmp')
       writeFileSync(stage, '{"incomplete fictional state":', { mode: 0o600 })
       const next = open()
       expect(next.inspect().guards).toEqual([])
+      expect(existsSync(stage)).toBe(false)
       install(next)
       next.close()
-      expect(readFileSync(stage, 'utf8')).toBe('{"incomplete fictional state":')
       expect(open().inspect().guards[0]?.phase).toBe('active')
+    })
+    it('after crashes leave several state files, the next start reads the highest and removes the rest', () => {
+      let armed = false
+      const { store, root, open } = fixture((point) => {
+        if (armed && point === 'published') throw new Error('fictional crash before cleanup')
+      })
+      install(store)
+      // Each write crashes after its file is in place and before older ones are removed.
+      armed = true
+      const remove = request(store, 'uninstall')
+      expect(() => store.prepare(remove)).toThrow()
+      expect(() => store.complete(remove.operationId)).toThrow()
+      store.close()
+      writeFileSync(join(root, stateFileName(5) + '.0123456789ab.tmp'), '{"half', { mode: 0o600 })
+      expect(stateFilesIn(readdirSync(root)).length).toBeGreaterThan(2)
+      const next = open()
+      expect(next.inspect().guards[0]?.phase).toBe('removed')
+      expect(next.inspect().pending).toBeNull()
+      expect(readdirSync(root).filter((name) => name.startsWith('plugin-state'))).toEqual([
+        stateFileName(next.inspect().sequence),
+      ])
+    })
+    it('a damaged highest state refuses and never falls back to an older one', () => {
+      const { store, root, options } = fixture()
+      install(store)
+      const installed = stateFilesIn(readdirSync(root))[0]!
+      const before = readFileSync(join(root, installed.name))
+      const remove = request(store, 'uninstall')
+      store.prepare(remove)
+      store.complete(remove.operationId)
+      store.close()
+      // The installed state, left behind as a held file that could not be removed would be.
+      writeFileSync(join(root, installed.name), before, { mode: 0o600 })
+      const files = stateFilesIn(readdirSync(root))
+      expect(files.map((one) => one.name)).toContain(installed.name)
+      writeFileSync(join(root, files[0]!.name), '{"format":2')
+      expect(() => GlobalPluginState.open(options)).toThrow(PluginStateError)
+      expect(readFileSync(join(root, files[0]!.name), 'utf8')).toBe('{"format":2')
     })
     it('a pending removal reopens pending, never as the active install', () => {
       const { store, open } = fixture()
