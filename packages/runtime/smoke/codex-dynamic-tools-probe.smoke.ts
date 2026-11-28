@@ -1,5 +1,5 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { createServer, type Server } from 'node:http'
+import { createServer } from 'node:http'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
 // 🔒 **A deep import, and deliberately** — the same one `codex-memory-config.smoke.ts` takes, for
@@ -8,6 +8,7 @@ import { expect, it } from 'vitest'
 import { SpawnCodexTransport } from '../src/codex/codex-transport'
 import { bundledCodexBinary } from './bundled-codex'
 import { probeRunDeadline, runBudgetMs } from './probe-run-deadline'
+import { boundedBy, captureProviderStanza, configuredPortOf, listen } from './loopback-probe-kit'
 import { runEvidence, runScratch } from './run-paths'
 
 /**
@@ -97,30 +98,8 @@ const deadline = probeRunDeadline(
   TEARDOWN_MS,
 )
 
-/** Bounded, standing rule 13 — a request that never answers is NOT PERFORMED, never waited on. */
-async function bounded<T>(what: string, work: Promise<T>): Promise<T> {
-  let timer: ReturnType<typeof setTimeout> | undefined
-  try {
-    return await Promise.race([
-      work,
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(
-          () => reject(new Error(`NOT PERFORMED — ${what} did not answer in ${RPC_DEADLINE_MS}ms`)),
-          RPC_DEADLINE_MS,
-        )
-        timer.unref?.()
-      }),
-    ])
-  } finally {
-    if (timer !== undefined) clearTimeout(timer)
-  }
-}
-
-/** ⚑ Rule 40: the port the child was CONFIGURED with, read back from the file it reads. */
-function configuredPortOf(config: string): number | null {
-  const match = /^base_url = "http:\/\/127\.0\.0\.1:(\d+)\/v1"$/m.exec(config)
-  return match === null ? null : Number(match[1])
-}
+/** Standing rule 13: a request that never answers is NOT PERFORMED. */
+const bounded = boundedBy(RPC_DEADLINE_MS)
 
 /** The five, spelled here rather than imported: this probe is the oracle, not the app. */
 const TOOL_NAMES = [
@@ -143,30 +122,13 @@ function functionSpecs(): unknown[] {
 }
 
 /** The loopback model provider — one stanza, so the arms differ only in what is sent on the wire. */
-function providerStanza(port: number): string {
-  return [
-    'model = "gpt-5.6-luna"',
-    'model_provider = "capture"',
-    '',
-    '[model_providers.capture]',
-    'name = "BroBot 348 capture"',
-    `base_url = "http://127.0.0.1:${port}/v1"`,
-    'env_key = "BROBOT_348_CAPTURE_KEY"',
-    'request_max_retries = 0',
-    'stream_max_retries = 0',
-    '',
-  ].join('\n')
-}
-
-async function listen(server: Server): Promise<number> {
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', reject)
-    server.listen(0, '127.0.0.1', resolve)
+const providerStanza = (port: number): string =>
+  captureProviderStanza({
+    port,
+    model: 'gpt-5.6-luna',
+    name: 'BroBot 348 capture',
+    envKey: 'BROBOT_348_CAPTURE_KEY',
   })
-  const address = server.address()
-  if (address === null || typeof address === 'string') throw new Error('no loopback port')
-  return address.port
-}
 
 interface Arm {
   readonly label: string
