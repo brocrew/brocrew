@@ -12,7 +12,7 @@ import {
   type CodexIncoming,
   type CodexTransport,
 } from '../src/codex/codex-transport'
-import { CodexRuntime, codexAppServerArgs, type TransportFactory } from '../src/codex/codex-runtime'
+import { CodexRuntime, type TransportFactory } from '../src/codex/codex-runtime'
 import type { RuntimeEvent } from '../src/events'
 import type { PermissionOutcome } from '../src/permission'
 import type { SessionHandle } from '../src/runtime'
@@ -24,6 +24,16 @@ import {
   sweepVerdict,
   type CardSeen,
 } from './reopen-grant-evidence'
+import {
+  EXIT_GRACE_MS,
+  KILL_GRACE_MS,
+  assertConfiguredPort,
+  bounded,
+  captureProviderStanza,
+  configuredPortOfHome,
+  listen,
+  spawnCaptureChild,
+} from './loopback-probe-kit'
 import { runEvidence, runScratch } from './run-paths'
 
 /**
@@ -113,8 +123,6 @@ const TURN_DEADLINE_MS = 30_000
  */
 const SWEEP_TURN_DEADLINE_MS = 10_000
 const SETTLE_MS = 500
-const EXIT_GRACE_MS = 2_000
-const KILL_GRACE_MS = 2_000
 const PUMP_MS = 5_000
 /**
  * ⚠️ **A session close, not a transport close** (697's review): `closeOwned` goes through
@@ -324,57 +332,18 @@ function scriptedModel(script: ReadonlyMap<string, Action>): {
   return { server, requests: () => count }
 }
 
-function providerStanza(port: number): string {
-  return [
-    `model = "${MODEL}"`,
-    'model_provider = "capture"',
-    '',
-    '[model_providers.capture]',
-    'name = "BroBot 697 reopen-grant capture"',
-    `base_url = "http://127.0.0.1:${String(port)}/v1"`,
-    `env_key = "${KEY}"`,
-    'request_max_retries = 0',
-    'stream_max_retries = 0',
-    '',
-  ].join('\n')
-}
-
-/** ⚑ Rule 40: the port the child is CONFIGURED with, read back from the file it reads. */
-function configuredPortOf(home: string): number | null {
-  const match = /^base_url = "http:\/\/127\.0\.0\.1:(\d+)\/v1"$/m.exec(
-    readFileSync(join(home, 'config.toml'), 'utf8'),
-  )
-  return match === null ? null : Number(match[1])
-}
+const providerStanza = (port: number): string =>
+  captureProviderStanza({
+    port,
+    model: MODEL,
+    name: 'BroBot 697 reopen-grant capture',
+    envKey: KEY,
+  })
 
 const patchAdd = (file: string): string =>
   `*** Begin Patch\n*** Add File: ${file}\n+one\n*** End Patch\n`
 const patchUpdate = (file: string, from: string, to: string): string =>
   `*** Begin Patch\n*** Update File: ${file}\n@@\n-${from}\n+${to}\n*** End Patch\n`
-
-/** ⛔ Every `await` on a launch or a turn is bounded; a stall is NOT PERFORMED, never waited on. */
-async function bounded<T>(
-  what: string,
-  ms: number,
-  work: (signal: AbortSignal) => Promise<T>,
-): Promise<T> {
-  const giveUp = new AbortController()
-  let timer: ReturnType<typeof setTimeout> | undefined
-  try {
-    return await Promise.race([
-      work(giveUp.signal),
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => {
-          giveUp.abort()
-          reject(new Error(`NOT PERFORMED — ${what} did not finish in ${String(ms)}ms`))
-        }, ms)
-        timer.unref?.()
-      }),
-    ])
-  } finally {
-    if (timer !== undefined) clearTimeout(timer)
-  }
-}
 
 /** One conversation: its events, the cards it published, and a turn driver that answers them. */
 class Conversation {
@@ -491,39 +460,17 @@ async function runArm(
   let pids: (number | undefined)[] = []
   let firstAliveAfterClose: boolean | null = null
   try {
-    listenedOn = await new Promise<number>((resolve, reject) => {
-      model.server.once('error', reject)
-      model.server.listen(0, '127.0.0.1', () => {
-        const address = model.server.address()
-        if (address === null || typeof address === 'string') reject(new Error('no loopback port'))
-        else resolve(address.port)
-      })
-    })
+    listenedOn = await listen(model.server)
     writeFileSync(join(home, 'config.toml'), providerStanza(listenedOn))
     // ⚑ **Rule 40, BEFORE the first child starts** — the port the child will be configured with is
     // the one `listen(0)` returned, read back from the file it reads.
-    configuredBefore = configuredPortOf(home)
-    if (configuredBefore !== listenedOn) {
-      throw new Error(
-        `NOT PERFORMED — the config names port ${String(configuredBefore)}, the endpoint is on ${String(listenedOn)}`,
-      )
-    }
+    configuredBefore = configuredPortOfHome(home)
+    assertConfiguredPort(configuredBefore, listenedOn)
     // ⚑ The product factory's shape — `codexAppServerArgs`, the context's home and cwd — with an
     // explicit env, so the loopback `env_key` reaches the child and `HOME` is this arm's own.
     const factory: TransportFactory = (context) => {
       const transport = new SignedInAsAKey(
-        new SpawnCodexTransport(bundledCodexBinary(), codexAppServerArgs(), {
-          cwd: context.cwd,
-          env: {
-            PATH: process.env['PATH'] ?? '',
-            HOME: armRoot,
-            CODEX_HOME: context.providerHome,
-            CODEX_SQLITE_HOME: context.providerHome,
-            [KEY]: 'probe-only',
-          },
-          exitGraceMs: EXIT_GRACE_MS,
-          killGraceMs: KILL_GRACE_MS,
-        }),
+        spawnCaptureChild(context.cwd, armRoot, context.providerHome, KEY),
       )
       transports.push(transport)
       return transport
@@ -551,7 +498,7 @@ async function runArm(
     ;({ pids, firstAliveAfterClose } = await drive(open, reopen, cwd))
     // ⚑ …and AFTER: the launch rewrites `config.toml` (its memory gate) — the child must still be
     // pointed at this endpoint, or every turn above talked to something else.
-    configuredAfter = configuredPortOf(home)
+    configuredAfter = configuredPortOfHome(home)
     if (configuredAfter !== listenedOn) {
       throw new Error(
         `NOT PERFORMED — after launch the config names port ${String(configuredAfter)}, not ${String(listenedOn)}`,

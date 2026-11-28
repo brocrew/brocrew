@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer, type Server, type ServerResponse } from 'node:http'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
@@ -12,12 +12,23 @@ import {
   type CodexIncoming,
   type CodexTransport,
 } from '../src/codex/codex-transport'
-import { CodexRuntime, codexAppServerArgs, type TransportFactory } from '../src/codex/codex-runtime'
+import { CodexRuntime, type TransportFactory } from '../src/codex/codex-runtime'
 import type { RuntimeEvent } from '../src/events'
 import type { SessionHandle } from '../src/runtime'
 import { bundledCodexBinary } from './bundled-codex'
 import { A_PERSONS_FRAME } from './command-as-typed-evidence'
 import { probeRunDeadline, runBudgetMs } from './probe-run-deadline'
+import {
+  EXIT_GRACE_MS,
+  KILL_GRACE_MS,
+  assertConfiguredPort,
+  bounded,
+  captureProviderStanza,
+  configuredPortOfHome,
+  listen,
+  spawnCaptureChild,
+  until,
+} from './loopback-probe-kit'
 import { runEvidence, runScratch } from './run-paths'
 
 /**
@@ -93,8 +104,6 @@ const RPC_DEADLINE_MS = 10_000
 /** ⚑ The scripted model answers at once, so a turn ends in well under a second; 15 s is a stall. */
 const TURN_DEADLINE_MS = 15_000
 const SETTLE_MS = 500
-const EXIT_GRACE_MS = 2_000
-const KILL_GRACE_MS = 2_000
 const PUMP_MS = 5_000
 /** ⚑ How long a compaction Codex was ASKED for may take to be announced — a scripted summary. */
 const COMPACTION_DEADLINE_MS = 15_000
@@ -275,56 +284,12 @@ function recordingModel(): { server: Server; bodies: unknown[] } {
   return { server, bodies }
 }
 
-function providerStanza(port: number): string {
-  return [
-    `model = "${MODEL}"`,
-    'model_provider = "capture"',
-    '',
-    '[model_providers.capture]',
-    'name = "BroBot 708 command capture"',
-    `base_url = "http://127.0.0.1:${String(port)}/v1"`,
-    `env_key = "${KEY}"`,
-    'request_max_retries = 0',
-    'stream_max_retries = 0',
-    '',
-  ].join('\n')
-}
-
-/** ⚑ Rule 40: the port the child is CONFIGURED with, read back from the file it reads. */
-function configuredPortOf(home: string): number | null {
-  const match = /^base_url = "http:\/\/127\.0\.0\.1:(\d+)\/v1"$/m.exec(
-    readFileSync(join(home, 'config.toml'), 'utf8'),
-  )
-  return match === null ? null : Number(match[1])
-}
-
-/** ⛔ Every `await` on a launch or a turn is bounded; a stall is NOT PERFORMED, never waited on. */
-async function bounded<T>(
-  what: string,
-  ms: number,
-  work: (signal: AbortSignal) => Promise<T>,
-): Promise<T> {
-  const giveUp = new AbortController()
-  let timer: ReturnType<typeof setTimeout> | undefined
-  try {
-    return await Promise.race([
-      work(giveUp.signal),
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => {
-          giveUp.abort()
-          reject(new Error(`NOT PERFORMED — ${what} did not finish in ${String(ms)}ms`))
-        }, ms)
-        timer.unref?.()
-      }),
-    ])
-  } finally {
-    if (timer !== undefined) clearTimeout(timer)
-  }
-}
-
-const until = async (what: string, ms: number, done: () => boolean): Promise<void> =>
-  await bounded(what, ms, async (signal) => {
-    while (!done() && !signal.aborted) await new Promise((resolve) => setTimeout(resolve, 10))
+const providerStanza = (port: number): string =>
+  captureProviderStanza({
+    port,
+    model: MODEL,
+    name: 'BroBot 708 command capture',
+    envKey: KEY,
   })
 
 interface ArmResult {
@@ -399,35 +364,13 @@ async function runArm(arm: Arm, root: string): Promise<ArmResult> {
   let rpcAnswer: string | null = null
   const productEvents: RuntimeEvent[] = []
   try {
-    listenedOn = await new Promise<number>((resolve, reject) => {
-      model.server.once('error', reject)
-      model.server.listen(0, '127.0.0.1', () => {
-        const address = model.server.address()
-        if (address === null || typeof address === 'string') reject(new Error('no loopback port'))
-        else resolve(address.port)
-      })
-    })
+    listenedOn = await listen(model.server)
     writeFileSync(join(home, 'config.toml'), providerStanza(listenedOn))
-    configuredBefore = configuredPortOf(home)
-    if (configuredBefore !== listenedOn) {
-      throw new Error(
-        `NOT PERFORMED — the config names port ${String(configuredBefore)}, the endpoint is on ${String(listenedOn)}`,
-      )
-    }
+    configuredBefore = configuredPortOfHome(home)
+    assertConfiguredPort(configuredBefore, listenedOn)
     const factory: TransportFactory = (context) => {
       const transport = new Recorded(
-        new SpawnCodexTransport(bundledCodexBinary(), codexAppServerArgs(), {
-          cwd: context.cwd,
-          env: {
-            PATH: process.env['PATH'] ?? '',
-            HOME: armRoot,
-            CODEX_HOME: context.providerHome,
-            CODEX_SQLITE_HOME: context.providerHome,
-            [KEY]: 'probe-only',
-          },
-          exitGraceMs: EXIT_GRACE_MS,
-          killGraceMs: KILL_GRACE_MS,
-        }),
+        spawnCaptureChild(context.cwd, armRoot, context.providerHome, KEY),
       )
       transports.push(transport)
       return transport
@@ -445,7 +388,7 @@ async function runArm(arm: Arm, root: string): Promise<ArmResult> {
         if (event.type === 'turn') ended.push(event.state)
       }
     })()
-    configuredAfter = configuredPortOf(home)
+    configuredAfter = configuredPortOfHome(home)
     if (configuredAfter !== listenedOn) {
       throw new Error(
         `NOT PERFORMED — after launch the config names port ${String(configuredAfter)}, not ${String(listenedOn)}`,
