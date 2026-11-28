@@ -26,6 +26,7 @@ test('projected child diagnostics capture raw stderr, spawn errors and exits and
       'apps/desktop/src/main/plugins/node-host.ts',
       'apps/desktop/resources/plugin-host/guardian.mjs',
       'apps/desktop/src/main/plugins/supervisor/entry.ts',
+      'apps/desktop/src/main/plugins/ui/host.ts',
     ]
     for (const name of paths) {
       fs.mkdirSync(path.dirname(path.join(root, name)), { recursive: true })
