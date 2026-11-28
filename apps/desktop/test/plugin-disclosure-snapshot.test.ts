@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { observeInstalledPackage } from '../src/main/plugins/state/observe-committed'
 import { PluginFence } from '../src/main/plugins/state/fence'
-import { cleanupLifecycleFixtures } from './plugin-lifecycle-fixtures'
+import { cleanupLifecycleFixtures, stateFile } from './plugin-lifecycle-fixtures'
 import { disclosureFixture, disclosureTree } from './plugin-disclosure-fixtures'
 
 const closers: Array<() => Promise<void>> = []
@@ -54,7 +54,7 @@ it('reads the prior descriptor while the real owner holds its fence without maki
 })
 it('a damaged state file is unknown, and the read creates or repairs nothing', async () => {
   const f = await setup()
-  await writeFile(join(f.f.root, 'state', 'plugin-state.json'), '{"format":2')
+  await writeFile(stateFile(join(f.f.root, 'state'))!, '{"format":2')
   const before = await disclosureTree(f.f.root),
     acquire = vi.spyOn(PluginFence, 'acquire')
   expect(await snapshot(f.f.root)).toBeNull()
@@ -121,7 +121,7 @@ it.skipIf(process.platform === 'win32')(
     for (let i = 0; i < 20; i++)
       expect(await snapshot(f.f.root)).toMatchObject({ version: '1.0.1' })
     expect(open()).toBe(at)
-    await writeFile(join(f.f.root, 'state', 'plugin-state.json'), '{"format":2')
+    await writeFile(stateFile(join(f.f.root, 'state'))!, '{"format":2')
     for (let i = 0; i < 20; i++) expect(await snapshot(f.f.root)).toBeNull()
     expect(open()).toBe(at)
   },

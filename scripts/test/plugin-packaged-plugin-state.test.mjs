@@ -51,7 +51,7 @@ function fixture() {
   fs.writeFileSync(path.join(root, 'fixture-owned'), 'packaged-plugin-gate\n', { mode: 0o600 })
   const global = path.join(root, 'g')
   for (const dir of [global, path.join(global, 'state')]) fs.mkdirSync(dir, { mode: 0o700 })
-  const file = path.join(global, 'state', 'plugin-state.json')
+  const file = path.join(global, 'state', 'plugin-state.000000000002.json')
   const write = (value) => fs.writeFileSync(file, JSON.stringify(value), { mode: 0o600 })
   const install = { pluginId: 'chrome', installId: 'fictional-install', phase: 'active' }
   write({ format: 2, plugins: [install], active: [install], pending: null, operations: [] })
@@ -186,6 +186,13 @@ describe.skipIf(process.platform === 'win32')('scratch-only installed presence',
       pending: null,
       operations: [],
     })
+    expect(f.read()).toEqual({ diskObserved: true, installedRecordExists: false })
+    // An older file left beside a newer one is not read: the highest sequence is current.
+    fs.writeFileSync(
+      path.join(f.global, 'state', 'plugin-state.000000000001.json'),
+      JSON.stringify({ format: 2, plugins: [f.install], active: [f.install] }),
+      { mode: 0o600 },
+    )
     expect(f.read()).toEqual({ diskObserved: true, installedRecordExists: false })
   })
   it('separates an absent state from unreadable or linked diagnostic input', () => {

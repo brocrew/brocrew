@@ -5,7 +5,7 @@ import { prepareFirst } from './plugin-startup-fixtures'
 import { join, dirname } from 'node:path'
 import { expect, it, vi } from 'vitest'
 import { setup, seams } from './plugin-production-fixtures'
-import { fixture, deferred } from './plugin-lifecycle-fixtures'
+import { fixture, deferred, stateFile } from './plugin-lifecycle-fixtures'
 import { readPluginInstructions } from '../src/main/plugins/instructions'
 
 async function emptyOffers() {
@@ -71,7 +71,7 @@ it('keeps the attachment fallback for installed state', async () => {
 
 it('keeps the attachment fallback for an unreadable state file', async () => {
   const f = await emptyOffers()
-  fs.writeFileSync(join(f.state, 'plugin-state.json'), '{"format":2')
+  fs.writeFileSync(stateFile(f.state)!, '{"format":2')
   f.controller.start(f.options)
   expect(await f.controller.ready!()).toBe(true)
   expect(f.supervisor.start).toHaveBeenCalledOnce()

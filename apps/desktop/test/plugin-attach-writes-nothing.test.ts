@@ -11,6 +11,7 @@ import {
   appendProjectionHistory,
   cleanupLifecycleFixtures,
   journalHead,
+  stateFile,
   fixture,
   projection,
   reopenLifecycleFixture,
@@ -39,7 +40,7 @@ it.each([336, 1000])(
   'with %i history records migrated, a new agent attaches and reads its first routes without writing',
   async (history) => {
     const { f, state, controller } = await withHistory(history)
-    const file = join(f.root, 'state', 'plugin-state.json')
+    const file = stateFile(join(f.root, 'state'))!
     const before = { sequence: state.inspect().sequence, bytes: await readFile(file) }
     const agent = projection()
     await controller.attach(agent.sink)

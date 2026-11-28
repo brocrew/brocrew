@@ -4,8 +4,9 @@ import { mkdir, mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { writeFileSync } from 'node:fs'
+import { readdirSync, writeFileSync } from 'node:fs'
 import { GlobalPluginState } from '../src/main/plugins/state/store'
+import { stateFilesIn } from '../src/main/plugins/state/format'
 import { PluginLifecycleController } from '../src/main/plugins/lifecycle/controller'
 import type { LifecycleOptions, PersonProjection } from '../src/main/plugins/lifecycle/types'
 import { packageFixture, manifestFor } from './plugin-package-fixtures'
@@ -219,6 +220,11 @@ export function moveTheSequence(state: GlobalPluginState) {
   const request = stateRequest(state, 'install', 'fictional-other')
   state.prepare(request)
   state.abort(request.operationId)
+}
+/** The current plugin state file in a state folder (the highest sequence), if there is one. */
+export function stateFile(stateRoot: string): string | undefined {
+  const current = stateFilesIn(readdirSync(stateRoot))[0]
+  return current && join(stateRoot, current.name)
 }
 export function reopenLifecycleFixture(f: Awaited<ReturnType<typeof fixture>>) {
   f.state.close()

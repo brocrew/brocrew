@@ -18,8 +18,11 @@ import {
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { GlobalPluginState } from '../src/main/plugins/state/store'
+import { stateFile } from './plugin-lifecycle-fixtures'
 import {
   PluginStateError,
+  stateFileName,
+  stateFilesIn,
   type Consent,
   type OperationRequest,
 } from '../src/main/plugins/state/format'
@@ -363,7 +366,7 @@ describe.skipIf(process.platform === 'win32')(
         const { store, root, options } = fixture()
         install(store)
         store.close()
-        const path = join(root, 'plugin-state.json')
+        const path = stateFile(root)!
         if (mode === 'missing') unlinkSync(path)
         else if (mode === 'truncated') writeFileSync(path, '{')
         else writeFileSync(path, readFileSync(path, 'utf8').replace('"format":2', '"format":3'))
@@ -374,7 +377,7 @@ describe.skipIf(process.platform === 'win32')(
     it('ignores an interrupted write left beside the state file', () => {
       const { store, root, open } = fixture()
       store.close()
-      const stage = join(root, 'plugin-state.json.0123456789ab.tmp')
+      const stage = join(root, stateFileName(1) + '.0123456789ab.tmp')
       writeFileSync(stage, '{"incomplete fictional state":', { mode: 0o600 })
       const next = open()
       expect(next.inspect().guards).toEqual([])
@@ -396,6 +399,50 @@ describe.skipIf(process.platform === 'win32')(
       next.complete(remove.operationId)
       next.close()
       expect(open().inspect().guards[0]?.phase).toBe('removed')
+    })
+    it('every write adds a new file, never replaces one a reader may hold, and older ones go', () => {
+      const { store, root } = fixture()
+      const replaced: string[] = []
+      const rename = vi.spyOn(fs, 'renameSync').mockImplementation((from, to) => {
+        if (existsSync(to)) replaced.push(String(to))
+        actualRename(from, to)
+      })
+      syncBuiltinESMExports()
+      try {
+        install(store)
+        const remove = request(store, 'uninstall')
+        store.prepare(remove)
+        store.complete(remove.operationId)
+      } finally {
+        rename.mockRestore()
+        syncBuiltinESMExports()
+      }
+      // Windows refuses to replace a file another process holds open, so nothing is replaced.
+      expect(rename).toHaveBeenCalled()
+      expect(replaced).toEqual([])
+      expect(stateFilesIn(readdirSync(root)).map((one) => one.sequence)).toEqual([
+        store.inspect().sequence,
+      ])
+    })
+    it('an older file that cannot be removed yet stays aside; the highest is read and the next write removes it', () => {
+      const { store, root, open } = fixture()
+      const held = vi.spyOn(fs, 'unlinkSync').mockImplementation(() => {
+        throw Object.assign(new Error('fictional held file'), { code: 'EPERM' })
+      })
+      syncBuiltinESMExports()
+      try {
+        install(store)
+      } finally {
+        held.mockRestore()
+        syncBuiltinESMExports()
+      }
+      expect(stateFilesIn(readdirSync(root))).toHaveLength(3)
+      store.close()
+      const next = open()
+      expect(active(next)).not.toBeNull()
+      expect(stateFilesIn(readdirSync(root)).map((one) => one.sequence)).toEqual([
+        next.inspect().sequence,
+      ])
     })
     it('a write that fails after its rename holds what the file now says', () => {
       const { store, open } = fixture()
@@ -468,7 +515,7 @@ describe.skipIf(process.platform === 'win32')(
       () => {
         const { store, root, parent, options } = fixture()
         store.close()
-        chmodSync(join(root, 'plugin-state.json'), 0)
+        chmodSync(stateFile(root)!, 0)
         try {
           expect(() => GlobalPluginState.open(options)).toThrow(PluginStateError)
           try {
@@ -478,7 +525,7 @@ describe.skipIf(process.platform === 'win32')(
             expect(error).not.toHaveProperty('cause')
           }
         } finally {
-          chmodSync(join(root, 'plugin-state.json'), 0o600)
+          chmodSync(stateFile(root)!, 0o600)
         }
       },
     )

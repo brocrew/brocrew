@@ -1,7 +1,7 @@
-import { readFile } from 'node:fs/promises'
+import { readFile, readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { PluginDiskOptions } from './disk'
-import { STATE_FILE } from './format'
+import { refuseState, stateFilesIn } from './format'
 import { decodeStateFile } from './machine'
 
 /**
@@ -10,7 +10,21 @@ import { decodeStateFile } from './machine'
  * the file there is nothing to show yet.
  */
 async function readCommitted(options: PluginDiskOptions) {
-  return decodeStateFile(await readFile(join(options.root, STATE_FILE)))
+  let tried: string | undefined
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const current = stateFilesIn(await readdir(options.root))[0]
+    if (!current || current.name === tried) break
+    tried = current.name
+    try {
+      const state = decodeStateFile(await readFile(join(options.root, current.name)))
+      if (state.sequence !== current.sequence) refuseState('corrupt')
+      return state
+    } catch (error) {
+      // A newer write may have removed this one after it was listed: list again and read that.
+      if (attempt === 2) throw error
+    }
+  }
+  return refuseState('missing-guard')
 }
 
 /** Missing, partial or unreadable data is unknown (null), never an action state. */

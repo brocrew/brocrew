@@ -5,7 +5,8 @@ import Database from 'better-sqlite3'
 import { join } from 'node:path'
 import { prepareFirst } from './plugin-startup-fixtures'
 import { afterEach, expect, it, vi } from 'vitest'
-import { fixture, cleanupLifecycleFixtures } from './plugin-lifecycle-fixtures'
+import { fixture, cleanupLifecycleFixtures, stateFile } from './plugin-lifecycle-fixtures'
+import { stateFileName } from '../src/main/plugins/state/format'
 import { observeInstallations } from '../src/main/plugins/state/observe-committed'
 
 afterEach(async () => {
@@ -39,7 +40,7 @@ it.each(['missing', 'truncated', 'another format', 'unexpected field'])(
   async (mode) => {
     const f = await fixture(),
       opts = options(f),
-      file = join(opts.root, 'plugin-state.json')
+      file = stateFile(opts.root)!
     const state = JSON.parse(fs.readFileSync(file, 'utf8'))
     if (mode === 'missing') fs.unlinkSync(file)
     if (mode === 'truncated') fs.writeFileSync(file, '{')
@@ -98,6 +99,26 @@ it('reads under an idle held SQLite fence, which it never takes', async () => {
 it('ignores an interrupted write left beside the state file', async () => {
   const f = await fixture(),
     opts = options(f)
-  fs.writeFileSync(join(opts.root, 'plugin-state.json.0123456789ab.tmp'), '{"format":2')
+  fs.writeFileSync(join(opts.root, stateFileName(1) + '.0123456789ab.tmp'), '{"format":2')
   expect(await observeInstallations(opts)).toEqual({ installed: [], pending: null })
+})
+
+it('reads the newer file when a write removes the listed one before it is read', async () => {
+  const f = await fixture(),
+    opts = options(f),
+    native = vi.mocked(asyncFs.readFile).getMockImplementation()!
+  let raced = false
+  vi.mocked(asyncFs.readFile).mockImplementation(async (...args) => {
+    if (raced) return native(...args)
+    raced = true
+    // The owner writes the next state and removes this one between the listing and the read.
+    prepareFirst(f)
+    throw Object.assign(new Error('fictional removed file'), { code: 'ENOENT' })
+  })
+  try {
+    expect(await observeInstallations(opts)).toEqual({ installed: [], pending: 'chrome' })
+  } finally {
+    vi.mocked(asyncFs.readFile).mockImplementation(native)
+  }
+  expect(raced).toBe(true)
 })

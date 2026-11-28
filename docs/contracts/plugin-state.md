@@ -8,7 +8,7 @@ The app explicitly supplies its per-user global plugin root (`<appData>/@brobot2
 
 The state folder holds:
 
-- `plugin-state.json`: the whole lifecycle state, plain JSON with a closed schema. It is excluded from every global and workspace restore set.
+- `plugin-state.<sequence>.json`: the whole lifecycle state, plain JSON with a closed schema, one file per sequence (12 digits). The highest is the current state. They are excluded from every global and workspace restore set.
 - `writer-lock.sqlite`: uses the existing SQLite dependency only for kernel-backed `BEGIN EXCLUSIVE` exclusion, without tables or data writes. Every write takes it.
 
 The state file holds:
@@ -21,7 +21,7 @@ The state file holds:
 
 ## Writes and crash safety
 
-Each change writes the whole file to a temporary file, flushes it, renames it over the old one and flushes the folder. A crash leaves either the old state or the new one, never a mix. When a write fails, the service holds whatever the file now says, since the rename may have landed before the failure. Under the writer lock, a write is refused as a conflict if another copy changed the file since this one read it.
+Each change writes the whole state to a temporary file, flushes it, renames it to the next sequence's file name and flushes the folder. A write never replaces an existing file, because Windows refuses to replace a file another process (such as the window's display read) holds open. Older state files are then removed; one that cannot be removed yet, because a reader still holds it, stays until a later write and is never read. A crash leaves either the old state or the new one as the highest file, never a mix. When a write fails, the service holds whatever the file now says, since the rename may have landed before the failure. Under the writer lock, a write is refused as a conflict if another copy changed the file since this one read it.
 
 `prepare` writes the operation as pending before the installer changes anything. `complete` and `abort` write its outcome and clear it. A crash or a failed write in between leaves the operation pending, and recovery on the next start finishes it or rolls it back, as before.
 
@@ -43,12 +43,12 @@ Earlier builds kept an append-only journal in `lifecycle-guard/`, with `resoluti
 
 When `open` finds no state file but a journal, it reads the journal once and writes the state file. It counts exactly the records the old recovery counted, ignores leftover crash stages, and never writes or removes anything in the journal folders. After the state file, it writes a `moved-to-plugin-state` marker into `resolution-reservations/`. Older builds refuse any name there that is not an operation id, so an older app on a migrated workspace shows "Plugin recovery is required" and changes no plugins. A crash before the state file is in place leaves the journal untouched, and the next start migrates again. A crash between the state file and the marker leaves a journal that is still current, and the next start writes the marker. A state file that is missing while the marker is there refuses with "Plugin recovery is required", because the journal is stale and rebuilding from it could bring back a removed plugin.
 
-To use an older app anyway, delete the marker and `plugin-state.json`. Plugins then return to how they were when the migration ran, so check them in Settings, and remove or reinstall any that changed since. The next newer start migrates again.
+To use an older app anyway, delete the marker and every `plugin-state.*.json` file in the plugin `state` folder. Plugins then return to how they were when the migration ran, so check them in Settings, and remove or reinstall any that changed since. The next newer start migrates again.
 
 The journal folders stay in place until they are removed by a later, separate change.
 
 ## Display reads
 
-The window reads `plugin-state.json` asynchronously, for display only. A missing or unreadable file is unknown, never an action state.
+The window reads the highest `plugin-state.*.json` asynchronously, for display only. If a newer write removed that file between the listing and the read, it reads the newer one. A missing or unreadable file is unknown, never an action state.
 
 Errors contain only approved section 6 wording (`Plugin recovery is required. Open Plugins.`, `Plugin busy. Try again.`, `Plugin unavailable. Try again.`), never raw filesystem errors, paths, causes, credentials or configuration bodies.

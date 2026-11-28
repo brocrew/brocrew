@@ -105,13 +105,31 @@ export function chromeDiskState(root, global) {
     }
     directory(global)
     const state = path.join(global, 'state')
+    // One file per sequence; the highest is the current state.
+    const highest = () =>
+      fs
+        .readdirSync(state)
+        .filter((name) => /^plugin-state\.\d{12}\.json$/.test(name))
+        .sort()
+        .at(-1)
     let fd
     try {
       directory(state)
-      fd = fs.openSync(
-        path.join(state, 'plugin-state.json'),
-        fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK,
-      )
+      for (let tried; ; ) {
+        const current = highest()
+        if (current === undefined) return { ...absent, diskObserved: true }
+        try {
+          fd = fs.openSync(
+            path.join(state, current),
+            fs.constants.O_RDONLY | fs.constants.O_NOFOLLOW | fs.constants.O_NONBLOCK,
+          )
+          break
+        } catch (error) {
+          // A newer write removed it after the listing: read the newer one, once.
+          if (error.code !== 'ENOENT' || tried === current) throw error
+          tried = current
+        }
+      }
     } catch (error) {
       if (error.code === 'ENOENT') return { ...absent, diskObserved: true }
       throw error

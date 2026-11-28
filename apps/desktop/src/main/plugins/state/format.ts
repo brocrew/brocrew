@@ -113,8 +113,22 @@ export const JournalRecord = z.strictObject({
 })
 export type JournalRecord = z.infer<typeof JournalRecord>
 
-/** The plugin service's state, in its state folder. */
-export const STATE_FILE = 'plugin-state.json'
+/**
+ * The plugin service's state, one file per sequence in its state folder; the highest is current.
+ * A write never replaces a file a reader may hold open (Windows refuses that), it adds the next.
+ */
+export const stateFileName = (sequence: number): string =>
+  `plugin-state.${String(sequence).padStart(12, '0')}.json`
+const stateFilePattern = /^plugin-state\.(\d{12})\.json$/
+/** The state files in a folder listing, the current (highest sequence) first. */
+export function stateFilesIn(names: readonly string[]): { name: string; sequence: number }[] {
+  return names
+    .flatMap((name) => {
+      const match = stateFilePattern.exec(name)
+      return match ? [{ name, sequence: Number(match[1]) }] : []
+    })
+    .sort((left, right) => right.sequence - left.sequence)
+}
 const OperationStatus = z.enum(['prepared', 'completed', 'aborted'])
 /**
  * The whole plugin lifecycle state, one file. Every plugin ever installed keeps its entry, removed

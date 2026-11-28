@@ -31,8 +31,10 @@ import {
   fixture,
   reopenLifecycleFixture,
   runOperation,
+  stateFile,
   stateRequest,
 } from './plugin-lifecycle-fixtures'
+import { stateFileName, stateFilesIn } from '../src/main/plugins/state/format'
 
 const roots: string[] = [],
   stores: { close(): void }[] = []
@@ -44,6 +46,10 @@ afterEach(async () => {
 function kept<T extends { close(): void }>(store: T): T {
   stores.push(store)
   return store
+}
+/** The documented rollback deletes every state file. */
+function removeStateFiles(root: string) {
+  for (const one of stateFilesIn(readdirSync(root))) unlinkSync(join(root, one.name))
 }
 function folder() {
   const path = mkdtempSync(join(realpathSync(tmpdir()), 'fictional-plugin-migration-'))
@@ -136,12 +142,12 @@ describe.skipIf(process.platform === 'win32')('migrating the plugin journal once
     expect(Object.keys(after).sort()).toEqual(
       [
         ...Object.keys(before),
-        'plugin-state.json',
+        stateFileName(view.sequence),
         'resolution-reservations/' + MOVED_MARKER,
       ].sort(),
     )
     for (const [name, digest] of Object.entries(before)) expect(after[name], name).toBe(digest)
-    expect(statSync(join(options.root, 'plugin-state.json')).size).toBeLessThan(16 * 1024)
+    expect(statSync(stateFile(options.root)!).size).toBeLessThan(16 * 1024)
     // Recovery resolves the migrated pending operation as it would have the journal's.
     state.abort(pending.operationId)
     expect(state.inspect().guards[0]?.phase).toBe('removed')
@@ -327,7 +333,7 @@ describe.skipIf(process.platform === 'win32')('migrating the plugin journal once
         },
       }),
     ).toThrow()
-    expect(existsSync(join(options.root, 'plugin-state.json'))).toBe(false)
+    expect(stateFile(options.root)).toBeUndefined()
     for (const [name, digest] of Object.entries(before))
       expect(bytes(options.root)[name], name).toBe(digest)
     const old = oldRecovery(options.root)
@@ -347,7 +353,7 @@ describe.skipIf(process.platform === 'win32')('migrating the plugin journal once
         },
       }),
     ).toThrow()
-    expect(existsSync(join(options.root, 'plugin-state.json'))).toBe(true)
+    expect(stateFile(options.root)).toBeDefined()
     expect(existsSync(marker)).toBe(false)
     // Until the marker is written, the journal is still current for an older app.
     const old = oldRecovery(options.root)
@@ -362,7 +368,7 @@ describe.skipIf(process.platform === 'win32')('migrating the plugin journal once
     const { state } = migrated(options)
     runOperation(state, 'uninstall', 'chrome')
     state.close()
-    unlinkSync(join(options.root, 'plugin-state.json'))
+    removeStateFiles(options.root)
     const before = bytes(options.root)
     expect(() => GlobalPluginState.open(options)).toThrow(
       expect.objectContaining({ code: 'missing-guard' }),
@@ -386,7 +392,7 @@ describe.skipIf(process.platform === 'win32')('migrating the plugin journal once
     expect(bytes(options.root)).toEqual(before)
     // The documented rollback: the older app is back on the journal as it was when migrated.
     unlinkSync(join(options.root, 'resolution-reservations', MOVED_MARKER))
-    unlinkSync(join(options.root, 'plugin-state.json'))
+    removeStateFiles(options.root)
     const rolledBack = kept(JournalStore.open(options))
     expect(rolledBack.inspect().guards.map((one) => one.phase)).toEqual(['active'])
     rolledBack.close()
@@ -445,7 +451,7 @@ describe.skipIf(process.platform === 'win32')('migrating the plugin journal once
     }
     expect(state.inspect().sequence).toBeGreaterThan(4096)
     expect(state.inspect().operations).toHaveLength(1)
-    expect(statSync(join(options.root, 'plugin-state.json')).size).toBeLessThan(4 * 1024)
+    expect(statSync(stateFile(options.root)!).size).toBeLessThan(4 * 1024)
   })
 
   it('a journal that is not one refuses, and nothing is written', () => {

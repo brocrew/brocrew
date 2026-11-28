@@ -4,7 +4,7 @@ import * as asyncFs from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { expect, it, vi } from 'vitest'
 import { setup, settingsCall } from './plugin-production-fixtures'
-import { fixture } from './plugin-lifecycle-fixtures'
+import { fixture, stateFile } from './plugin-lifecycle-fixtures'
 import { readPluginInstructions } from '../src/main/plugins/instructions'
 import * as committed from '../src/main/plugins/state/observe-committed'
 
@@ -129,7 +129,7 @@ it.each(['partial', 'unreadable'] as const)(
       { installed: true, state: 'Unavailable' },
     ])
     if (mode === 'partial') {
-      fs.writeFileSync(join(f.owner.root, 'state/plugin-state.json'), '{"format":2')
+      fs.writeFileSync(stateFile(join(f.owner.root, 'state'))!, '{"format":2')
     } else {
       vi.mocked(asyncFs.readFile).mockImplementationOnce(async () => {
         throw Object.assign(new Error('fictional unreadable state'), { code: 'EACCES' })

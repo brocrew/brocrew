@@ -1,10 +1,18 @@
 import { randomUUID } from 'node:crypto'
-import { closeSync, existsSync, lstatSync, mkdirSync, readFileSync } from 'node:fs'
+import {
+  closeSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  unlinkSync,
+} from 'node:fs'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { stageAtomicWriteSync, writeAtomicallySync } from '@brobot2/runtime/atomic-write'
 import { openDirectoryNotThroughALink, realPath, syncDirectory } from '../private-files'
 import { PluginFence } from './fence'
-import { PluginStateError, refuseState, STATE_FILE } from './format'
+import { PluginStateError, refuseState, stateFileName, stateFilesIn } from './format'
 import { readJournal } from './journal'
 import { decodeStateFile, encodeStateFile, newLifecycle, type LifecycleState } from './machine'
 
@@ -46,17 +54,15 @@ function checkedRoot(options: PluginDiskOptions, create: boolean): string {
   return root
 }
 
-/** The plugin service's one state file, written atomically by its one writer. */
+/** The plugin service's state file, written atomically by its one writer, a new name each time. */
 export class PluginStateDisk {
   #state: LifecycleState | undefined
   private fence: PluginFence | undefined
-  private readonly path: string
   private readonly lock: string
   private constructor(
     private readonly root: string,
     private readonly fault: PluginDiskOptions['fault'],
   ) {
-    this.path = join(root, STATE_FILE)
     this.lock = join(root, 'writer-lock.sqlite')
     this.fence = PluginFence.acquire(this.lock)
   }
@@ -107,15 +113,29 @@ export class PluginStateDisk {
       throw error
     }
   }
+  /** The current state file: the one with the highest sequence. */
   private onDisk(): LifecycleState | undefined {
-    let bytes: Buffer
+    const current = stateFilesIn(readdirSync(this.root))[0]
+    if (!current) return undefined
+    const state = decodeStateFile(readFileSync(join(this.root, current.name)))
+    if (state.sequence !== current.sequence) refuseState('corrupt')
+    return state
+  }
+  /** Older state files go once a newer one is in place. One a reader still holds stays for later. */
+  private sweep(): void {
+    const current = this.#state?.sequence
+    if (current === undefined) return
     try {
-      bytes = readFileSync(this.path)
-    } catch (error) {
-      if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return undefined
-      throw error
+      for (const older of stateFilesIn(readdirSync(this.root)))
+        if (older.sequence < current)
+          try {
+            unlinkSync(join(this.root, older.name))
+          } catch {
+            // Removed at a later write; the current file is always the highest.
+          }
+    } catch {
+      // The new state is already in place; a later write removes what is left.
     }
-    return decodeStateFile(bytes)
   }
   private readOrMigrate(): void {
     const guard = join(this.root, 'lifecycle-guard'),
@@ -130,13 +150,14 @@ export class PluginStateDisk {
       // the next start migrates again.
       this.write(readJournal(guard))
     }
+    this.sweep()
     // Written after the state file, so a crash between the two leaves a journal that is still
     // current, and the next start finishes here.
     if (existsSync(guard) && !existsSync(marker)) {
       mkdirSync(reservations, { recursive: true, mode: 0o700 })
       writeAtomicallySync(
         marker,
-        'The plugin state moved to ../plugin-state.json. Older apps stop here.\n',
+        'The plugin state moved to the plugin-state files in the folder above. Older apps stop here.\n',
       )
     }
   }
@@ -144,7 +165,10 @@ export class PluginStateDisk {
   private write(next: LifecycleState): void {
     const bytes = encodeStateFile(next)
     if (this.#state && this.onDisk()?.sequence !== this.#state.sequence) refuseState('conflict')
-    const stage = stageAtomicWriteSync(this.path, bytes)
+    // Never a rename onto a name a reader may hold open: the next sequence is a new name.
+    const path = join(this.root, stateFileName(next.sequence))
+    if (existsSync(path)) refuseState('conflict')
+    const stage = stageAtomicWriteSync(path, bytes)
     try {
       this.fault?.('staged')
       stage.commit()
@@ -161,6 +185,7 @@ export class PluginStateDisk {
     }
     this.#state = next
     this.fault?.('published')
+    this.sweep()
   }
   private held(): LifecycleState {
     if (!this.#state) return refuseState('unsafe-path')

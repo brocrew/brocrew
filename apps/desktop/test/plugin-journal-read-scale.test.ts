@@ -10,6 +10,7 @@ import {
   fixture,
   journalHead,
   reopenLifecycleFixture,
+  stateFile,
 } from './plugin-lifecycle-fixtures'
 import {
   observeInstalledPackage,
@@ -97,7 +98,7 @@ it('migrates a long journal once, after which display reads one small file witho
         platform: process.platform,
         node: process.version,
         records,
-        stateBytes: fs.statSync(join(root, 'plugin-state.json')).size,
+        stateBytes: fs.statSync(stateFile(root)!).size,
         before: { installations: ms(before.installations), package: ms(before.package) },
         migration: ms(migration),
         after: { installations: ms(after.installations), package: ms(after.package) },
