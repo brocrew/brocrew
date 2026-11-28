@@ -123,18 +123,6 @@ describe('640 §2 · the 067 guard, now inherited rather than re-derived', () =>
     expect(m.all('canonical-document-viewer')).toHaveLength(1)
   })
 
-  it('⚠️ a scope that moves after the panel is up takes the panel with it', async () => {
-    const { m, scope, open } = scoped(async () => A_DOCUMENT)
-    await open(A_RESOURCE_ID)
-    await nextTick()
-    expect(m.all('canonical-document-viewer')).toHaveLength(1)
-    scope.value = 'sess_2'
-    await nextTick()
-    // ⛔ **The second half of the guard**, which fails differently from the race above: a panel
-    // already on screen when the surface moves is dropped rather than left floating.
-    expect(m.all('canonical-document-viewer')).toHaveLength(0)
-  })
-
   it('🔴 coming BACK does not re-open the document that was left behind', async () => {
     // ⛔ **The half the `showing` guard cannot answer, and the reason the watch sits beside it.**
     // ⚠️ A computed HIDES a panel whose scope is not the one on screen; it does not DROP it — so
@@ -148,6 +136,8 @@ describe('640 §2 · the 067 guard, now inherited rather than re-derived', () =>
     expect(m.all('canonical-document-viewer')).toHaveLength(1)
     scope.value = 'sess_2'
     await nextTick()
+    // ⛔ **The second half of the guard**, which fails differently from the race above: a panel
+    // already on screen when the surface moves is dropped rather than left floating.
     expect(m.all('canonical-document-viewer')).toHaveLength(0)
     scope.value = 'sess_1'
     await nextTick()

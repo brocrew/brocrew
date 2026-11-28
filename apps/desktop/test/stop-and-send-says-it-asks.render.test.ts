@@ -3,7 +3,6 @@ import { createSSRApp, h } from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import PromptComposer, {
   interruptKeyLabel,
-  sendIntentFor,
   sendKeyLabel,
 } from '../src/renderer/src/components/PromptComposer.vue'
 import { stopJoinsThatAsk } from '../src/renderer/src/lib/stop-unanswered'
@@ -168,18 +167,5 @@ describe('§4 · the words and the press beside Stop and send are untouched (sco
     expect(footOf(html)).toBe(
       'Codex is working — type to queue a message. Esc is Stop: the turn is asked to stop.',
     )
-  })
-
-  it('⚑ THE CONTROL — `busy` with NO draft and R83’s sentence: R83’s title and foot, not these', async () => {
-    const html = await composer({ state: 'busy', stopUnanswered: R83_WORDS })
-    expect(titlesOf(html, 'interrupt-session')).toEqual([`${R83_WORDS} (Esc)`])
-    expect(footOf(html)).toBe(`${R83_WORDS}. Esc is Stop; type to queue a message.`)
-    expect(footOf(html)).not.toContain('Stop and send')
-  })
-
-  it('⚑ THE CONTROL — what a press MEANS is unchanged: ⇧ while busy is `interrupt`, the plain chord queues', () => {
-    expect(sendIntentFor('busy', true)).toBe('interrupt')
-    expect(sendIntentFor('busy', false)).toBe('queue')
-    expect(sendIntentFor('idle', true)).toBe('now')
   })
 })

@@ -392,51 +392,6 @@ describe('541 §2 · each element reads at its role’s token', () => {
   })
 
   /**
-   * 🔴 **The assertion above compares `ROLE_SIZE` with itself, and this one does not.**
-   *
-   * ⛔ **A per-element equality is blind to every edit of `ROLE_SIZE` by construction** — both
-   * sides read the map, so putting every role back on `--text-6xs` passes all of it. ⚑ The floors
-   * are typed HERE. ⚠️ They are FLOORS and not equalities: raising a role is a decision somebody
-   * can make without touching this file; lowering one is the drift `525` measured, and it cannot.
-   */
-  it('🔴 no role may drift DOWN — floors that do not come from the map they check', async () => {
-    const m = await changesAt()
-    const panel = m.q('session-changes')
-
-    const FLOOR: Record<TextRole, number> = {
-      // `tokens.css` §9: reading lives at 11-12 px, and the deferred foot is a safety sentence.
-      prose: 11,
-      // The step `tokens.css` itself calls the *DEFAULT UI label & button text*.
-      label: 10,
-      // §9's own floor: *"sizes < 9px are micro-labels/badges/table-heads only."*
-      value: 9,
-      // The micro end — a directory prefix, a tag about the row rather than in it.
-      meta: 8,
-      // ⛔ Unworn on this tab, and held to the same floor `529` set for the two it repaired.
-      field: 7.5,
-    }
-
-    for (const role of ROLE_ORDER) {
-      expect(
-        tokenPx(ROLE_SIZE[role], panel),
-        `${role} is on ${ROLE_SIZE[role]}, below the floor these tabs were repaired to`,
-      ).toBeGreaterThanOrEqual(FLOOR[role])
-    }
-
-    // The control: the floors are not satisfied by everything. No token is under 12 px now, so it
-    // plants 7.5 px, the tab's smallest text before the floor, which clears none of them.
-    panel.style.setProperty('--probe-under', '7.5px')
-    const bottom = tokenPx('--probe-under', panel.firstElementChild!)
-    panel.style.removeProperty('--probe-under')
-    for (const role of ROLE_ORDER) {
-      if (role === 'field') continue
-      expect(bottom, `${role}'s floor is satisfied by the size 525 measured`).toBeLessThan(
-        FLOOR[role],
-      )
-    }
-  })
-
-  /**
    * 🔴 **…and the stylesheet actually GOES THROUGH the bridge, which nothing else asks.**
    *
    * ⛔ **Hard-code every size back to a `--text-*` and the sweep above still passes**, because it

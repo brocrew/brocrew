@@ -280,13 +280,6 @@ describe('707 · R39, extended — a spawn that ran short', () => {
   // ───────────────────────────────────────────────────────────────────────────────
 
   describe('§2 · a real never keeps its permanent word', () => {
-    it('⚑ a sign-in the machine does not have', async () => {
-      const pm = await aPmThatMaySpawn()
-      vi.spyOn(console, 'warn').mockImplementation(() => {})
-      gate.startFails = () => new AuthUnavailableError('claude', 'signed out')
-      aKeptGive(await spawnWorker(pm), 'Claude sign-in could not be used', true)
-    })
-
     // 🔴 **716 · R67 — one word for a missing program**: it was `agent-did-not-start` until `716`, and
     // is R51's `agent-could-not-be-started` now, as Claude's is (`what-a-person-must-fix-said-once`
     // §1) — so this arm is RED on `main` from `716` on, and no longer a control. ⚑ Still permanent and

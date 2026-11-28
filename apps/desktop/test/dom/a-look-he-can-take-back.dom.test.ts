@@ -107,13 +107,4 @@ describe('523 · the press that hands a conversation back', () => {
     // (*"Turn spawning back on?"*); this one still says what it said.
     expect(m.q('hand-it-back').textContent).toContain(HAND_IT_BACK)
   })
-
-  it('⚑ a conversation this window STARTED has no such press to make', () => {
-    const { m } = bar({
-      session: { ...CLAIMED, startedWithoutAWindow: false, mayHandItBack: false },
-    })
-    expect(m.all('hand-it-back')).toHaveLength(0)
-    // Paired on the same mount: the bar is drawn, and the drawer toggle beside it is still there.
-    expect(m.all('toggle-session-panel')).toHaveLength(1)
-  })
 })

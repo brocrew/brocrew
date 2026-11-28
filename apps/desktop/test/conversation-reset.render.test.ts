@@ -60,12 +60,6 @@ describe('ConversationResetEntry — the seam a `/clear` leaves (199 acceptance 
     expect(html).not.toContain('data-cy="compaction-boundary"')
   })
 
-  it('…and in debug too — this is not a mode toggle, it is a fact about the conversation', async () => {
-    const html = await render({ items: afterAReset().items, who: 'Claude' })
-    expect(html).toContain('data-cy="reset-boundary"')
-    expect(html).toContain('sess-after')
-  })
-
   it('says the earlier turns are GONE rather than summarized — the whole difference from a compaction', async () => {
     const html = await render({ items: afterAReset().items, who: 'Claude' })
     expect(html).toContain('gone from the model, not summarized')

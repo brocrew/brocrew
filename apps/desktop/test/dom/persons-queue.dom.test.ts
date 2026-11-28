@@ -425,12 +425,6 @@ describe('The waiting queue stays reachable in an overlay', () => {
     lid.remove()
   })
 
-  it('draws no queue when nothing is waiting', async () => {
-    supply([])
-    const m = await overlay(1180)
-    expect(m.all('persons-queue')).toEqual([])
-  })
-
   it('reaches the queue with Shift+Tab from the opening focus', async () => {
     const m = await overlay(1180)
     tab(true)

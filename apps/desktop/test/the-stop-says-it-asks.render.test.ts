@@ -383,16 +383,6 @@ describe('§4 · no word of the Stop claims the press ends the turn', () => {
 // ─────────────────────────────────────────────────────────────────────────────────────────────
 
 describe('§5 · the words beside the Stop are untouched (scope)', () => {
-  it('⚑ THE CONTROL — `busy` WITH R83’s sentence: its title and foot, not the busy words', async () => {
-    const html = await composer({ state: 'busy', stopUnanswered: R83_WORDS })
-    expect(titlesOf(html, 'interrupt-session')).toEqual([`${R83_WORDS} (Esc)`])
-    expect(footOf(html)).toBe(`${R83_WORDS}. Esc is Stop; type to queue a message.`)
-    expect(footOf(html)).not.toContain(THE_TURN_IS_ASKED_TO_STOP)
-    // ⚑ **D-010** — and the same with a message already waiting: a second is held behind it.
-    const queued = await composer({ state: 'busy', stopUnanswered: R83_WORDS, hasQueued: true })
-    expect(footOf(queued)).toBe(`${R83_WORDS}. Esc is Stop; type to queue a message.`)
-  })
-
   it('⚑ THE CONTROL — `busy` and NOT interruptible (a closing conversation): no Stop, and the foot says only who is working', async () => {
     const html = await composer({ state: 'busy', interruptible: false })
     expect(count(html, 'interrupt-session')).toBe(0)

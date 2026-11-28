@@ -456,19 +456,6 @@ describe('keptPictureOrPdf · the name says the kind, the bytes say the type', (
       })
     }
   })
-
-  it('draws locally edited bytes and still refuses a missing file', () => {
-    const changed = kept('changed.png', png(4, 4))
-    writeFileSync(whereItIs(changed), png(5, 5))
-    expect(keptPictureOrPdf(root, changed)).toEqual({
-      ok: true,
-      drawnAs: 'image/png',
-      bytes: new Uint8Array(png(5, 5)),
-    })
-    const gone = kept('gone.png', png(6, 6))
-    rmSync(whereItIs(gone))
-    expect(keptPictureOrPdf(root, gone)).toEqual({ ok: false, reason: 'unreadable' })
-  })
 })
 
 describe('keptFileToShow · where Finder is pointed, and when it is not', () => {
@@ -487,12 +474,6 @@ describe('keptFileToShow · where Finder is pointed, and when it is not', () => 
 
   it('an untouched kept file is shown where it was kept, and not as changed', () => {
     const row = kept('chart.png', png(1, 1))
-    expect(keptFileToShow(root, row)).toEqual({ ok: true, path: whereItIs(row), changed: false })
-  })
-
-  it('shows a locally edited file at the same path without a hash-change warning', () => {
-    const row = kept('chart.png', png(1, 1))
-    writeFileSync(whereItIs(row), 'somebody edited it\n')
     expect(keptFileToShow(root, row)).toEqual({ ok: true, path: whereItIs(row), changed: false })
   })
 

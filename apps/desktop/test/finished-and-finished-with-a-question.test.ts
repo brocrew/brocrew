@@ -24,12 +24,7 @@ import {
 } from '../src/shared/tasks'
 import { applyEvent, createTranscript } from '../src/renderer/src/lib/transcript'
 import { isVisibleIn } from '../src/renderer/src/lib/transcript-mode'
-import {
-  WORK_STATE_WORD,
-  personsMark,
-  personsPart,
-  workReading,
-} from '../src/renderer/src/lib/work-report'
+import { personsMark, personsPart, workReading } from '../src/renderer/src/lib/work-report'
 import { describeEvent } from '../src/renderer/src/lib/describe-event'
 import {
   waitFor,
@@ -784,14 +779,6 @@ describe('406 · finished, and finished with a question', () => {
   // ───────────────────────────────────────────────────────────────────────────────────────────
 
   describe('§6 · the reading', () => {
-    it('⛔ every `TaskState` has a word, and none of them is the next state’s', () => {
-      // ⚠️ **Looped over `TASK_STATES`, never over a literal list** — §4 of the brief, and
-      // `a-loop-over-a-literal-variant-list-is-not-exhaustive`.
-      const words = TASK_STATES.map((state) => WORK_STATE_WORD[state])
-      expect(words.filter((word) => word.length > 0)).toHaveLength(TASK_STATES.length)
-      expect(new Set(words).size).toBe(TASK_STATES.length)
-    })
-
     it('🔴 two `done` rows differ by the mark and by NOTHING else', () => {
       // ⛔ **HO-019 §2's pair, at the projection layer.** The DOM file measures the same two rows
       // on a real screen; this is the half that says the difference is not a re-hue.

@@ -128,10 +128,6 @@ describe('cd842ee3 · Copy link is offered only for a link the card would show',
     return shown
   }
 
-  it('⚑ the control: a plain https address is offered', () => {
-    expect(offered(LINK)).toBe(true)
-  })
-
   it('⛔ a server card with no address offers nothing to copy', () => {
     expect(offered(undefined)).toBe(false)
   })

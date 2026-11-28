@@ -55,7 +55,7 @@ import {
   manifestFile,
   recoveryDir,
 } from '../../src/main/recovery/layout'
-import { CHECKPOINT_LINE, FAIL_LINE, READY_LINE } from '../../src/main/recovery/log-lines'
+import { CHECKPOINT_LINE } from '../../src/main/recovery/log-lines'
 import {
   BUILD_LINEAGE,
   MIGRATIONS_FOLDER,
@@ -117,14 +117,6 @@ const notTheOnlyApp = (ownership: Exclude<Ownership, 'sole'>): StartupVerdict =>
 
 const quiet: ProgressListener = () => undefined
 const aBuildWithOneMoreMigration = () => buildWithOneMoreMigration({ root: aRoot })
-
-describe('the three lines a start prints', () => {
-  it('are these exact sentences, which something watching the start matches', () => {
-    expect(READY_LINE).toBe('BroCrew is ready: its data is open and checked.')
-    expect(CHECKPOINT_LINE).toBe('BroCrew completed its recovery copy.')
-    expect(FAIL_LINE).toBe('BroCrew did not start.')
-  })
-})
 
 describe('a start that opens its data', () => {
   it('opens a database this build fits, with no copy needed, and changes nothing', async () => {

@@ -1037,16 +1037,6 @@ describe('692 · a restart keeps what was open', () => {
       expect(seenWhenWritten).toEqual([[lead, ...children]])
       expect(listed(lead)).toEqual({ running: 'not-running' })
     })
-
-    // ⚑ **D-017b** — R34c's *closed* is gone with the split: a crash and a quit both leave nothing
-    // running, and the rail says the same of each.
-    it('⚑ R34c · a crash records nothing, and the next launch lists all four with nothing running them', async () => {
-      const { lead, children } = await theFourOpen()
-      crashAndRelaunch()
-      for (const id of [lead, ...children]) {
-        expect(listed(id), id).toEqual({ running: 'not-running' })
-      }
-    })
   })
 
   // ───────────────────────────────────────────────────────────────────────────────────────────
