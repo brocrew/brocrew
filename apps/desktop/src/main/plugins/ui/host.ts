@@ -53,10 +53,18 @@ export interface PluginUiHostOptions {
   /** BroCrew-owned Apply flow; proposing never commits configuration. */
   propose(publicProposal: unknown, revision: number): void
   detached?(): void
+  /** Aborted when the person closes the screen while it is still loading. */
+  signal?: AbortSignal
+}
+/** How long the page took to load and the last load event it reached. */
+interface PluginViewLoad {
+  ms: number
+  lastEvent: string
 }
 export interface PluginConfigurationView {
   readonly view: WebContentsView
   readonly origin: string
+  readonly load: PluginViewLoad
   close(): Promise<void>
 }
 /** A failed open's refusal, with the closed step that refused it and the cause's code. */
@@ -65,6 +73,13 @@ const refusal = (step: string, cause?: unknown) =>
     step,
     code: (cause as { code?: unknown } | undefined)?.code,
   })
+const LOAD_EVENTS = [
+  'did-start-navigation',
+  'did-navigate',
+  'dom-ready',
+  'did-finish-load',
+  'did-fail-load',
+] as const
 export async function openPluginConfigurationView(
   options: PluginUiHostOptions,
 ): Promise<PluginConfigurationView> {
@@ -129,6 +144,8 @@ export async function openPluginConfigurationView(
   }
   const lifecycle: { stop?: () => void } = {}
   const loadAbort = new AbortController()
+  const load: PluginViewLoad = { ms: 0, lastEvent: 'none' }
+  const began = performance.now()
   const current = () => {
     const live = !closed && !contents.isDestroyed() && authorized()
     if (!live && !closed) closeFor(contents.isDestroyed() ? 'destroyed' : 'unauthorized')
@@ -292,14 +309,21 @@ export async function openPluginConfigurationView(
     })
     if (closed) lifecycle.stop()
     if (closed) throw refusal('revoked')
-    let timer: ReturnType<typeof setTimeout> | undefined
+    // The load ends on the view's own signals: the page finished or failed loading, its renderer
+    // went away, the view closed or was revoked, or the person closed the screen. A renderer that
+    // is slow to start on a busy computer is still on its way, so there is no flat deadline here.
+    for (const name of LOAD_EVENTS)
+      contents.on(name as 'dom-ready', () => {
+        load.lastEvent = name
+      })
+    const personClosed = () => closeFor('closed')
+    options.signal?.addEventListener('abort', personClosed, { once: true })
+    if (options.signal?.aborted) personClosed()
     let canceled: (() => void) | undefined
     const revoked = new Promise<never>((_resolve, reject) => {
       canceled = () => reject(refusal(closedBy ?? 'revoked'))
       loadAbort.signal.addEventListener('abort', canceled, { once: true })
-    })
-    const deadline = new Promise<never>((_resolve, reject) => {
-      timer = setTimeout(() => reject(refusal('load-timeout')), PLUGIN_UI_LIMITS.timeout)
+      if (loadAbort.signal.aborted) canceled()
     })
     await Promise.race([
       Promise.resolve()
@@ -308,16 +332,18 @@ export async function openPluginConfigurationView(
           throw refusal(closedBy ?? 'load', error)
         }),
       revoked,
-      deadline,
     ]).finally(() => {
-      clearTimeout(timer)
+      load.ms = Math.round(performance.now() - began)
+      options.signal?.removeEventListener('abort', personClosed)
       if (canceled) loadAbort.signal.removeEventListener('abort', canceled)
     })
     if (!current()) throw refusal(closedBy ?? 'revoked')
     if (!loaded) throw refusal('not-navigated')
   } catch (error) {
+    load.ms ||= Math.round(performance.now() - began)
     await close()
-    throw (error as { step?: unknown } | null)?.step ? error : refusal('open', error)
+    const refused = (error as { step?: unknown } | null)?.step ? error : refusal('open', error)
+    throw Object.assign(refused as Error, { load })
   }
-  return { view, origin: assets.origin, close }
+  return { view, origin: assets.origin, load, close }
 }

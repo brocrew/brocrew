@@ -6,10 +6,13 @@ import { PLUGIN_UI_RPC, PLUGIN_UI_CHANNEL } from '../src/shared/plugin-ui'
 const fake = await vi.hoisted(async () => {
   const { EventEmitter } = await import('node:events')
   let nextId = 1
+  /** While set, every page load waits for it: a renderer that has not started yet. */
+  const starting: { renderer: Promise<void> | null } = { renderer: null }
   class Contents extends EventEmitter {
     id = nextId++
     url = ''
     destroyed = false
+    navigationStarted = false
     mainFrame = { url: '', send: vi.fn() }
     openWindow: () => { action: string } = () => ({ action: 'allow' })
     constructor(readonly preferences: Record<string, unknown>) {
@@ -25,6 +28,10 @@ const fake = await vi.hoisted(async () => {
       const isolated = this.preferences.session as Session
       if (isolated.request(url, 'GET', 'mainFrame', this.id))
         throw new Error('fictional canceled request')
+      this.navigationStarted = true
+      this.emit('did-start-navigation', { url })
+      if (starting.renderer) await starting.renderer
+      if (this.destroyed) throw new Error('fictional load ended by a closed view')
       this.url = url
       this.mainFrame.url = url
       this.emit('did-navigate', {}, url)
@@ -72,6 +79,7 @@ const fake = await vi.hoisted(async () => {
     sessions,
     contents,
     ipc,
+    starting,
     exports: {
       ipcMain: ipc,
       session: {
@@ -99,7 +107,7 @@ afterEach(async () => {
   for (const view of owned.splice(0)) await view.close()
   vi.clearAllMocks()
 })
-async function host(overrideRead?: PluginUiPeer['read']) {
+async function host(overrideRead?: PluginUiPeer['read'], signal?: AbortSignal) {
   const { verified, binding } = uiFixture(),
     read = overrideRead ?? vi.fn(async () => ({ loaves: 2 })),
     proposePeer = vi.fn(async () => ({ resources: [] })),
@@ -117,6 +125,7 @@ async function host(overrideRead?: PluginUiPeer['read']) {
     },
     propose: () => {},
     detached,
+    signal,
   })
   owned.push(view)
   return {
@@ -436,5 +445,50 @@ describe('the actual isolated host wiring', () => {
     await f.view.close()
     expect(call({ sender: { session: {}, getURL: () => 'about:blank' } })).toBe('private app data')
     expect(appHandler).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('a plugin view whose renderer is slow to start', () => {
+  afterEach(() => {
+    fake.starting.renderer = null
+    vi.useRealTimers()
+  })
+  it('opens once the page loads, however long its renderer takes to start, and says how long', async () => {
+    vi.useFakeTimers()
+    let started!: () => void
+    fake.starting.renderer = new Promise<void>((resolve) => (started = resolve))
+    const opening = host()
+    let settled = false
+    void opening.then(
+      () => (settled = true),
+      () => (settled = true),
+    )
+    await vi.advanceTimersByTimeAsync(60_000)
+    expect(settled).toBe(false)
+    started()
+    const { view, contents } = await opening
+    expect(contents.getURL()).toBe(view.origin + '/ui/index.html')
+    expect(view.load.lastEvent).toBe('did-navigate')
+    expect(view.load.ms).toBeGreaterThanOrEqual(0)
+  })
+  it('ends the load when the person closes the screen, and closes the view', async () => {
+    fake.starting.renderer = new Promise<void>(() => {})
+    const closing = new AbortController()
+    const opening = host(undefined, closing.signal)
+    await vi.waitFor(() => expect(fake.contents.at(-1)?.navigationStarted).toBe(true))
+    closing.abort()
+    await expect(opening).rejects.toMatchObject({
+      step: 'closed',
+      load: { lastEvent: 'did-start-navigation' },
+    })
+    expect(fake.contents.at(-1)!.isDestroyed()).toBe(true)
+  })
+  it('ends the load when its renderer goes away', async () => {
+    fake.starting.renderer = new Promise<void>(() => {})
+    const opening = host()
+    await vi.waitFor(() => expect(fake.contents.at(-1)?.navigationStarted).toBe(true))
+    fake.contents.at(-1)!.emit('render-process-gone')
+    await expect(opening).rejects.toMatchObject({ step: 'renderer-gone' })
+    expect(fake.contents.at(-1)!.isDestroyed()).toBe(true)
   })
 })

@@ -88,6 +88,13 @@ export interface PluginSettingsController {
   screen(id: string): Promise<PluginUiHostOptions>
 }
 /** A refusal's step and error code as closed words, never its message, which may name a path. */
+/** " after N ms, last <event>" for a plugin view's load, or "" when there is none. */
+function loadNote(value: unknown): string {
+  const load = (value as { load?: { ms?: unknown; lastEvent?: unknown } } | null)?.load
+  return typeof load?.ms === 'number' && typeof load.lastEvent === 'string'
+    ? ` after ${load.ms} ms, last ${load.lastEvent}`
+    : ''
+}
 function errorCode(error: unknown): string {
   const { step, code, name } = (error ?? {}) as { step?: unknown; code?: unknown; name?: unknown }
   const word = (value: unknown) => typeof value === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(value)
@@ -105,6 +112,8 @@ export function registerPluginSettings(
       screen?: PluginConfigurationView
       reviews: Map<string, { reviewId: string; review: PluginMutationReview }>
       pending?: { requestId: string; id: string; abort: AbortController }
+      /** The screen being opened, so closing it can end a load that has not finished. */
+      opening?: AbortController
     }
   >()
   const liveWindows = new Set<BrowserWindow>()
@@ -123,6 +132,8 @@ export function registerPluginSettings(
     const generation = ++state.generation
     state.pending?.abort.abort()
     state.pending = undefined
+    state.opening?.abort()
+    state.opening = undefined
     if (!preservingReview) {
       state.reviews.clear()
       controller?.cancelPreparations?.()
@@ -573,8 +584,11 @@ export function registerPluginSettings(
           )
             return refused
           const ownership: { screen?: PluginConfigurationView } = {}
+          const opening = new AbortController()
+          state.opening = opening
           const screen = await openPluginConfigurationView({
             ...source,
+            signal: opening.signal,
             current: (binding) =>
               generation === state.generation && !owner.isDestroyed() && source.current(binding),
             detached: () => {
@@ -582,10 +596,15 @@ export function registerPluginSettings(
                 owner.contentView.removeChildView(ownership.screen.view)
               source.detached?.()
             },
-          }).catch((error: unknown) => {
-            screenRefused(`view ${errorCode(error)}`, input.bounds, owner)
-            throw error
           })
+            .catch((error: unknown) => {
+              screenRefused(`view ${errorCode(error)}${loadNote(error)}`, input.bounds, owner)
+              throw error
+            })
+            .finally(() => {
+              if (state.opening === opening) state.opening = undefined
+            })
+          console.warn(`[plugins] plugin-screen-opened${loadNote(screen)}`)
           ownership.screen = screen
           created = screen
           if (generation !== state.generation || owner.isDestroyed()) {
