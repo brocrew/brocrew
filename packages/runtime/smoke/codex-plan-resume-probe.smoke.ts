@@ -1,4 +1,5 @@
 import { execFileSync } from 'node:child_process'
+import { bounded } from './loopback-probe-kit'
 import {
   chmodSync,
   existsSync,
@@ -480,30 +481,6 @@ function configuredPortOf(home: string): number | null {
     readFileSync(join(home, 'config.toml'), 'utf8'),
   )
   return match === null ? null : Number(match[1])
-}
-
-/** ⛔ Every `await` on a launch or a turn is bounded; a stall is NOT PERFORMED, never waited on. */
-async function bounded<T>(
-  what: string,
-  ms: number,
-  work: (signal: AbortSignal) => Promise<T>,
-): Promise<T> {
-  const giveUp = new AbortController()
-  let timer: ReturnType<typeof setTimeout> | undefined
-  try {
-    return await Promise.race([
-      work(giveUp.signal),
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => {
-          giveUp.abort()
-          reject(new Error(`NOT PERFORMED — ${what} did not finish in ${String(ms)}ms`))
-        }, ms)
-        timer.unref?.()
-      }),
-    ])
-  } finally {
-    if (timer !== undefined) clearTimeout(timer)
-  }
 }
 
 /** ⚑ A poll that STOPS when its bound gives up (`704`'s review) — never a spin past the deadline. */

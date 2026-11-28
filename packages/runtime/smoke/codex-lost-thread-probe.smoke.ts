@@ -1,13 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { createServer, type Server, type ServerResponse } from 'node:http'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
@@ -20,12 +12,22 @@ import {
   type CodexIncoming,
   type CodexTransport,
 } from '../src/codex/codex-transport'
-import { CodexRuntime, codexAppServerArgs, type TransportFactory } from '../src/codex/codex-runtime'
+import { CodexRuntime, type TransportFactory } from '../src/codex/codex-runtime'
 import type { RuntimeEvent } from '../src/events'
 import { ResumeError, type SessionHandle } from '../src/runtime'
 import type { SessionRef } from '../src/session-ref'
 import { bundledCodexBinary } from './bundled-codex'
 import { probeRunDeadline, runBudgetMs } from './probe-run-deadline'
+import {
+  EXIT_GRACE_MS,
+  KILL_GRACE_MS,
+  assertConfiguredPort,
+  bounded,
+  captureProviderStanza,
+  configuredPortOfHome,
+  listen,
+  spawnCaptureChild,
+} from './loopback-probe-kit'
 import { runEvidence, runScratch } from './run-paths'
 
 /**
@@ -99,8 +101,6 @@ type Arm = keyof typeof ARMS
 /** ⚠️ Bounded, standing rule 13 — a stalled app-server is NOT PERFORMED, never waited on. */
 const OPEN_DEADLINE_MS = 30_000
 const TURN_DEADLINE_MS = 30_000
-const EXIT_GRACE_MS = 2_000
-const KILL_GRACE_MS = 2_000
 const PUMP_MS = 5_000
 /** ⚠️ A session close, not a transport close — `697`'s sizing of the same path. */
 const CLOSE_FLUSH_MS = 2_000
@@ -243,52 +243,13 @@ function oneWordModel(): { server: Server; requests: () => number } {
   return { server, requests: () => count }
 }
 
-function providerStanza(port: number): string {
-  return [
-    `model = "${MODEL}"`,
-    'model_provider = "capture"',
-    '',
-    '[model_providers.capture]',
-    'name = "BroBot 706 lost-thread capture"',
-    `base_url = "http://127.0.0.1:${String(port)}/v1"`,
-    `env_key = "${KEY}"`,
-    'request_max_retries = 0',
-    'stream_max_retries = 0',
-    '',
-  ].join('\n')
-}
-
-/** ⚑ Rule 40: the port the child is CONFIGURED with, read back from the file it reads. */
-function configuredPortOf(home: string): number | null {
-  const match = /^base_url = "http:\/\/127\.0\.0\.1:(\d+)\/v1"$/m.exec(
-    readFileSync(join(home, 'config.toml'), 'utf8'),
-  )
-  return match === null ? null : Number(match[1])
-}
-
-/** ⛔ Every `await` on a launch or a turn is bounded; a stall is NOT PERFORMED, never waited on. */
-async function bounded<T>(
-  what: string,
-  ms: number,
-  work: (signal: AbortSignal) => Promise<T>,
-): Promise<T> {
-  const giveUp = new AbortController()
-  let timer: ReturnType<typeof setTimeout> | undefined
-  try {
-    return await Promise.race([
-      work(giveUp.signal),
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => {
-          giveUp.abort()
-          reject(new Error(`NOT PERFORMED — ${what} did not finish in ${String(ms)}ms`))
-        }, ms)
-        timer.unref?.()
-      }),
-    ])
-  } finally {
-    if (timer !== undefined) clearTimeout(timer)
-  }
-}
+const providerStanza = (port: number): string =>
+  captureProviderStanza({
+    port,
+    model: MODEL,
+    name: 'BroBot 706 lost-thread capture',
+    envKey: KEY,
+  })
 
 /** Every rollout file under a home whose name carries the thread id — the thread's history on disk. */
 function rolloutsOf(home: string, threadId: string): string[] {
@@ -368,40 +329,18 @@ async function runArm(arm: Arm, root: string): Promise<ArmResult> {
   let noSuchSession: boolean | null = null
   let resumeTransport: SignedInAsAKey | null = null
   try {
-    listenedOn = await new Promise<number>((resolve, reject) => {
-      model.server.once('error', reject)
-      model.server.listen(0, '127.0.0.1', () => {
-        const address = model.server.address()
-        if (address === null || typeof address === 'string') reject(new Error('no loopback port'))
-        else resolve(address.port)
-      })
-    })
+    listenedOn = await listen(model.server)
     writeFileSync(join(home, 'config.toml'), providerStanza(listenedOn))
     // ⚑ **Rule 40, BEFORE the first child starts** — the port the child will be configured with is
     // the one `listen(0)` returned, read back from the file it reads.
-    configuredBefore = configuredPortOf(home)
-    if (configuredBefore !== listenedOn) {
-      throw new Error(
-        `NOT PERFORMED — the config names port ${String(configuredBefore)}, the endpoint is on ${String(listenedOn)}`,
-      )
-    }
+    configuredBefore = configuredPortOfHome(home)
+    assertConfiguredPort(configuredBefore, listenedOn)
     let dieAtResume = false
     // ⚑ The product factory's shape — `codexAppServerArgs`, the context's home and cwd — with an
     // explicit env, so the loopback `env_key` reaches the child and `HOME` is this arm's own.
     const factory: TransportFactory = (context) => {
       const transport = new SignedInAsAKey(
-        new SpawnCodexTransport(bundledCodexBinary(), codexAppServerArgs(), {
-          cwd: context.cwd,
-          env: {
-            PATH: process.env['PATH'] ?? '',
-            HOME: armRoot,
-            CODEX_HOME: context.providerHome,
-            CODEX_SQLITE_HOME: context.providerHome,
-            [KEY]: 'probe-only',
-          },
-          exitGraceMs: EXIT_GRACE_MS,
-          killGraceMs: KILL_GRACE_MS,
-        }),
+        spawnCaptureChild(context.cwd, armRoot, context.providerHome, KEY),
         dieAtResume,
       )
       transports.push(transport)
@@ -475,7 +414,7 @@ async function runArm(arm: Arm, root: string): Promise<ArmResult> {
     resumeTransport = transports[before] ?? null
     // ⚑ …and AFTER: the launch rewrites `config.toml` (its memory gate) — the child must still be
     // pointed at this endpoint, or every turn above talked to something else.
-    configuredAfter = configuredPortOf(home)
+    configuredAfter = configuredPortOfHome(home)
     if (configuredAfter !== listenedOn) {
       throw new Error(
         `NOT PERFORMED — after launch the config names port ${String(configuredAfter)}, not ${String(listenedOn)}`,

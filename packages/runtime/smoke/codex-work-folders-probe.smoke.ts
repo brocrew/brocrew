@@ -8,6 +8,7 @@ import {
   writeFileSync,
 } from 'node:fs'
 import { createServer, type Server, type ServerResponse } from 'node:http'
+import { bounded } from './loopback-probe-kit'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
 // 🔒 **A deep import, and deliberately** — `codex-reopen-grant-probe.smoke.ts`'s reason: this probe
@@ -393,30 +394,6 @@ function configuredPortOf(home: string): number | null {
     readFileSync(join(home, 'config.toml'), 'utf8'),
   )
   return match === null ? null : Number(match[1])
-}
-
-/** ⛔ Every `await` on a launch or a turn is bounded; a stall is NOT PERFORMED, never waited on. */
-async function bounded<T>(
-  what: string,
-  ms: number,
-  work: (signal: AbortSignal) => Promise<T>,
-): Promise<T> {
-  const giveUp = new AbortController()
-  let timer: ReturnType<typeof setTimeout> | undefined
-  try {
-    return await Promise.race([
-      work(giveUp.signal),
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => {
-          giveUp.abort()
-          reject(new Error(`NOT PERFORMED — ${what} did not finish in ${String(ms)}ms`))
-        }, ms)
-        timer.unref?.()
-      }),
-    ])
-  } finally {
-    if (timer !== undefined) clearTimeout(timer)
-  }
 }
 
 /** One card the product published, as the rig saw it, and whether the denial was TAKEN. */

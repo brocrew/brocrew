@@ -1,4 +1,9 @@
+import { readFileSync } from 'node:fs'
 import type { Server } from 'node:http'
+import { codexAppServerArgs } from '../src/codex/codex-runtime'
+import { SpawnCodexTransport } from '../src/codex/codex-transport'
+import { bundledCodexBinary } from './bundled-codex'
+import { join } from 'node:path'
 
 /**
  * The few pieces every loopback capture probe wrote for itself: the Codex provider stanza that
@@ -42,6 +47,11 @@ export function configuredPortOf(config: string): number | null {
   return match === null ? null : Number(match[1])
 }
 
+/** {@link configuredPortOf} for the `config.toml` in a Codex home the probe launched with. */
+export function configuredPortOfHome(home: string): number | null {
+  return configuredPortOf(readFileSync(join(home, 'config.toml'), 'utf8'))
+}
+
 /** Listen on an owned loopback port and return it. */
 export async function listen(server: Server): Promise<number> {
   await new Promise<void>((resolve, reject) => {
@@ -75,4 +85,77 @@ export function boundedBy(deadlineMs: number): <T>(what: string, work: Promise<T
       if (timer !== undefined) clearTimeout(timer)
     }
   }
+}
+
+/** ⛔ Every `await` on a launch or a turn is bounded; a stall is NOT PERFORMED, never waited on. */
+export async function bounded<T>(
+  what: string,
+  ms: number,
+  work: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  const giveUp = new AbortController()
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    return await Promise.race([
+      work(giveUp.signal),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          giveUp.abort()
+          reject(new Error(`NOT PERFORMED — ${what} did not finish in ${String(ms)}ms`))
+        }, ms)
+        timer.unref?.()
+      }),
+    ])
+  } finally {
+    if (timer !== undefined) clearTimeout(timer)
+  }
+}
+
+/** Wait, bounded, until `done()` holds. */
+export const until = async (what: string, ms: number, done: () => boolean): Promise<void> =>
+  await bounded(what, ms, async (signal) => {
+    while (!done() && !signal.aborted) await new Promise((resolve) => setTimeout(resolve, 10))
+  })
+
+/** ⚑ Rule 40: the port the child is configured with must be the one the endpoint listens on. */
+export function assertConfiguredPort(configured: number | null, listenedOn: number): void {
+  if (configured !== listenedOn) {
+    throw new Error(
+      `NOT PERFORMED — the config names port ${String(configured)}, the endpoint is on ${String(listenedOn)}`,
+    )
+  }
+}
+
+/** The environment a capture probe's child gets: its own home and the loopback provider's key. */
+function captureChildEnv(
+  root: string,
+  codexHome: string,
+  keyVariable: string,
+): Record<string, string> {
+  return {
+    PATH: process.env['PATH'] ?? '',
+    HOME: root,
+    CODEX_HOME: codexHome,
+    CODEX_SQLITE_HOME: codexHome,
+    [keyVariable]: 'probe-only',
+  }
+}
+
+/** The transport's own close: `close()` ends stdin, waits `EXIT_GRACE_MS`, then SIGTERM and SIGKILL each wait `KILL_GRACE_MS`. */
+export const EXIT_GRACE_MS = 2_000
+export const KILL_GRACE_MS = 2_000
+
+/** The real `codex app-server` child a capture probe spawns, in its own home and with the loopback key. */
+export function spawnCaptureChild(
+  cwd: string,
+  root: string,
+  codexHome: string,
+  keyVariable: string,
+): SpawnCodexTransport {
+  return new SpawnCodexTransport(bundledCodexBinary(), codexAppServerArgs(), {
+    cwd,
+    env: captureChildEnv(root, codexHome, keyVariable),
+    exitGraceMs: EXIT_GRACE_MS,
+    killGraceMs: KILL_GRACE_MS,
+  })
 }
