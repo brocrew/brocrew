@@ -645,12 +645,12 @@ async function launchFromAgentSheet(words: string) {
   const m = mount(RuntimeScreen, {})
   const listeners = runtime.onEvent.mock.calls.length
   useOverlays().open({ kind: 'startAsAgent', profileSlug: 'editor' })
-  await expect.poll(() => m.all('start-as-agent').length).toBe(1)
-  const sheet = m.q('start-as-agent')
-  const input = sheet.querySelector<HTMLTextAreaElement>('[data-cy="prompt-input"]')!
+  const promptInSheet = '[data-cy="start-as-agent"] textarea'
+  await expect.poll(() => m.host.querySelector(promptInSheet)).not.toBeNull()
+  const input = m.host.querySelector<HTMLTextAreaElement>(promptInSheet)!
   input.value = words
   input.dispatchEvent(new Event('input', { bubbles: true }))
-  const send = sheet.querySelector<HTMLButtonElement>('[data-cy="send-prompt"]')!
+  const send = m.q('start-as-agent').querySelector<HTMLButtonElement>('[data-cy="send-prompt"]')!
   await expect.poll(() => send.disabled).toBe(false)
   send.click()
   await expect.poll(() => runtime.createSession.mock.calls.length).toBe(1)

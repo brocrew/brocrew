@@ -7,7 +7,7 @@ import { createAgentStore, type AgentStore } from '../../src/renderer/src/lib/ag
 import type { RuntimeBridge } from '../../src/shared/runtime-ipc'
 import CanonicalDocumentViewer from '../../src/renderer/src/components/CanonicalDocumentViewer.vue'
 import SessionTools from '../../src/renderer/src/components/SessionTools.vue'
-import StartAsAgent from '../../src/renderer/src/components/StartAsAgent.vue'
+import { TeamLauncherFixture } from './team-launcher.fixture'
 import ToastStack from '../../src/renderer/src/components/ToastStack.vue'
 import { useOverlays } from '../../src/renderer/src/lib/overlay-store'
 import {
@@ -248,7 +248,7 @@ const OVERLAYS: readonly Overlay[] = [
      * so a surface left off it is silently unmeasured; this one is the least safe to leave off.
      */
     what: 'the placed-conversation door, which is the only sheet with a composer in it',
-    component: StartAsAgent,
+    component: TeamLauncherFixture,
     props: { profileSlug: 'archivist', provider: 'codex' },
     cy: 'start-as-agent',
     minElements: 10,

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { defineComponent, h, nextTick } from 'vue'
-import StartAsAgent from '../../src/renderer/src/components/StartAsAgent.vue'
+import { TeamLauncherFixture } from './team-launcher.fixture'
 import type { ChosenCwd } from '../../src/shared/runtime-ipc'
 import { mount, unmountAll, type Mounted } from './harness'
 
@@ -53,7 +53,7 @@ const placed = (): { m: Mounted; started: unknown[] } => {
   const m = mount(
     defineComponent({
       setup: () => () =>
-        h(StartAsAgent as never, {
+        h(TeamLauncherFixture as never, {
           profileSlug: 'archivist',
           provider: 'claude',
           defaultApprovalMode: 'ask',

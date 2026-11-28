@@ -184,7 +184,7 @@ export interface SessionStore {
     input: CreateSessionInput,
     door?: LaunchDoor,
     /** ⚑ **718** — the refusal of THIS launch, handed to the caller that asked (see `forLaunch`). */
-    refused?: (sentence: string) => void,
+    refused?: (sentence: string, reason: LaunchRefusal | null) => void,
   ): Promise<string | null>
   resume(sessionId: string): Promise<string | null>
   /**

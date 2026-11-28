@@ -13,6 +13,7 @@ import type { ModelLists } from './model-lists'
 
 /** What `NewConversation` is given (moved out of `NewConversation.vue` unchanged). */
 export interface NewConversationProps {
+  team?: { profileId: string; name: string }
   busy: boolean
   error: string | null
   recent?: readonly ListedConversation[] | null
@@ -26,7 +27,11 @@ export interface NewConversationProps {
 
   /** What is typed on THIS surface and not yet sent (019) — its own slot, no session id yet. */
   draft: string
-  submit?: (input: CreateSessionInput, text: string, attachments: HandedPath[]) => Promise<void>
+  submit?: (
+    input: CreateSessionInput & { profileId: string },
+    text: string,
+    attachments: HandedPath[],
+  ) => Promise<void>
   /**
    * ⛔ **The FIRST message's attachment transaction** (217, 292 §2) — owned by the caller and keyed
    * `NEW_CONVERSATION`, exactly as {@link draft} is, for the same `019` reason: this surface is

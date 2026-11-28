@@ -6,7 +6,7 @@ import { defineComponent, h, nextTick, ref, type Component } from 'vue'
 import AppTitleBar from '../../src/renderer/src/components/AppTitleBar.vue'
 import ConversationPane from '../../src/renderer/src/components/ConversationPane.vue'
 import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
-import StartAsAgent from '../../src/renderer/src/components/StartAsAgent.vue'
+import { TeamLauncherFixture } from './team-launcher.fixture'
 import TeamForest from '../../src/renderer/src/components/TeamForest.vue'
 import type { AgentStore } from '../../src/renderer/src/lib/agent-store'
 import {
@@ -441,7 +441,7 @@ function theSheet() {
     name: 'SheetHost',
     setup() {
       return () =>
-        h(StartAsAgent as Component, {
+        h(TeamLauncherFixture as Component, {
           profileSlug: 'pm',
           provider: 'claude',
           defaultApprovalMode: 'ask',

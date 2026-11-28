@@ -11,7 +11,7 @@ import { agentStoreForClient } from '../../src/renderer/src/client-provider/agen
 import AgentModelChoice from '../../src/renderer/src/components/AgentModelChoice.vue'
 import CapabilitiesSheet from '../../src/renderer/src/components/CapabilitiesSheet.vue'
 import NewAgent from '../../src/renderer/src/components/NewAgent.vue'
-import StartAsAgent from '../../src/renderer/src/components/StartAsAgent.vue'
+import { TeamLauncherFixture } from './team-launcher.fixture'
 import TeamWorkspace from '../../src/renderer/src/components/TeamWorkspace.vue'
 import { mount, unmountAll, type Mounted } from './harness'
 
@@ -180,13 +180,13 @@ it('keeps two selected clients separate and fills late names without restoring c
   expect(second.rawCatalogue).not.toHaveBeenCalled()
 })
 
-it('names the StartAsAgent current/default provider and follows the live default prop', async () => {
+it('names the Team launcher’s default provider and follows the live default prop', async () => {
   const f = fixture()
   const store = agentStoreForClient(f.client)
   await store.load()
   const provider = ref<Provider>('claude')
   const view = mount(
-    ancestor(f.client, StartAsAgent, () => ({
+    ancestor(f.client, TeamLauncherFixture, () => ({
       profileSlug: 'worker',
       agents: store,
       provider: provider.value,
@@ -195,15 +195,11 @@ it('names the StartAsAgent current/default provider and follows the live default
     })),
     {},
   )
-  await vi.waitFor(() =>
-    expect(view.q('start-as-agent').textContent).toContain('It will run on Fern'),
-  )
-  expect(view.q('start-as-agent').textContent).toContain('Default: Fern')
+  await vi.waitFor(() => expect(view.q('model-picker-face').textContent).toContain('Default: Fern'))
   provider.value = 'codex'
   await vi.waitFor(() =>
-    expect(view.q('start-as-agent').textContent).toContain('It will run on Birch'),
+    expect(view.q('model-picker-face').textContent).toContain('Default: Birch'),
   )
-  expect(view.q('start-as-agent').textContent).toContain('Default: Birch')
   expect(f.setAgentProvider).not.toHaveBeenCalled()
   expect(f.rawCatalogue).not.toHaveBeenCalled()
 })

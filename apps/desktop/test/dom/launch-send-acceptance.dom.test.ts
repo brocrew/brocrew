@@ -1,7 +1,7 @@
 import { afterEach, expect, it } from 'vitest'
 import { defineComponent, h, nextTick, ref, type Component } from 'vue'
 import NewConversation from '../../src/renderer/src/components/NewConversation.vue'
-import StartAsAgent from '../../src/renderer/src/components/StartAsAgent.vue'
+import { TeamLauncherFixture } from './team-launcher.fixture'
 import { createDraftBook, NEW_CONVERSATION } from '../../src/renderer/src/lib/drafts'
 import { NO_LAUNCH_CHOICES } from '../../src/renderer/src/lib/launch-choices'
 import type { AgentStore } from '../../src/renderer/src/lib/agent-store'
@@ -30,7 +30,7 @@ function open(surface: 'launcher' | 'agent') {
     setup() {
       return () =>
         shown.value
-          ? h(surface === 'launcher' ? NewConversation : (StartAsAgent as Component), {
+          ? h(surface === 'launcher' ? NewConversation : (TeamLauncherFixture as Component), {
               busy: false,
               error: null,
               draft: book.read(key),

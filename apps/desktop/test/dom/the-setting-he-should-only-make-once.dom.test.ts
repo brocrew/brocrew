@@ -6,8 +6,7 @@ import { defineComponent, h, nextTick, ref, type Component } from 'vue'
 import { allProviderCapabilities } from '../../../../packages/runtime/src/capabilities'
 import NewConversation from '../../src/renderer/src/components/NewConversation.vue'
 import SessionDrawer from '../../src/renderer/src/components/SessionDrawer.vue'
-import StartAsAgent from '../../src/renderer/src/components/StartAsAgent.vue'
-import { YOLO_MEANS } from '../../src/renderer/src/lib/approval-mode'
+import { TeamLauncherFixture } from './team-launcher.fixture'
 import { NO_LAUNCH_CHOICES, type LaunchChoices } from '../../src/renderer/src/lib/launch-choices'
 import { createAttachmentBook, NEW_CONVERSATION } from '../../src/renderer/src/lib/drafts'
 import { DEFAULT_PROFILE_ID, type CreateSessionInput } from '../../src/shared/runtime-ipc'
@@ -129,7 +128,7 @@ describe('§2 · the second door a person starts a conversation from', () => {
   const openSheet = (over: Record<string, unknown> = {}): Mounted => {
     installBridge()
     return mount(
-      StartAsAgent as Component,
+      TeamLauncherFixture as Component,
       {
         profileSlug: 'archivist',
         provider: 'claude',
@@ -159,7 +158,7 @@ describe('§2 · the second door a person starts a conversation from', () => {
       // on setup, so a missing bridge is a mount error rather than an empty list.
       installBridge()
       const m = mount(
-        StartAsAgent as Component,
+        TeamLauncherFixture as Component,
         {
           profileSlug: 'archivist',
           provider: 'claude',
@@ -190,46 +189,22 @@ describe('§2 · the second door a person starts a conversation from', () => {
    * ⚑ It carries no CONTROL — the setting is set once, at the front door — and a second place to
    * press it would be two answers to one question.
    */
-  it('⛔ it discloses yolo when it will launch in it, in the same bytes, and offers no control', async () => {
+  it('shows the same short approval wording at both entry points', async () => {
     await page.viewport(REAL.width, REAL.height)
-    const asking = openSheet()
-    await nextTick()
-    // ⚑ The paired positive: the sheet really rendered, so the absence below is about the mode.
-    expect(visible(asking.q('start-as-agent-title'))).toBe(true)
-    expect(asking.host.querySelector('[data-cy="yolo-means"]')).toBeNull()
-    asking.unmount()
-
-    const yolo = openSheet({ defaultApprovalMode: 'auto' })
-    await nextTick()
-    expect(yolo.q('yolo-means').textContent ?? '').toContain(YOLO_MEANS)
-    const claude = allProviderCapabilities().claude.approvals
-    expect(claude.state).toBe('available')
-    expect(yolo.q('yolo-reach').textContent?.trim()).toBe(
-      claude.state === 'available' ? claude.note : '',
-    )
-    // ⛔ **No control, and no per-launch checkbox.**
-    expect(yolo.host.querySelector('[data-cy="launch-approval-mode"]')).toBeNull()
-    expect(yolo.host.querySelector('[data-cy="auto-approve"]')).toBeNull()
-  })
-
-  /**
-   * 🔴 **The reach is the PROVIDER's, indexed and never recognised** (039). ⛔ This sheet runs on
-   * whatever identity it was opened for, and a note fixed to one provider would be the drift
-   * `a-mode-that-says-what-it-does.test.ts` §1 exists to catch, one surface further out.
-   */
-  it('🔴 the second half follows the provider the sheet was opened for', async () => {
-    await page.viewport(REAL.width, REAL.height)
-    const notes = new Set<string>()
-    for (const provider of ['claude', 'codex'] as const) {
-      const m = openSheet({ provider, defaultApprovalMode: 'auto' })
-      await nextTick()
-      notes.add(m.q('yolo-reach').textContent?.trim() ?? '')
-      m.unmount()
+    const descriptions = {
+      ask: 'Asks when an action needs permission.',
+      auto: 'Runs without asking. Use it only where you trust the agent with your files.',
     }
-    // ⚠️ **Two providers, two different sentences** — `a-mode-that-says-what-it-does.test.ts` §1's
-    // distinctness check, read off a rendered screen instead of off the capability map.
-    expect(notes.size).toBe(2)
-    expect([...notes].every((note) => note.length > 60)).toBe(true)
+    for (const mode of ['ask', 'auto'] as const) {
+      const team = openSheet({ defaultApprovalMode: mode })
+      await nextTick()
+      expect(visible(team.q('start-as-agent-title'))).toBe(true)
+      expect(team.q('first-approval-description').textContent?.trim()).toBe(descriptions[mode])
+      expect(team.all('choose-ask')).toHaveLength(0)
+      expect(team.all('choose-auto')).toHaveLength(0)
+      expect(team.all('yolo-means')).toHaveLength(0)
+      team.unmount()
+    }
   })
 })
 

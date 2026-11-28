@@ -57,7 +57,7 @@ import type {
 } from '../../../shared/runtime-ipc'
 import { A_STANDING_WARNS, DEFAULT_PROFILE_ID, PROVIDER_NAME } from '../../../shared/runtime-ipc'
 import { sessionFacets } from '../lib/agent-state'
-import { fullTime } from '../lib/clock'
+import type { ConversationRowView } from '../lib/conversation-row'
 import type { LaunchChoices } from '../lib/launch-choices'
 // 🔴 **UI-012 · the one model picker, and the lists it reads** — see `lib/model-lists.ts`.
 import { theFormSends, type PickedModel } from '../lib/model-lists'
@@ -67,7 +67,7 @@ import { joiningTheBox, shouldRestoreDraft } from '../lib/drafts'
 import type { SendBlock } from '../lib/composer-notice'
 import { createSignInGesture } from '../lib/sign-in-gesture'
 import { signInFact } from '../composables/useProfileSignIn'
-import { useClientProviders } from '../client-provider/injection'
+import { useClientApi, useClientProviders } from '../client-provider/injection'
 import { useProviderNames } from '../composables/useProviderNames'
 import type { SendIntent } from '../lib/session-store'
 import PromptComposer from './PromptComposer.vue'
@@ -75,7 +75,8 @@ import SessionHeader from './SessionHeader.vue'
 import SignInPanel from './SignInPanel.vue'
 import LaunchRefusalBox from './LaunchRefusalBox.vue'
 import ModelPicker from './ModelPicker.vue'
-import { conversationTitle } from '../lib/conversation-list'
+import ConversationRow from './ConversationRow.vue'
+import { conversationTitle, type ListedConversation } from '../lib/conversation-list'
 import type { NewConversationEmits, NewConversationProps } from '../lib/new-conversation-props'
 import { agentStateWords } from '../../../shared/agent-state'
 
@@ -169,34 +170,30 @@ const props = withDefaults(defineProps<NewConversationProps>(), {
 
 const emit = defineEmits<NewConversationEmits>()
 
-/*
- * ⛔ **The one identity this door opens is `DEFAULT_PROFILE_ID`, used directly** (417, HO-022 §2)
- * — *"A new conversation is always BroBot."*
- *
- * ⚠️ **A constant and not a ref, which is the whole of the change.** While this was a `ref` fed by
- * a `<select>`, every question below — which home to check, which sign-in to cancel, whether the
- * answer that just arrived still describes the screen — had two possible answers and needed a
- * stamp to tell them apart. There is one answer now, so the stamp is gone with the menu that made
- * it necessary; see {@link signInHere}.
- *
- * ⚑ **The imported constant rather than a local alias for it**, so the census that pins this
- * surface to one identity is pinning the shared name every other reader uses rather than a
- * spelling this file invented.
- */
+const profileId = computed(() => props.team?.profileId ?? DEFAULT_PROFILE_ID)
+const who = computed(() => props.team?.name ?? 'BroBot')
+const desktop = useClientApi().desktop
+const folder = ref<string | null>(null)
+const folderRefusal = ref<string | null>(null)
 
-// --- the credential this profile runs on (098) ---
+async function chooseFolder(): Promise<void> {
+  const chosen = await desktop?.chooseCwd()
+  if (chosen == null) return
+  folderRefusal.value = chosen.refusal ?? null
+  if (chosen.refusal === undefined) folder.value = chosen.path
+}
 
-/**
- * The last thing the provider said about the selected profile's sign-in, or `null` for "nobody has
- * asked". ⚠️ `null` and `usable` are both silent and they are not the same fact — the panel renders
- * `unknown` precisely so that "we could not ask" is never shown as "you are fine".
- */
+function useAgentHome(): void {
+  folder.value = null
+  folderRefusal.value = null
+}
+
 const foldTitle = (text: string): string =>
   text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase()
 const recentConversations = computed(() => {
   const words = [...new Set(foldTitle(props.draft).match(/[\p{L}\p{N}]+/gu) ?? [])]
   return (props.recent ?? [])
-    .filter((row) => row.identity === DEFAULT_PROFILE_ID)
+    .filter((row) => row.identity === profileId.value)
     .map((row) => ({
       row,
       matches: words.filter((word) =>
@@ -212,15 +209,25 @@ const recentConversations = computed(() => {
     .slice(0, 6)
 })
 
-/**
- * ⛔ **Whether the answer that just landed still describes the screen** (423, and `167`'s rule).
- *
- * ⚠️ **The PROVIDER only.** A gesture is keyed `provider:profileId` in the host and the profile
- * cannot move here, so a stale answer is always a stale provider — and a guard that also compared
- * a constant would be `a-comparison-tested-where-both-sides-agree`.
- */
-const stillAsking = (asked: { readonly provider: Provider }): boolean =>
-  asked.provider === props.defaultProvider
+function recentRow(row: ListedConversation): ConversationRowView {
+  return {
+    id: row.sessionId,
+    facets: null,
+    plateLabel: row.label,
+    head: 'plain',
+    title: conversationTitle(row.label, row.named),
+    status: {
+      profile: row.label,
+      provider: providers.value.find((provider) => provider === row.provider) ?? null,
+      word: agentStateWords(row.state),
+      activityAt: row.updatedAt,
+      elsewhere: row.inAnotherWindow ? 'Open in another window' : null,
+    },
+  }
+}
+
+const stillAsking = (asked: { readonly provider: Provider; readonly profileId: string }): boolean =>
+  asked.provider === props.defaultProvider && asked.profileId === profileId.value
 
 /**
  * This surface's own sign-in gestures. Their busy phase and notice are the launcher's alone, never
@@ -236,7 +243,7 @@ const stillAsking = (asked: { readonly provider: Provider }): boolean =>
 const signInClient = useClientProviders()
 const providerName = useProviderNames(signInClient)
 const signInHere = createSignInGesture({
-  pair: () => ({ provider: props.defaultProvider, profileId: DEFAULT_PROFILE_ID }),
+  pair: () => ({ provider: props.defaultProvider, profileId: profileId.value }),
   bridge: () => signInClient,
   fact: (pair) => signInFact(pair, signInClient),
   words: {
@@ -259,19 +266,16 @@ const signInHere = createSignInGesture({
  * already landed. ⚠️ Without it a person who created `default` on Claude would read Codex's
  * sign-in state under a sentence naming Claude — 086 in the direction that reassures.
  */
-watch(
-  () => props.defaultProvider,
-  () => {
-    // ⛔ **NOT while a gesture is in flight, and that is not a detail.** `SignInPanel` renders at
-    // all only when there is an answer to draw, and the CANCEL for a pending browser flow lives
-    // inside it — so clearing here would take the only way to stop a running sign-in off the
-    // screen. ⚑ The stale answer is already refused by {@link stillAsking}; what is left for this
-    // to do is drop a SETTLED answer, and the gesture drops the other one when it finishes.
-    if (signInHere.busy !== 'idle') return
-    signInHere.auth = null
-    signInHere.notice = null
-  },
-)
+watch([() => props.defaultProvider, profileId], () => {
+  // ⛔ **NOT while a gesture is in flight, and that is not a detail.** `SignInPanel` renders at
+  // all only when there is an answer to draw, and the CANCEL for a pending browser flow lives
+  // inside it — so clearing here would take the only way to stop a running sign-in off the
+  // screen. ⚑ The stale answer is already refused by {@link stillAsking}; what is left for this
+  // to do is drop a SETTLED answer, and the gesture drops the other one when it finishes.
+  if (signInHere.busy !== 'idle') return
+  signInHere.auth = null
+  signInHere.notice = null
+})
 
 /** Whether the foot's blocking group has anything in it — see {@link blockingGroupShows}. */
 const blockingShowing = computed(() =>
@@ -493,7 +497,9 @@ const shownPick = computed<PickedModel | null>(() => {
       effort: props.choices.reasoningEffort === '' ? null : props.choices.reasoningEffort,
     }
   }
-  const starts = lists.value.choices(props.defaultProvider)?.defaultModel ?? null
+  const starts = props.team
+    ? null
+    : (lists.value.choices(props.defaultProvider)?.defaultModel ?? null)
   return starts === null ? null : { provider: props.defaultProvider, ...starts }
 })
 
@@ -501,7 +507,11 @@ const shownPick = computed<PickedModel | null>(() => {
  * ⚑ **The face's words when nothing names a model** — still asking, the read itself failed, or the
  * list answered and names none; the panel says why in the provider's own words (`model-field.ts`).
  */
-const shownEmpty = computed(() => 'Choose a model')
+const shownEmpty = computed(() =>
+  props.team
+    ? `Default: ${providerName(props.defaultProvider) ?? 'this provider'}`
+    : 'Choose a model',
+)
 
 /**
  * ⚑ **Take, on the form: the pick is held by the screen above** ({@link LaunchChoices}) — and a
@@ -529,7 +539,7 @@ const startsOnSays = `This conversation starts on it. You can change it later in
  */
 const composer = ref<{ focus(): void } | null>(null)
 onMounted(() => {
-  void nextTick(() => composer.value?.focus())
+  if (!props.team) void nextTick(() => composer.value?.focus())
 })
 
 /**
@@ -575,24 +585,29 @@ onMounted(() => {
  * another** (`09` §8) — see `theFormSends`. ⚑ With no last pick, or one the host starts on anyway,
  * the three fields stand.
  */
-const sends = computed(() =>
-  modelMatchesProvider.value
-    ? theFormSends(props.choices, lists.value.choices(props.defaultProvider))
-    : (lists.value.choices(props.defaultProvider)?.defaultModelToSend ?? null),
-)
+const sends = computed(() => {
+  const supplied = props.team ? null : lists.value.choices(props.defaultProvider)
+  return modelMatchesProvider.value
+    ? theFormSends(props.choices, supplied)
+    : (supplied?.defaultModelToSend ?? null)
+})
 
 const firstApproval = ref<'ask' | 'auto' | null>(null)
 const needsApproval = computed(
-  () => props.approvalDefaultChosen === false || props.defaultApprovalMode === null,
+  () =>
+    !props.team && (props.approvalDefaultChosen === false || props.defaultApprovalMode === null),
 )
 const launchMode = computed(
-  () => firstApproval.value ?? (needsApproval.value ? null : props.defaultApprovalMode),
+  () => firstApproval.value ?? (needsApproval.value ? null : (props.defaultApprovalMode ?? 'ask')),
 )
 const canChooseProvider = computed(
   () => props.providerReadiness === null || props.providerReadiness[props.defaultProvider] === true,
 )
 const providerChecks = computed(() =>
-  providers.value.map((provider) => ({ provider, check: lists.value.readiness(provider) })),
+  providers.value.map((provider) => ({
+    provider,
+    check: lists.value.readiness(provider, props.team?.profileId),
+  })),
 )
 const providerProblems = computed(() =>
   providerChecks.value.flatMap(({ provider, check }) =>
@@ -610,7 +625,7 @@ const checkingProviders = computed(
 const providerFailure = computed(() => {
   if (props.providerReadiness === null || props.providerReadiness[props.defaultProvider] === true)
     return null
-  const check = lists.value.readiness(props.defaultProvider)
+  const check = lists.value.readiness(props.defaultProvider, props.team?.profileId)
   return check.state === 'settled' ? check.reason : null
 })
 const headerProvider = computed(() =>
@@ -627,7 +642,7 @@ const approvalBlocked = computed(
       ? `${providerName(props.defaultProvider) ?? 'this provider'} isn't set up. Set it up in Settings → Providers.`
       : props.providerReadiness !== null && props.providerReadiness[props.defaultProvider] !== true
         ? `${providerName(props.defaultProvider) ?? 'this provider'} · Checking…`
-        : props.defaultApprovalMode === null || launchMode.value === null
+        : (!props.team && props.defaultApprovalMode === null) || launchMode.value === null
           ? 'Choose Ask or Auto before sending.'
           : null),
 )
@@ -637,10 +652,11 @@ const launchBlocked = computed<SendBlock[]>(() =>
 
 const recentHeadingId = useId()
 
-const settings = computed<CreateSessionInput>(() => ({
+const settings = computed<CreateSessionInput & { profileId: string }>(() => ({
   provider: props.defaultProvider,
-  profileId: DEFAULT_PROFILE_ID,
+  profileId: profileId.value,
   approvalMode: launchMode.value ?? 'ask',
+  ...(folder.value === null ? {} : { cwd: folder.value }),
   ...(sends.value === null ? {} : { model: sends.value.model }),
   ...(sends.value?.effort == null ? {} : { reasoningEffort: sends.value.effort }),
 }))
@@ -651,6 +667,12 @@ const settings = computed<CreateSessionInput>(() => ({
 let lastTried = ''
 /** ⛔ **And the paths that were attached to them** (217, 292 §2) — see the watcher below. */
 let lastTriedPaths: HandedPath[] = []
+let cancelled = false
+
+function cancel(): void {
+  cancelled = true
+  emit('cancel')
+}
 
 async function startWith(
   text: string,
@@ -691,7 +713,10 @@ watch(
   () => props.busy,
   (busy, wasBusy) => {
     const settled = wasBusy && !busy
-    if (shouldRestoreDraft({ busy, wasBusy, error: props.error, lastTried })) {
+    if (
+      shouldRestoreDraft({ busy, wasBusy, error: props.error, lastTried }) ||
+      (settled && cancelled && lastTried !== '')
+    ) {
       emit('update:draft', joiningTheBox(props.draft, lastTried))
     }
     // ⛔ **The paths are handed back on their OWN condition** (found in review). Nested inside
@@ -699,7 +724,7 @@ watch(
     // where the paths ARE the whole message, which `216` deliberately allows and this dispatch
     // tests, was the one shape whose attachment was silently dropped. ⚑ The attachment book merges
     // what comes back with what is staged, so it needs no text clause.
-    if (settled && props.error !== null && lastTriedPaths.length > 0) {
+    if (settled && (props.error !== null || cancelled) && lastTriedPaths.length > 0) {
       props.handing.stage(lastTriedPaths)
     }
     // Consumed either way once the attempt has settled: a message is handed back at most once,
@@ -707,6 +732,7 @@ watch(
     if (settled) {
       lastTried = ''
       lastTriedPaths = []
+      cancelled = false
     }
   },
 )
@@ -719,6 +745,7 @@ watch(
     data-chat-theme="light"
   >
     <SessionHeader
+      v-if="!props.team"
       :session="null"
       :status="null"
       :default-provider="headerProvider"
@@ -726,14 +753,86 @@ watch(
       :starting="props.busy"
     />
 
-    <div class="empty-stage">
+    <div class="empty-stage" :class="{ 'team-stage': props.team }">
       <div class="front-door">
         <div class="launcher" data-cy="launcher-column">
-          <div class="es-head">
+          <div v-if="!props.team" class="es-head">
             <div class="empty-mark">
               <svg class="icon"><use href="#i-bot" /></svg>
             </div>
             <h2 class="bb-title">What should we work through?</h2>
+          </div>
+
+          <div v-if="props.team" class="launcher-folder">
+            <span v-if="folder" :title="folder" data-cy="start-as-agent-folder">{{ folder }}</span>
+            <span v-else data-cy="start-as-agent-no-folder">Agent home</span>
+            <button
+              type="button"
+              class="bb-button"
+              data-cy="start-as-agent-choose-folder"
+              @click="chooseFolder"
+            >
+              Choose folder…
+            </button>
+            <button
+              v-if="folder"
+              type="button"
+              class="bb-button"
+              data-cy="start-as-agent-use-home"
+              @click="useAgentHome"
+            >
+              Use agent home
+            </button>
+          </div>
+          <p v-if="folderRefusal" class="note" data-cy="start-as-agent-folder-refused">
+            {{ folderRefusal }}
+          </p>
+
+          <div
+            v-if="canChooseProvider && programNotice"
+            class="program-notice"
+            data-cy="launch-program"
+            :data-standing="programNotice.standing"
+            :role="programNotice.standing === 'missing' ? 'alert' : 'status'"
+          >
+            <p class="p-body">{{ programNotice.said }}</p>
+            <a
+              v-if="programNotice.help"
+              class="p-help"
+              :href="programNotice.help.url"
+              target="_blank"
+              rel="noopener"
+            >
+              {{ programNotice.help.label }}
+            </a>
+          </div>
+
+          <div
+            v-if="canChooseProvider && blockingShowing"
+            class="blockers"
+            data-cy="launch-blocked"
+          >
+            <LaunchRefusalBox
+              v-if="props.error"
+              :data-cy="props.team ? 'start-as-agent-refused' : undefined"
+              :error="props.error"
+              :text-cy="props.team ? 'start-as-agent-error' : 'command-error'"
+            />
+            <SignInPanel
+              :provider="props.defaultProvider"
+              :display-name="providerName(props.defaultProvider)"
+              :state="signInHere.auth"
+              :sign-in="signInCapability"
+              :reprovision="reprovisionCapability"
+              :busy="signInHere.busy"
+              :notice="signInHere.notice"
+              offer-providers
+              @open-providers="emit('open-providers')"
+              @check="checkAuth()"
+              @reprovision="reprovisionAuth"
+              @sign-in="signIn"
+              @cancel-sign-in="cancelSignIn"
+            />
           </div>
 
           <div v-if="!canChooseProvider" class="provider-setup-needed" role="status">
@@ -761,56 +860,18 @@ watch(
             </template>
           </div>
           <template v-else>
-            <div
-              v-if="programNotice"
-              class="program-notice"
-              data-cy="launch-program"
-              :data-standing="programNotice.standing"
-              :role="programNotice.standing === 'missing' ? 'alert' : 'status'"
-            >
-              <p class="p-body">{{ programNotice.said }}</p>
-              <a
-                v-if="programNotice.help"
-                class="p-help"
-                :href="programNotice.help.url"
-                target="_blank"
-                rel="noopener"
-              >
-                {{ programNotice.help.label }}
-              </a>
-            </div>
-
-            <div v-if="blockingShowing" class="blockers" data-cy="launch-blocked">
-              <LaunchRefusalBox v-if="props.error" :error="props.error" text-cy="command-error" />
-              <SignInPanel
-                :provider="props.defaultProvider"
-                :display-name="providerName(props.defaultProvider)"
-                :state="signInHere.auth"
-                :sign-in="signInCapability"
-                :reprovision="reprovisionCapability"
-                :busy="signInHere.busy"
-                :notice="signInHere.notice"
-                offer-providers
-                @open-providers="emit('open-providers')"
-                @check="checkAuth()"
-                @reprovision="reprovisionAuth"
-                @sign-in="signIn"
-                @cancel-sign-in="cancelSignIn"
-              />
-            </div>
-
             <PromptComposer
               ref="composer"
               :state="props.busy ? 'starting' : 'idle'"
-              who="BroBot"
-              placeholder="What would you like BroBot to do?"
+              :who="who"
+              :placeholder="`What would you like ${who} to do?`"
               :draft="props.draft"
               :handing="props.handing"
               :can-attach="true"
               :blocked="launchBlocked"
               :submit="props.submit ? startWith : undefined"
               @send="startWith"
-              @interrupt="emit('cancel')"
+              @interrupt="cancel"
               @update:draft="(text) => emit('update:draft', text)"
             />
             <div class="said">
@@ -819,10 +880,12 @@ watch(
                   <span class="lbl">model</span>
                   <ModelPicker
                     :providers="providers"
+                    :profile-id="props.team?.profileId"
                     :readiness="props.providerReadiness"
                     :programs="props.programs"
                     :set-up="(provider) => emit('open-providers', provider)"
                     :shown="shownPick"
+                    :fixed="Boolean(props.team && props.busy)"
                     :empty="shownEmpty"
                     take-words="Start on this"
                     :take="startOn"
@@ -837,7 +900,7 @@ watch(
                 <p class="governs">
                   {{ needsApproval ? 'CHOOSE HOW THIS AGENT WORKS' : 'HOW THIS AGENT WORKS' }}
                 </p>
-                <div class="first-approval-buttons">
+                <div v-if="!props.team" class="first-approval-buttons">
                   <button
                     v-for="mode in ['ask', 'auto'] as const"
                     :key="mode"
@@ -890,17 +953,7 @@ watch(
               :aria-label="`Open ${conversationTitle(row.label, row.named)}. ${row.label}. ${agentStateWords(row.state)}${row.inAnotherWindow ? ' · open in another window' : ''}`"
               @click="emit('open', row.sessionId)"
             >
-              <strong>{{ conversationTitle(row.label, row.named) }}</strong>
-              <span class="recent-meta"
-                ><span>{{ row.label }}</span
-                ><time :datetime="new Date(row.updatedAt).toISOString()">{{
-                  fullTime(row.updatedAt)
-                }}</time></span
-              >
-              <span class="recent-state"
-                >{{ agentStateWords(row.state)
-                }}<span v-if="row.inAnotherWindow"> · open in another window</span></span
-              >
+              <ConversationRow :row="recentRow(row)" />
               <span v-if="matches > 0" class="bb-chip bb-chip--accent">Title match</span>
             </button>
           </div>

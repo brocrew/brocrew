@@ -4,7 +4,7 @@ import { defineComponent, h, nextTick, provide, ref, type Component } from 'vue'
 import { SUPPORTED_PROVIDERS, providerDescriptor } from '@brobot2/shared'
 import { CLIENT_PROVIDERS } from '../../src/renderer/src/client-provider/injection'
 import { desktopProviderApi } from '../../src/renderer/src/client-provider/window'
-import StartAsAgent from '../../src/renderer/src/components/StartAsAgent.vue'
+import { TeamLauncherFixture } from './team-launcher.fixture'
 import type { AgentStore } from '../../src/renderer/src/lib/agent-store'
 
 import { theList } from '../../src/shared/model-choice'
@@ -64,7 +64,7 @@ function opened(
       setup() {
         provide(CLIENT_PROVIDERS, catalogueClient)
         return () =>
-          h(StartAsAgent as Component, {
+          h(TeamLauncherFixture as Component, {
             profileSlug: 'draft-reader',
             provider: 'claude',
             defaultApprovalMode: options.approvalMode ?? 'ask',
@@ -113,7 +113,7 @@ describe('choosing a provider for a new conversation as an existing agent', () =
     await settle()
     m.q('model-picker-take').click()
     await settle()
-    expect(m.host.textContent).toContain('It will run on Codex')
+    expect(m.q('model-picker-face').textContent).toContain('fictional-codex')
     const prompt = m.q('prompt-input') as HTMLTextAreaElement
     prompt.value = 'Read the fictional draft.'
     prompt.dispatchEvent(new Event('input'))
@@ -132,14 +132,10 @@ describe('choosing a provider for a new conversation as an existing agent', () =
     expect(reads.every((read) => read.profileId === 'draft-reader')).toBe(true)
   })
 
-  it('shows the selected provider’s approval reach before any launch', async () => {
-    const claude = CAPABILITY_FIXTURE.claude.approvals
-    const codex = CAPABILITY_FIXTURE.codex.approvals
-    if (claude.state !== 'available' || codex.state !== 'available') {
-      throw new Error('the fictional approval notes are not available')
-    }
-    const { m, started } = opened({ approvalMode: 'auto', capabilities: CAPABILITY_FIXTURE })
-    expect(m.q('yolo-reach').textContent?.trim()).toBe(claude.note)
+  it('keeps the short Auto wording when the provider changes', async () => {
+    const { m } = opened({ approvalMode: 'auto', capabilities: CAPABILITY_FIXTURE })
+    const note = m.q('first-approval-description').textContent
+    expect(note).toContain('Runs without asking.')
     m.q('model-picker-face').click()
     await settle()
     m.q('model-picker-choose-codex').click()
@@ -154,7 +150,6 @@ describe('choosing a provider for a new conversation as an existing agent', () =
     await settle()
     m.q('model-picker-take').click()
     await settle()
-    expect(m.q('yolo-reach').textContent?.trim()).toBe(codex.note)
-    expect(started).toEqual([])
+    expect(m.q('first-approval-description').textContent).toBe(note)
   })
 })

@@ -96,7 +96,7 @@ export function whatTheFrontDoorCannotCarry(asked) {
  * What the placed door cannot carry either: the count that says how much of the interim is waiting
  * on a surface and how much on nothing.
  *
- * `StartAsAgent.vue` sends the identity and the folder a person chose, so what still holds a
+ * `NewConversation.vue` sends the identity and the folder a person chose, so what still holds a
  * placement is a field no launch-time control sets. The question an instrument can answer is which
  * placements are held up by a field some surface could carry, and which by a field no door in this
  * product will ever have.

@@ -127,7 +127,7 @@ it('uses the existing state wording and discloses another window', async () => {
   const { m } = open([r])
   await nextTick()
   expect(m.q('recent-conversation-away').textContent).toContain('idle')
-  expect(m.q('recent-conversation-away').textContent).toContain('open in another window')
+  expect(m.q('recent-conversation-away').textContent).toMatch(/open in another window/i)
 })
 
 function beforeSend(m: ReturnType<typeof mount>, notice: HTMLElement): void {

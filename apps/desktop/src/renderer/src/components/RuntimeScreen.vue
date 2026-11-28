@@ -1077,7 +1077,10 @@ function restoreRefused(slot: string, text: string, attachments: HandedPath[]): 
 interface LaunchTold {
   navigated?(): void
   opened?(): void
-  refused?(sentence: string): void
+  refused?(
+    sentence: string,
+    reason: import('../../../shared/runtime-ipc').LaunchRefusal | null,
+  ): void
 }
 
 /**
@@ -1960,7 +1963,12 @@ onUnmounted(() => {
         :default-approval-mode="frontDoorApproval"
         :start="startFromSheet"
         :drafts="drafts"
+        :recent="rail?.theOneList ?? null"
+        :programs="programs"
         @settings="openSettings"
+        @open="select"
+        @providers="openProviderSettings"
+        @auth-changed="authChangedFor"
         @archived="archivedFromTheSheet"
         @deleted="deletedFromTheSheet"
       />

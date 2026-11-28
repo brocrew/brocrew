@@ -531,7 +531,7 @@ export function createSessionStore(bridge: ClientSessionApi): SessionStore {
     into: Ref<string | null>,
     gesture: string,
     action: (launchKey: string) => Promise<T>,
-    refused?: (sentence: string) => void,
+    refused?: (sentence: string, reason: LaunchRefusal | null) => void,
   ): Promise<T | undefined> {
     const key = nextLaunchKey()
     inFlight.set(gesture, key)
@@ -554,7 +554,7 @@ export function createSessionStore(bridge: ClientSessionApi): SessionStore {
         const said = readableError(cause)
         if (gesture === NEW_LAUNCH && inFlight.get(gesture) === key) launchRefusal.value = answered
         if (inFlight.get(gesture) === key) into.value = said
-        refused?.(said)
+        refused?.(said, answered)
       }
       return undefined
     } finally {

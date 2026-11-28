@@ -191,12 +191,11 @@ export function profileHome(userDataDir, profileId) {
 }
 
 /**
- * What the placed door sends, lifted out of `StartAsAgent.vue` rather than written down here, so the
+ * What the placed door sends, lifted out of `NewConversation.vue` rather than written down here, so the
  * count an instrument prints about the interim door stays true to what the surface sends.
  *
- * `approvalMode` is in the list but not free: the sheet sends the literal `'ask'`, so a placement
- * asking for `'auto'` cannot be carried. {@link whatThePlacedDoorCannotCarry} judges that, since it
- * needs the value and this function only knows the shape.
+ * The Team entry inherits the saved approval mode. The field is present even though the sheet
+ * does not offer a mode selector.
  *
  * A shape it cannot read is a stop: an empty field list would make every placement look movable.
  *
@@ -204,14 +203,14 @@ export function profileHome(userDataDir, profileId) {
  */
 export function placedDoorSends() {
   return placedDoorSendsFrom(
-    readFileSync(join(DESKTOP, 'src/renderer/src/components/StartAsAgent.vue'), 'utf8'),
+    readFileSync(join(DESKTOP, 'src/renderer/src/components/NewConversation.vue'), 'utf8'),
   )
 }
 
 /** Read the emitted object, including a local constant shared with the awaited submit path. */
 export function placedDoorSendsFrom(source) {
-  const script = source.match(/<script\b[^>]*>([\s\S]*?)<\/script>/)?.[1] ?? source
-  const tree = ts.createSourceFile('StartAsAgent.ts', script, ts.ScriptTarget.Latest, true)
+  const script = source.match(/<script\b[^>]*\bsetup\b[^>]*>([\s\S]*?)<\/script>/)?.[1] ?? source
+  const tree = ts.createSourceFile('NewConversation.ts', script, ts.ScriptTarget.Latest, true)
   let payload
   function visit(node) {
     if (
@@ -222,8 +221,10 @@ export function placedDoorSendsFrom(source) {
       node.arguments[0].text === 'start'
     ) {
       let value = node.arguments[1]
-      if (value && ts.isIdentifier(value)) {
-        const name = value.text
+      const computedValue =
+        value && ts.isPropertyAccessExpression(value) && value.name.text === 'value'
+      const identifier = computedValue ? value.expression : value
+      if (identifier && ts.isIdentifier(identifier)) {
         value = undefined
         for (let scope = node.parent; scope; scope = scope.parent) {
           if (!ts.isBlock(scope) && !ts.isSourceFile(scope)) continue
@@ -231,18 +232,26 @@ export function placedDoorSendsFrom(source) {
             .filter(ts.isVariableStatement)
             .flatMap((statement) => [...statement.declarationList.declarations])
             .find(
-              (declaration) => ts.isIdentifier(declaration.name) && declaration.name.text === name,
+              (declaration) =>
+                ts.isIdentifier(declaration.name) && declaration.name.text === identifier.text,
             )
-          if (binding) {
-            if (binding.parent.flags & ts.NodeFlags.Const) value = binding.initializer
-            break
-          }
+          if (!binding) continue
+          if (binding.parent.flags & ts.NodeFlags.Const) value = binding.initializer
+          break
+        }
+        if (computedValue) {
+          const computed =
+            value &&
+            ts.isCallExpression(value) &&
+            ts.isIdentifier(value.expression) &&
+            value.expression.text === 'computed'
+          const getter = computed ? value.arguments[0] : undefined
+          value = getter && ts.isArrowFunction(getter) ? getter.body : undefined
+          if (value && ts.isParenthesizedExpression(value)) value = value.expression
         }
       }
       if (!value || !ts.isObjectLiteralExpression(value)) {
-        throw new Error(
-          'StartAsAgent start payload is not an object literal or a local constant object',
-        )
+        throw new Error('The launcher start payload is not an object literal or a constant object')
       }
       payload = value
       return
@@ -250,10 +259,10 @@ export function placedDoorSendsFrom(source) {
     ts.forEachChild(node, visit)
   }
   visit(tree)
-  if (!payload) throw new Error('StartAsAgent.vue has no readable start payload')
+  if (!payload) throw new Error('NewConversation.vue has no readable start payload')
   const fields = fieldsOf(script.slice(payload.getStart(tree) + 1, payload.end - 1))
   if (fields.length === 0) {
-    throw new Error('⛔ StartAsAgent.vue’s start payload read as empty — refusing to answer.')
+    throw new Error('⛔ NewConversation.vue’s start payload read as empty — refusing to answer.')
   }
   return fields
 }
@@ -268,7 +277,7 @@ export function placedDoorSendsFrom(source) {
  * sends.
  *
  * A field sent only when it has a value is a field it sends: the wire's idiom for an optional field
- * is a conditional spread, `...(folder.value === null ? {} : { cwd: ... })` in `StartAsAgent.vue`.
+ * is a conditional spread, `...(folder.value === null ? {} : { cwd: ... })` in `NewConversation.vue`.
  * So a spread line counts its one key, on either arm and in either spelling (`{ cwd: x }` or
  * `{ cwd }`); a spread of anything else names no key here.
  *

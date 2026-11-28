@@ -18,7 +18,7 @@ import ChildWorkViewer from '../../src/renderer/src/components/ChildWorkViewer.v
 import ToolAnswerViewer from '../../src/renderer/src/components/ToolAnswerViewer.vue'
 import ImageViewer from '../../src/renderer/src/components/ImageViewer.vue'
 import NewAgent from '../../src/renderer/src/components/NewAgent.vue'
-import StartAsAgent from '../../src/renderer/src/components/StartAsAgent.vue'
+import { TeamLauncherFixture } from './team-launcher.fixture'
 import OverlayHost from '../../src/renderer/src/components/OverlayHost.vue'
 import ProvidersScreen from '../../src/renderer/src/components/ProvidersScreen.vue'
 import WorkSearchDialog from '../../src/renderer/src/components/WorkSearchDialog.vue'
@@ -261,7 +261,7 @@ const PATHS = [
     // 500 · the two props the sheet now reads to disclose the launch default. `null` is *the
     // roster read has not landed*, which is this fixture's state and is not about approvals.
     open: () =>
-      h(StartAsAgent, {
+      h(TeamLauncherFixture, {
         profileSlug: 'archivist',
         provider: 'codex',
         defaultApprovalMode: null,

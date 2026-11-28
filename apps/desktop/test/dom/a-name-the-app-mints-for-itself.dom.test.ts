@@ -3,7 +3,7 @@ import { page } from 'vitest/browser'
 import { nextTick, ref, type Component } from 'vue'
 import { allProviderCapabilities } from '../../../../packages/runtime/src/capabilities'
 import TeamWorkspace from '../../src/renderer/src/components/TeamWorkspace.vue'
-import StartAsAgent from '../../src/renderer/src/components/StartAsAgent.vue'
+import { TeamLauncherFixture } from './team-launcher.fixture'
 import type { AgentStore } from '../../src/renderer/src/lib/agent-store'
 import type { AgentIdentities, AgentIdentity } from '../../src/shared/runtime-ipc'
 import { HUMAN_NAMES, aNameForANewAgent, namesThatCanBeGiven } from '../../src/shared/human-names'
@@ -384,7 +384,7 @@ describe('§2 · `537` F6 — the launcher door that named an identity by its sl
   const sheet = (agents: AgentStore): Mounted => {
     installBridge()
     return mount(
-      StartAsAgent as Component,
+      TeamLauncherFixture as Component,
       {
         profileSlug: MINTED_SLUG,
         provider: 'claude',
@@ -418,7 +418,9 @@ describe('§2 · `537` F6 — the launcher door that named an identity by its sl
     expect(m.q('start-as-agent-title').textContent?.trim()).toBe(`New conversation as ${ASSIGNED}`)
     // ⚑ **And the composer's placeholder, which is the second place this sheet says the name** —
     // one derivation, two surfaces, `169` §1.
-    expect((m.q('prompt-input') as HTMLTextAreaElement).placeholder).toContain(`Tell ${ASSIGNED}`)
+    expect((m.q('prompt-input') as HTMLTextAreaElement).placeholder).toContain(
+      `would you like ${ASSIGNED}`,
+    )
     // 🔴 **The divergence this rests on, stated rather than assumed** (standing rule 3): the name
     // and the slug are different strings, so drawing either one is a distinguishable outcome and
     // the test below draws the other one in the same component.

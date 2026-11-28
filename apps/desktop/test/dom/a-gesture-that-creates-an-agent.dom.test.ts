@@ -10,7 +10,7 @@ import CapabilitiesSheet from '../../src/renderer/src/components/CapabilitiesShe
 import NewAgent from '../../src/renderer/src/components/NewAgent.vue'
 import TeamWorkspace from '../../src/renderer/src/components/TeamWorkspace.vue'
 import { useAgentStore } from '../../src/renderer/src/composables/useAgentStore'
-import StartAsAgent from '../../src/renderer/src/components/StartAsAgent.vue'
+import { TeamLauncherFixture } from './team-launcher.fixture'
 import type {
   AgentIdentities,
   AgentIdentity,
@@ -629,7 +629,7 @@ describe('§6 · a conversation started as an identity a person created', () => 
         setup() {
           provide(CLIENT_PROVIDERS, catalogueClient)
           return () =>
-            h(StartAsAgent as never, {
+            h(TeamLauncherFixture as never, {
               profileSlug: 'archivist',
               provider: 'claude',
               agents,

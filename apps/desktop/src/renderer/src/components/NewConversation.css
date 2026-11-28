@@ -302,22 +302,37 @@ h2 {
   border-color: var(--accent-border);
   background: var(--accent-fill);
 }
-.recent-card strong {
-  font-size: var(--type-body);
-  font-weight: var(--fw-medium);
+.recent-card :deep(.conversation-row) {
+  width: 100%;
 }
-.recent-meta {
+
+.team-stage {
+  align-items: stretch;
+  padding: 0;
+}
+
+.team-stage .front-door {
+  width: 100%;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--space-8);
+}
+
+.launcher-folder {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-2) var(--space-4);
+  align-items: center;
+  gap: var(--space-4);
+  margin-bottom: var(--space-7);
+  font-size: var(--type-caption);
+}
+
+.launcher-folder span {
+  min-width: 0;
+  flex: 1;
+  overflow-wrap: anywhere;
   color: var(--muted);
-  font-size: var(--type-caption);
 }
-.recent-state {
-  color: var(--text-soft);
-  font-size: var(--type-caption);
-  line-height: var(--leading-normal);
-}
+
 @container (max-width: 760px) {
   .front-door {
     grid-template-columns: minmax(0, 1fr);

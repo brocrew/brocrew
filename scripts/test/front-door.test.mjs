@@ -236,7 +236,7 @@ describe('427 · the REAL placed door, and what it still cannot carry', () => {
   const SENDS = placedDoorSends()
 
   /**
-   * Derived from `StartAsAgent.vue`, so a field added to that sheet moves this by itself, and pinned
+   * Derived from `NewConversation.vue`, so a field added to that sheet moves this by itself, and pinned
    * so a field joining or leaving the door is a red somebody acknowledges in a diff. The count
    * `ui-live-smoke.mjs` prints about its interim door is computed from this list.
    */
@@ -244,21 +244,21 @@ describe('427 · the REAL placed door, and what it still cannot carry', () => {
     expect(SENDS).toEqual([
       'provider',
       'profileId',
+      'approvalMode',
+      'cwd',
       'model',
       'reasoningEffort',
-      'cwd',
-      'approvalMode',
     ])
   })
 
   it('reads added fields from the actual shared payload binding instead of a mirrored list', () => {
     const source = readFileSync(
-      join(REPO, 'apps/desktop/src/renderer/src/components/StartAsAgent.vue'),
+      join(REPO, 'apps/desktop/src/renderer/src/components/NewConversation.vue'),
       'utf8',
     )
     const changed = source.replace(
-      '    profileId: props.profileSlug,',
-      '    fixtureOnly: true,\n    profileId: props.profileSlug,',
+      '  profileId: profileId.value,',
+      '  fixtureOnly: true,\n  profileId: profileId.value,',
     )
     expect(changed).not.toBe(source)
     expect(placedDoorSendsFrom(changed)).toEqual([SENDS[0], 'fixtureOnly', ...SENDS.slice(1)])
@@ -266,17 +266,17 @@ describe('427 · the REAL placed door, and what it still cannot carry', () => {
 
   it('resolves the real local payload when its name changes and an outer object uses the old name', () => {
     const source = readFileSync(
-      join(REPO, 'apps/desktop/src/renderer/src/components/StartAsAgent.vue'),
+      join(REPO, 'apps/desktop/src/renderer/src/components/NewConversation.vue'),
       'utf8',
     )
     const renamed = source
-      .replace('const input:', 'const placement:')
-      .replace("emit('start', input,", "emit('start', placement,")
-      .replace('props.submit(input,', 'props.submit(placement,')
+      .replace('const settings =', 'const placement =')
+      .replace("emit('start', settings.value,", "emit('start', placement.value,")
+      .replace('props.submit(settings.value,', 'props.submit(placement.value,')
     expect(renamed).not.toBe(source)
     const decoy = renamed.replace(
-      '<script setup lang="ts">',
-      '<script setup lang="ts">\nconst input = { fabricatedKey: true }',
+      '<script lang="ts">',
+      '<script lang="ts">\nconst settings = { fabricatedKey: true }',
     )
     expect(decoy).not.toBe(renamed)
     expect(placedDoorSendsFrom(decoy)).toEqual(SENDS)
@@ -284,25 +284,23 @@ describe('427 · the REAL placed door, and what it still cannot carry', () => {
 
   it('does not read an outer constant when the actual emitted payload has a nearer mutable binding', () => {
     const source = readFileSync(
-      join(REPO, 'apps/desktop/src/renderer/src/components/StartAsAgent.vue'),
+      join(REPO, 'apps/desktop/src/renderer/src/components/NewConversation.vue'),
       'utf8',
     )
-    const mutable = source.replace('const input:', 'let input:')
-    expect(mutable).not.toBe(source)
-    const changed = mutable.replace(
-      '<script setup lang="ts">',
-      '<script setup lang="ts">\nconst input = { fabricatedKey: true }',
+    const changed = source.replace(
+      "  emit('start', settings.value,",
+      "  let settings = { value: { fabricatedKey: true } }\n  emit('start', settings.value,",
     )
-    expect(changed).not.toBe(mutable)
+    expect(changed).not.toBe(source)
     expect(() => placedDoorSendsFrom(changed)).toThrow('not an object literal')
   })
 
   it('does not substitute a field list when the actual emitted payload is not source-readable', () => {
     const source = readFileSync(
-      join(REPO, 'apps/desktop/src/renderer/src/components/StartAsAgent.vue'),
+      join(REPO, 'apps/desktop/src/renderer/src/components/NewConversation.vue'),
       'utf8',
     )
-    const changed = source.replace("emit('start', input,", "emit('start', unknownPayload,")
+    const changed = source.replace("emit('start', settings.value,", "emit('start', unknownPayload,")
     expect(changed).not.toBe(source)
     expect(() => placedDoorSendsFrom(changed)).toThrow('not an object literal')
   })
@@ -336,7 +334,7 @@ describe('427 · the REAL placed door, and what it still cannot carry', () => {
 
   /**
    * Both kinds of prose: `//` can never be mistaken for a field (`/` is not an identifier character),
-   * but a block comment's inner line can be anything, and `StartAsAgent.vue`'s payload carries a
+   * but a block comment's inner line can be anything, and `NewConversation.vue`'s payload carries a
    * four-line note. Planted here because the real component cannot have a fixture put inside it.
    */
   it('⛔ fieldsOf counts no field that only a comment mentions', () => {

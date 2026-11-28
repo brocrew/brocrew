@@ -4,7 +4,7 @@ import { defineComponent, h, nextTick, ref, type Component } from 'vue'
 import { allProviderCapabilities } from '../../../../packages/runtime/src/capabilities'
 import LaunchRefusalBox from '../../src/renderer/src/components/LaunchRefusalBox.vue'
 import NewConversation from '../../src/renderer/src/components/NewConversation.vue'
-import StartAsAgent from '../../src/renderer/src/components/StartAsAgent.vue'
+import { TeamLauncherFixture } from './team-launcher.fixture'
 import type { AgentStore } from '../../src/renderer/src/lib/agent-store'
 import { createAttachmentBook, NEW_CONVERSATION } from '../../src/renderer/src/lib/drafts'
 import { NO_LAUNCH_CHOICES } from '../../src/renderer/src/lib/launch-choices'
@@ -51,7 +51,7 @@ function sheet(): Element {
   } as unknown as AgentStore
   const Host = defineComponent({
     setup: () => () =>
-      h(StartAsAgent as Component, {
+      h(TeamLauncherFixture as Component, {
         profileSlug: 'pm',
         provider: 'claude',
         defaultApprovalMode: 'ask',

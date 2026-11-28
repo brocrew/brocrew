@@ -2117,7 +2117,7 @@ function refuseWhatTheFrontDoorCannotAsk(asked) {
 const placedThroughTheInterimDoor = []
 
 /**
- * 🔴 **What the REAL placed door sends, read out of `StartAsAgent.vue`** (`427` §3).
+ * 🔴 **What the REAL placed door sends, read out of `NewConversation.vue`** (`427` §3).
  *
  * ⚑ Read once, at load, so a component this file can no longer parse is a stop before the first
  * launch rather than a wrong number in the summary forty minutes later.

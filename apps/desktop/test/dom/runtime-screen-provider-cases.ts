@@ -209,7 +209,7 @@ export function registerRootProviderCases(RuntimeScreen: Component) {
     const create = vi.spyOn(sessions, 'create').mockResolvedValue(null)
     useOverlays().open({ kind: 'startAsAgent', profileSlug: 'editor' })
     await expect.poll(() => screen.all('start-as-agent').length).toBe(1)
-    expect(screen.q('start-as-agent').textContent).toContain('It will run on Claude')
+    await expect.poll(() => screen.q('start-as-agent').textContent).toContain('Default: Claude')
     expect(agentStore.identities.value?.identities[0]?.provider).toBe('codex')
     expect(resolve).toHaveBeenCalledWith({
       profileId: 'editor',
@@ -238,7 +238,7 @@ export function registerRootProviderCases(RuntimeScreen: Component) {
     expect(screen.q('capabilities-provider-note').textContent).toContain('Claude')
     screen.q('capabilities-start-conversation').click()
     await expect.poll(() => screen.all('start-as-agent').length).toBe(1)
-    expect(screen.q('start-as-agent').textContent).toContain('It will run on Claude')
+    await expect.poll(() => screen.q('start-as-agent').textContent).toContain('Default: Claude')
     expect(resolve.mock.calls.map(([input]) => input.profileId)).toEqual(['editor', 'editor'])
   })
 
@@ -320,9 +320,7 @@ export function registerRootProviderCases(RuntimeScreen: Component) {
     expect(screen.q('start-as-agent').querySelector('textarea')).toBe(prompt)
     expect(screen.q('start-as-agent').closest('[inert]')).not.toBeNull()
     finish(suppliedPlacedProvider('codex'))
-    await expect
-      .poll(() => screen.q('start-as-agent').textContent)
-      .toContain('It will run on Codex')
+    await expect.poll(() => screen.q('start-as-agent').textContent).toContain('Default: Codex')
     expect(prompt.value).toBe('Keep this draft during the roster read.')
     expect(screen.q('start-as-agent').closest('[inert]')).toBeNull()
   })
