@@ -114,13 +114,13 @@ function gateChild(child, plugin) {
       change('packages/runtime/src/codex/windows-tree.ts', (source) => {
         let out = once(
           source,
-          '  return new Promise((resolve) => {\n    execFile(\n',
-          "  const gateReadStart = performance.now(), gateReadWall = new Date().toISOString()\n  return new Promise((resolve) => {\n    execFile(\n",
+          '  return new Promise((resolve) => {\n',
+          "  const gateReadStart = performance.now(), gateReadWall = new Date().toISOString()\n  return new Promise((resolve) => {\n",
         )
         out = once(
           out,
-          '      (error, stdout) => resolve(error ? null : parseReading(stdout)),\n',
-          "      (error, stdout) => {\n        gateLog('codex-table-read', { arm: " +
+          '(error, stdout) => resolve(error ? null : parseReading(stdout)),\n',
+          "(error, stdout) => {\n        gateLog('codex-table-read', { arm: " +
             JSON.stringify(arm) +
             ", startedAt: gateReadWall, ms: Math.round(performance.now() - gateReadStart), limitMs: ms, error: error ? String(error.code ?? error.killed ?? error.message) : null, rows: String(stdout ?? '').split('\\n').length - 1 })\n        resolve(error ? null : parseReading(stdout))\n      },\n",
         )
