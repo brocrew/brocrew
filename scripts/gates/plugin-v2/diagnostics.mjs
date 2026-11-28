@@ -106,15 +106,33 @@ function gateChild(child, plugin) {
       )
       return helper('view-host') + out
     })
-    // Arm B of the card 621 diagnostic: no Codex process-table read in the first 40 s of the app.
-    if (process.env.PLUGIN_DIAG_ARM === 'codex-hold')
-      change('packages/runtime/src/codex/windows-tree.ts', (source) =>
-        once(
-          source,
-          '  if (ms !== null && ms <= 0) return Promise.resolve(null)\n',
-          '  if (ms !== null && ms <= 0) return Promise.resolve(null)\n  // card 621 diagnostic arm B only\n  if (performance.now() < 40_000) return Promise.resolve(null)\n',
-        ),
+    // Card 621 diagnostic 4 only, never for landing: time every Codex process-table read, and
+    // vary the read by arm (fix: the three properties; baseline: every property; query: WQL).
+    if (process.env.PLUGIN_DIAG_ARM)
+      change('packages/runtime/src/codex/windows-tree.ts', (source) => {
+      const fixRead = 'Get-CimInstance Win32_Process -Property ProcessId,ParentProcessId,CreationDate | '
+      const reads = {
+        fix: fixRead,
+        baseline: 'Get-CimInstance Win32_Process | ',
+        query: 'Get-CimInstance -Query "SELECT ProcessId,ParentProcessId,CreationDate FROM Win32_Process" | ',
+      }
+      const arm = process.env.PLUGIN_DIAG_ARM
+      if (!(arm in reads)) throw new Error('Unknown diagnostic arm')
+      let out = once(source, fixRead, reads[arm])
+      out = once(
+        out,
+        '  return new Promise((resolve) => {\n    execFile(\n',
+        "  const gateReadStart = performance.now(), gateReadWall = new Date().toISOString()\n  return new Promise((resolve) => {\n    execFile(\n",
       )
+      out = once(
+        out,
+        '      (error, stdout) => resolve(error ? null : parseReading(stdout)),\n',
+        "      (error, stdout) => {\n        gateLog('codex-table-read', { arm: " +
+          JSON.stringify(arm) +
+          ", startedAt: gateReadWall, ms: Math.round(performance.now() - gateReadStart), limitMs: ms, error: error ? String(error.code ?? error.killed ?? error.message) : null, rows: String(stdout ?? '').split('\\n').length - 1 })\n        resolve(error ? null : parseReading(stdout))\n      },\n",
+      )
+      return helper('codex-tree') + out
+    })
     change('apps/desktop/src/main/plugins/supervisor/entry.ts', (source) => {
       const modern =
         'void runPluginSupervisor(process.argv[2]!, process.argv[3]!).catch((error) => {'
