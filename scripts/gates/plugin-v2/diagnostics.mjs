@@ -87,10 +87,22 @@ function gateChild(child, plugin) {
         '      if (\n        confirmed &&\n',
         "      gateView('teardown-end',{cleared:cleared.map((c)=>c.status)})\n      if (\n        confirmed &&\n",
       )
+      // Every 500 ms while loading: has the view's renderer launched, when, and is it using CPU?
+      const sample = `const gateSampler=setInterval(()=>{let pid=0;try{pid=contents.getOSProcessId()}catch{}const m=app.getAppMetrics().find((row)=>row.pid===pid);gateView('load-sample',{pid,loading:(()=>{try{return contents.isLoading()}catch{return null}})(),created:m?.creationTime??null,cpu:m?.cpu?.percentCPUUsage??null,idle:m?.cpu?.idleWakeupsPerSecond??null,type:m?.type??null,sandboxed:m?.sandboxed??null,integrity:m?.integrityLevel??null,processes:app.getAppMetrics().map((row)=>row.type+':'+row.pid+':'+Math.round(row.cpu.percentCPUUsage)).join(' ')})},500);`
       out = once(
         out,
         '    await Promise.race([\n',
-        "    gateView('load-start')\n    await Promise.race([\n",
+        `    gateView('load-start');${sample}\n    await Promise.race([\n`,
+      )
+      out = once(
+        out,
+        '    ]).finally(() => {\n      clearTimeout(timer)\n',
+        "    ]).finally(() => {\n      clearInterval(gateSampler);gateView('load-end')\n      clearTimeout(timer)\n",
+      )
+      out = once(
+        out,
+        "import { session, WebContentsView } from 'electron'\n",
+        "import { app, session, WebContentsView } from 'electron'\n",
       )
       return helper('view-host') + out
     })
