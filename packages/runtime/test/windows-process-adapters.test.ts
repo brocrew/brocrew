@@ -42,7 +42,7 @@ describe('the Windows process table adapter', () => {
     expect(await readTable(-1)).toBeNull()
     expect(execFile).not.toHaveBeenCalled()
   })
-  describe('one limited reading runs at a time', () => {
+  describe('one limited reading runs at a time in each lane', () => {
     /** Each PowerShell start, and the way to answer it. */
     function starts() {
       const answers: ((text: string | Error) => void)[] = []
@@ -57,19 +57,19 @@ describe('the Windows process table adapter', () => {
     const limit = (call: number) =>
       (vi.mocked(execFile).mock.calls[call]?.[2] as { timeout?: number }).timeout
 
-    it('🔴 gives those who ask while one runs the next reading, started after they asked', async () => {
+    it('🔴 gives those who ask while one runs the next reading, which runs as long as the last of them waits', async () => {
       const answers = starts()
       const first = readTable(3000)
       const second = readTable(60_000)
       const third = readTable(30_000)
-      await vi.advanceTimersByTimeAsync(0)
+      await vi.advanceTimersByTimeAsync(1000)
       expect(answers).toHaveLength(1)
       expect(limit(0)).toBe(3000)
       answers[0]!(reading(100))
       expect(await first).toMatchObject({ at: 100n })
       await vi.advanceTimersByTimeAsync(0)
       expect(answers).toHaveLength(2)
-      expect(limit(1)).toBe(60_000)
+      expect(limit(1)).toBe(59_000)
       answers[1]!(reading(200))
       expect(await second).toMatchObject({ at: 200n })
       expect(await third).toMatchObject({ at: 200n })
@@ -87,6 +87,18 @@ describe('the Windows process table adapter', () => {
       await vi.advanceTimersByTimeAsync(0)
       expect(execFile).toHaveBeenCalledTimes(1)
     })
+    it('limits a queued reading to what is left of the time of those still waiting', async () => {
+      const answers = starts()
+      const first = readTable(60_000)
+      const second = readTable(60_000)
+      await vi.advanceTimersByTimeAsync(59_000)
+      answers[0]!(reading(100))
+      expect(await first).toMatchObject({ at: 100n })
+      await vi.advanceTimersByTimeAsync(0)
+      expect(limit(1)).toBe(1000)
+      answers[1]!(reading(200))
+      expect(await second).toMatchObject({ at: 200n })
+    })
     it('answers null after the caller’s own time while the reading goes on for the others', async () => {
       const answers = starts()
       const first = readTable(60_000)
@@ -96,7 +108,7 @@ describe('the Windows process table adapter', () => {
       answers[0]!(reading(100))
       expect(await first).toMatchObject({ at: 100n })
     })
-    it('starts the next reading when the one before it failed', async () => {
+    it('starts the next reading when the one before it failed, and after one that could not start', async () => {
       const answers = starts()
       const first = readTable(3000)
       const second = readTable(3000)
@@ -106,6 +118,27 @@ describe('the Windows process table adapter', () => {
       await vi.advanceTimersByTimeAsync(0)
       answers[1]!(reading(300))
       expect(await second).toMatchObject({ at: 300n })
+      vi.mocked(execFile).mockImplementationOnce(() => {
+        throw new Error('fictional spawn failure')
+      })
+      expect(await readTable(3000)).toBeNull()
+      const later = readTable(3000)
+      await vi.advanceTimersByTimeAsync(0)
+      answers.at(-1)!(reading(400))
+      expect(await later).toMatchObject({ at: 400n })
+    })
+    it('🔴 lets a stop be read while a late observer is still reading', async () => {
+      const answers = starts()
+      const observer = readTable(60_000, 'late')
+      await vi.advanceTimersByTimeAsync(10_000)
+      const stop = readTable(3000)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(answers).toHaveLength(2)
+      expect(limit(1)).toBe(3000)
+      answers[1]!(reading(500))
+      expect(await stop).toMatchObject({ at: 500n })
+      answers[0]!(reading(100))
+      expect(await observer).toMatchObject({ at: 100n })
     })
   })
   it('🔴 waits for the exit with no limit when none is asked, so a slow read is still a reading', async () => {

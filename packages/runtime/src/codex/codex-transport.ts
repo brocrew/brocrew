@@ -11,6 +11,7 @@ import {
   startEnder,
   treeOf,
   type KnownRow,
+  type ReadLane,
   type TableReading,
   type TableRow,
 } from './windows-tree'
@@ -198,7 +199,7 @@ export interface SpawnCodexOptions {
    */
   stopBudgetMs?: number
   /** On Windows, one reading of the process table, within `ms` unless that is null; Windows' own by default. */
-  processTable?: (ms: number | null) => Promise<TableReading | null>
+  processTable?: (ms: number | null, lane?: ReadLane) => Promise<TableReading | null>
 }
 
 const DEFAULTS = {
@@ -694,7 +695,7 @@ export class SpawnCodexTransport implements CodexTransport {
         await this.windowsStopReading
         const endedAt = this.endedAt
         if (endedAt !== null) {
-          const reading = await this.opts.processTable(OBSERVER_READ_LIMIT_MS)
+          const reading = await this.opts.processTable(OBSERVER_READ_LIMIT_MS, 'late')
           if (reading !== null && reading.at >= endedAt) {
             unavailable = false
             const known = [...this.known.values()]

@@ -168,57 +168,71 @@ export async function finishesWithin(work: Promise<unknown> | null, ms: number):
 /** One PowerShell reading of the table; null when it failed or had not finished within `ms`. */
 function listTable(ms: number | null): Promise<TableReading | null> {
   return new Promise((resolve) => {
-    execFile(
-      'powershell.exe',
-      ['-NoProfile', '-NonInteractive', '-Command', TABLE_COMMAND],
-      {
-        ...(ms === null ? {} : { timeout: ms }),
-        maxBuffer: 16 * 1024 * 1024,
-        encoding: 'utf8',
-        windowsHide: true,
-      },
-      (error, stdout) => resolve(error ? null : parseReading(stdout)),
-    )
+    try {
+      execFile(
+        'powershell.exe',
+        ['-NoProfile', '-NonInteractive', '-Command', TABLE_COMMAND],
+        {
+          ...(ms === null ? {} : { timeout: ms }),
+          maxBuffer: 16 * 1024 * 1024,
+          encoding: 'utf8',
+          windowsHide: true,
+        },
+        (error, stdout) => resolve(error ? null : parseReading(stdout)),
+      )
+    } catch {
+      resolve(null)
+    }
   })
 }
 
+/** Which readings share one slot: the stop path's, and the late observers' that wait a minute. */
+export type ReadLane = 'stop' | 'late'
+
 /** The reading that has not started yet: everyone who asked while another ran shares it. */
 interface NextReading {
-  limitMs: number
-  waiting: number
+  /** When each who asked gives up, as `Date.now()`. */
+  until: number[]
   reading: Promise<TableReading | null>
 }
+interface Slot {
+  running: Promise<unknown> | null
+  next: NextReading | null
+}
+const slots: Record<ReadLane, Slot> = {
+  stop: { running: null, next: null },
+  late: { running: null, next: null },
+}
 
-let running: Promise<unknown> | null = null
-let next: NextReading | null = null
-
-function startReading(ms: number): Promise<TableReading | null> {
+function startReading(slot: Slot, ms: number): Promise<TableReading | null> {
   const reading = listTable(ms)
   const done = reading.then(() => undefined)
-  running = done
+  slot.running = done
   void done.then(() => {
-    if (running === done) running = null
+    if (slot.running === done) slot.running = null
   })
   return reading
 }
 
-/** Starts the next reading once none runs, unless everyone who asked for it has stopped waiting. */
-function startNext(round: NextReading): Promise<TableReading | null> {
-  if (running !== null) return running.then(() => startNext(round))
-  next = null
-  return round.waiting === 0 ? Promise.resolve(null) : startReading(round.limitMs)
+/**
+ * Starts the next reading once none runs, for as long as the last of those still waiting for it
+ * will wait; with none still waiting it starts nothing.
+ */
+function startNext(slot: Slot, round: NextReading): Promise<TableReading | null> {
+  if (slot.running !== null) return slot.running.then(() => startNext(slot, round))
+  slot.next = null
+  const now = Date.now()
+  const left = Math.max(0, ...round.until.map((until) => until - now))
+  return left > 0 ? startReading(slot, left) : Promise.resolve(null)
 }
 
-/** The reading a caller asked for, or null once `ms` have passed without it. */
-function readWithin(reading: Promise<TableReading | null>, round: NextReading | null, ms: number) {
+/** The reading, or null once `ms` have passed without it. */
+function readWithin(reading: Promise<TableReading | null>, ms: number) {
   let timer: ReturnType<typeof setTimeout> | undefined
   return Promise.race([
     reading,
     new Promise<null>((resolve) => {
-      timer = setTimeout(() => {
-        if (round !== null) round.waiting -= 1
-        resolve(null)
-      }, ms)
+      timer = setTimeout(() => resolve(null), ms)
       timer.unref?.()
     }),
   ]).finally(() => clearTimeout(timer))
@@ -231,30 +245,32 @@ function readWithin(reading: Promise<TableReading | null>, round: NextReading | 
  * loaded PC the read can take longer than any fixed limit, and a limit only turned "slow" into "no
  * answer". A reading nobody waits on has no reason for a limit.
  *
- * ⚑ **One limited reading runs at a time.** Every Codex app-server that ends asks for a reading
- * after its own stop, and a start of the app starts and ends several within seconds. Each PowerShell
- * lists every process through WMI, which on a loaded PC takes tens of seconds and slows every other
- * process start, so six at once starved the rest of the app. A caller that asks while one runs waits
- * for it and takes the next, which starts after the caller asked and so is a reading of the table as
- * it is then; all who ask in the meantime share that one. A caller still gives up after its own `ms`.
+ * ⚑ **One limited reading runs at a time in each lane.** A start of the app starts and ends several
+ * Codex app-servers within seconds, and each ending asks for readings. Every PowerShell lists every
+ * process through WMI, which on a loaded PC takes tens of seconds and slows every other process
+ * start, so six at once starved the rest of the app. A caller that asks while one runs waits for it
+ * and takes the next, which starts after the caller asked; all who ask in the meantime share that
+ * one, and it runs no longer than the last of them will wait. A caller gives up after its own `ms`,
+ * but the reading it gave up on keeps its lane until PowerShell ends, which is why the late
+ * observers, who wait a minute, have a lane of their own and never hold up an app-server being
+ * stopped. A reading may begin before a leader has exited; what a caller needs of its time it
+ * checks on the reading's `at`.
  */
-export function readTable(ms: number | null): Promise<TableReading | null> {
+export function readTable(
+  ms: number | null,
+  lane: ReadLane = 'stop',
+): Promise<TableReading | null> {
   if (ms === null) return listTable(null)
   if (ms <= 0) return Promise.resolve(null)
-  if (running === null) return readWithin(startReading(ms), null, ms)
-  if (next === null) {
-    const round: NextReading = {
-      limitMs: ms,
-      waiting: 1,
-      reading: Promise.resolve(null),
-    }
-    round.reading = running.then(() => startNext(round))
-    next = round
-  } else {
-    next.limitMs = Math.max(next.limitMs, ms)
-    next.waiting += 1
+  const slot = slots[lane]
+  if (slot.running === null) return readWithin(startReading(slot, ms), ms)
+  if (slot.next === null) {
+    const round: NextReading = { until: [], reading: Promise.resolve(null) }
+    round.reading = slot.running.then(() => startNext(slot, round))
+    slot.next = round
   }
-  return readWithin(next.reading, next, ms)
+  slot.next.until.push(Date.now() + ms)
+  return readWithin(slot.next.reading, ms)
 }
 
 /** What became of one process asked to be ended. */
