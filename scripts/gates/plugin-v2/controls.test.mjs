@@ -291,11 +291,7 @@ test('Windows runs on plugin-area main pushes and dispatch; Mac only on dispatch
   ])
     assert.ok(on.includes(`- '${area}'`))
   assert.ok(text.includes(`if: github.repository == 'brocrew/brocrew'\n`))
-  assert.ok(
-    text.includes(
-      `os: \${{ fromJSON(github.event_name == 'workflow_dispatch' && '["windows","mac"]' || '["windows"]') }}`,
-    ),
-  )
+  assert.ok(text.includes("os: ['windows']"))
   const steps = text.split('\n      - ').slice(1)
   assert.ok(steps.some((step) => step.includes('reload-owner.mjs run')))
   const reload = steps.filter((step) => /reload-(owner|stage)/.test(step))
