@@ -27,9 +27,9 @@ jobs:
       fail-fast: false
       matrix:
         os: ['windows']
-        # Card 621 diagnostic only: A excludes the gate's folders from Defender, B holds the app's
-        # Codex process-table reads for its first 40 s. Never for landing.
-        arm: ['defender', 'codex-hold']
+        # Card 621 diagnostic 4 only, never for landing: the app's Codex process-table read with only
+        # its three properties (fix), with every property (baseline), and as a WQL query (query).
+        arm: ['fix', 'baseline', 'query']
     runs-on: ${{ matrix.os == 'windows' && 'windows-2022' || vars.MAC_RUNNER || 'macos-15' }}
     timeout-minutes: ${{ matrix.os == 'windows' && 60 || 45 }}
     concurrency:
@@ -66,18 +66,6 @@ jobs:
           REVIEW_CONTROL: ${{ steps.stage.outputs.control }}
           PLUGIN_GATE_PNPM_ENTRY: ${{ steps.gate-pnpm.outputs.dest }}/node_modules/pnpm/bin/pnpm.cjs
         run: node scripts/gates/plugin-v2/owner.mjs install "$REVIEW_CONTROL"
-      # Card 621 diagnostic arm A: a hosted runner is disposable, so excluding the gate's own
-      # scratch and checkout from Defender's scanning is safe here and tests whether scanning new
-      # processes is what stops renderers starting. Never on a person's computer.
-      - name: Exclude the gate's folders from Defender (diagnostic arm A)
-        if: matrix.arm == 'defender'
-        shell: pwsh
-        run: Add-MpPreference -ExclusionPath $env:RUNNER_TEMP, $env:GITHUB_WORKSPACE
-      - name: Record Defender's state
-        shell: pwsh
-        run: |
-          Get-MpComputerStatus | Select-Object AMServiceEnabled, AntivirusEnabled, RealTimeProtectionEnabled, BehaviorMonitorEnabled, IoavProtectionEnabled, OnAccessProtectionEnabled | Format-List
-          (Get-MpPreference).ExclusionPath
       - name: Public list over HTTPS, then install, configure and remove in the packaged app
         shell: bash
         env:
