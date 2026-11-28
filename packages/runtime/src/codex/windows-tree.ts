@@ -165,15 +165,8 @@ export async function finishesWithin(work: Promise<unknown> | null, ms: number):
   }
 }
 
-/**
- * One reading of the process table, or null when it failed. With `ms`, a reading that has not
- * finished by then is null: only the stop path asks for that, because closing cannot wait on a
- * stuck PowerShell. With `null`, the read waits for PowerShell's exit (card 197): on a slow or
- * loaded PC the read can take longer than any fixed limit, and a limit only turned "slow" into "no
- * answer". A reading nobody waits on has no reason for a limit.
- */
-export function readTable(ms: number | null): Promise<TableReading | null> {
-  if (ms !== null && ms <= 0) return Promise.resolve(null)
+/** One PowerShell reading of the table; null when it failed or had not finished within `ms`. */
+function listTable(ms: number | null): Promise<TableReading | null> {
   return new Promise((resolve) => {
     execFile(
       'powershell.exe',
@@ -187,6 +180,81 @@ export function readTable(ms: number | null): Promise<TableReading | null> {
       (error, stdout) => resolve(error ? null : parseReading(stdout)),
     )
   })
+}
+
+/** The reading that has not started yet: everyone who asked while another ran shares it. */
+interface NextReading {
+  limitMs: number
+  waiting: number
+  reading: Promise<TableReading | null>
+}
+
+let running: Promise<unknown> | null = null
+let next: NextReading | null = null
+
+function startReading(ms: number): Promise<TableReading | null> {
+  const reading = listTable(ms)
+  const done = reading.then(() => undefined)
+  running = done
+  void done.then(() => {
+    if (running === done) running = null
+  })
+  return reading
+}
+
+/** Starts the next reading once none runs, unless everyone who asked for it has stopped waiting. */
+function startNext(round: NextReading): Promise<TableReading | null> {
+  if (running !== null) return running.then(() => startNext(round))
+  next = null
+  return round.waiting === 0 ? Promise.resolve(null) : startReading(round.limitMs)
+}
+
+/** The reading a caller asked for, or null once `ms` have passed without it. */
+function readWithin(reading: Promise<TableReading | null>, round: NextReading | null, ms: number) {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  return Promise.race([
+    reading,
+    new Promise<null>((resolve) => {
+      timer = setTimeout(() => {
+        if (round !== null) round.waiting -= 1
+        resolve(null)
+      }, ms)
+      timer.unref?.()
+    }),
+  ]).finally(() => clearTimeout(timer))
+}
+
+/**
+ * One reading of the process table, or null when it failed. With `ms`, a reading that has not
+ * finished by then is null: only the stop path asks for that, because closing cannot wait on a
+ * stuck PowerShell. With `null`, the read waits for PowerShell's exit (card 197): on a slow or
+ * loaded PC the read can take longer than any fixed limit, and a limit only turned "slow" into "no
+ * answer". A reading nobody waits on has no reason for a limit.
+ *
+ * ⚑ **One limited reading runs at a time.** Every Codex app-server that ends asks for a reading
+ * after its own stop, and a start of the app starts and ends several within seconds. Each PowerShell
+ * lists every process through WMI, which on a loaded PC takes tens of seconds and slows every other
+ * process start, so six at once starved the rest of the app. A caller that asks while one runs waits
+ * for it and takes the next, which starts after the caller asked and so is a reading of the table as
+ * it is then; all who ask in the meantime share that one. A caller still gives up after its own `ms`.
+ */
+export function readTable(ms: number | null): Promise<TableReading | null> {
+  if (ms === null) return listTable(null)
+  if (ms <= 0) return Promise.resolve(null)
+  if (running === null) return readWithin(startReading(ms), null, ms)
+  if (next === null) {
+    const round: NextReading = {
+      limitMs: ms,
+      waiting: 1,
+      reading: Promise.resolve(null),
+    }
+    round.reading = running.then(() => startNext(round))
+    next = round
+  } else {
+    next.limitMs = Math.max(next.limitMs, ms)
+    next.waiting += 1
+  }
+  return readWithin(next.reading, next, ms)
 }
 
 /** What became of one process asked to be ended. */

@@ -42,6 +42,72 @@ describe('the Windows process table adapter', () => {
     expect(await readTable(-1)).toBeNull()
     expect(execFile).not.toHaveBeenCalled()
   })
+  describe('one limited reading runs at a time', () => {
+    /** Each PowerShell start, and the way to answer it. */
+    function starts() {
+      const answers: ((text: string | Error) => void)[] = []
+      vi.mocked(execFile).mockImplementation((...args: unknown[]) => {
+        const callback = args[3] as (error: Error | null, text: string) => void
+        answers.push((text) => (text instanceof Error ? callback(text, '') : callback(null, text)))
+        return {} as ReturnType<typeof execFile>
+      })
+      return answers
+    }
+    const reading = (at: number) => `at ${String(at)}\n41 2 700\n`
+    const limit = (call: number) =>
+      (vi.mocked(execFile).mock.calls[call]?.[2] as { timeout?: number }).timeout
+
+    it('🔴 gives those who ask while one runs the next reading, started after they asked', async () => {
+      const answers = starts()
+      const first = readTable(3000)
+      const second = readTable(60_000)
+      const third = readTable(30_000)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(answers).toHaveLength(1)
+      expect(limit(0)).toBe(3000)
+      answers[0]!(reading(100))
+      expect(await first).toMatchObject({ at: 100n })
+      await vi.advanceTimersByTimeAsync(0)
+      expect(answers).toHaveLength(2)
+      expect(limit(1)).toBe(60_000)
+      answers[1]!(reading(200))
+      expect(await second).toMatchObject({ at: 200n })
+      expect(await third).toMatchObject({ at: 200n })
+      expect(execFile).toHaveBeenCalledTimes(2)
+    })
+    it('does not start a reading for those who have all stopped waiting', async () => {
+      const answers = starts()
+      const first = readTable(3000)
+      const second = readTable(1000)
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(await second).toBeNull()
+      await vi.advanceTimersByTimeAsync(2000)
+      answers[0]!(new Error('fictional timeout'))
+      expect(await first).toBeNull()
+      await vi.advanceTimersByTimeAsync(0)
+      expect(execFile).toHaveBeenCalledTimes(1)
+    })
+    it('answers null after the caller’s own time while the reading goes on for the others', async () => {
+      const answers = starts()
+      const first = readTable(60_000)
+      const second = readTable(500)
+      await vi.advanceTimersByTimeAsync(500)
+      expect(await second).toBeNull()
+      answers[0]!(reading(100))
+      expect(await first).toMatchObject({ at: 100n })
+    })
+    it('starts the next reading when the one before it failed', async () => {
+      const answers = starts()
+      const first = readTable(3000)
+      const second = readTable(3000)
+      await vi.advanceTimersByTimeAsync(0)
+      answers[0]!(new Error('fictional failure'))
+      expect(await first).toBeNull()
+      await vi.advanceTimersByTimeAsync(0)
+      answers[1]!(reading(300))
+      expect(await second).toMatchObject({ at: 300n })
+    })
+  })
   it('🔴 waits for the exit with no limit when none is asked, so a slow read is still a reading', async () => {
     vi.useFakeTimers()
     let finish: (() => void) | undefined
