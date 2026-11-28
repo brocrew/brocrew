@@ -84,6 +84,7 @@ async function pluginWitness(run) {
   console.error('Plugins list witness:', JSON.stringify(listed))
 }
 async function configure(run, id) {
+  console.error(`Configure ${id} pressed at ${new Date().toISOString()}`)
   await press(run.cdp, selector(id, 'plugin-configure'))
   const page = await pluginPage(run.port)
   try {
