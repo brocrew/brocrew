@@ -1,5 +1,5 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { createServer, type Server, type ServerResponse } from 'node:http'
+import { createServer, type ServerResponse } from 'node:http'
 import { join } from 'node:path'
 import { expect, it } from 'vitest'
 // A deep import, for the reason `codex-resume-model-probe.smoke.ts` gives: this probe owns its
@@ -7,6 +7,7 @@ import { expect, it } from 'vitest'
 import { SpawnCodexTransport } from '../src/codex/codex-transport'
 import { bundledCodexBinary } from './bundled-codex'
 import { probeRunDeadline, runBudgetMs } from './probe-run-deadline'
+import { captureProviderStanza, listen } from './loopback-probe-kit'
 import { runEvidence, runScratch } from './run-paths'
 
 /**
@@ -56,30 +57,13 @@ const deadline = probeRunDeadline(
   TEARDOWN_MS,
 )
 
-function providerStanza(port: number): string {
-  return [
-    'model = "gpt-5.6-luna"',
-    'model_provider = "capture"',
-    '',
-    '[model_providers.capture]',
-    'name = "BroBot sent-again capture"',
-    `base_url = "http://127.0.0.1:${port}/v1"`,
-    'env_key = "BROBOT_SENT_AGAIN_CAPTURE_KEY"',
-    'request_max_retries = 0',
-    'stream_max_retries = 0',
-    '',
-  ].join('\n')
-}
-
-async function listen(server: Server): Promise<number> {
-  await new Promise<void>((resolve, reject) => {
-    server.once('error', reject)
-    server.listen(0, '127.0.0.1', resolve)
+const providerStanza = (port: number): string =>
+  captureProviderStanza({
+    port,
+    model: 'gpt-5.6-luna',
+    name: 'BroBot sent-again capture',
+    envKey: 'BROBOT_SENT_AGAIN_CAPTURE_KEY',
   })
-  const address = server.address()
-  if (address === null || typeof address === 'string') throw new Error('no loopback port')
-  return address.port
-}
 
 function refused(response: ServerResponse): void {
   response.statusCode = 401
