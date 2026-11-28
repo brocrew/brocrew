@@ -67,6 +67,33 @@ function gateChild(child, plugin) {
           "  gateChild(child, config.pluginId)\n  child.on('message', (message) => {",
         ),
     )
+    // Gate-only timing of each plugin view: load events, its renderer, asset requests, teardown.
+    change('apps/desktop/src/main/plugins/ui/host.ts', (source) => {
+      const id = 'options.verified.manifest.id'
+      const viewLog = `const gateViewStart=performance.now();const gateView=(event,data={})=>gateLog('view-'+event,{plugin:${id},ms:Math.round(performance.now()-gateViewStart),wall:new Date().toISOString(),...data});`
+      const watch = `gateView('created');for(const gateEvent of ['did-start-loading','did-start-navigation','did-navigate','dom-ready','did-finish-load','did-fail-load','did-stop-loading','render-process-gone','unresponsive','responsive','destroyed'])contents.on(gateEvent,(...gateArgs)=>{let pid=null;try{pid=contents.getOSProcessId()}catch{}gateView(gateEvent,{pid,detail:gateEvent==='did-fail-load'?String(gateArgs[1])+' '+String(gateArgs[2]):gateEvent==='did-start-navigation'?String(gateArgs[0]?.url??gateArgs[0]):undefined})});isolated.webRequest.onCompleted((d)=>gateView('request-completed',{url:d.url,status:d.statusCode,type:d.resourceType}));isolated.webRequest.onErrorOccurred((d)=>gateView('request-error',{url:d.url,error:d.error,type:d.resourceType}));`
+      let out = once(
+        source,
+        '  const contents = view.webContents\n',
+        `  const contents = view.webContents\n  ${viewLog}${watch}\n`,
+      )
+      out = once(
+        out,
+        '    void destroyed.then(async (confirmed) => {\n',
+        "    void destroyed.then(async (confirmed) => {\n      gateView('teardown-start',{confirmed})\n",
+      )
+      out = once(
+        out,
+        '      if (\n        confirmed &&\n',
+        "      gateView('teardown-end',{cleared:cleared.map((c)=>c.status)})\n      if (\n        confirmed &&\n",
+      )
+      out = once(
+        out,
+        '    await Promise.race([\n',
+        "    gateView('load-start')\n    await Promise.race([\n",
+      )
+      return helper('view-host') + out
+    })
     change('apps/desktop/src/main/plugins/supervisor/entry.ts', (source) => {
       const modern =
         'void runPluginSupervisor(process.argv[2]!, process.argv[3]!).catch((error) => {'
