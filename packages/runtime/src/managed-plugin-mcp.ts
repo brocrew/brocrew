@@ -8,6 +8,9 @@ export interface ManagedPluginMcpServer {
   readonly pluginId?: string
   readonly retained?: true
 }
+/** The same route as a provider is configured with it: name, address and capability. */
+export const sameManagedRoute = (a: ManagedPluginMcpServer, b: ManagedPluginMcpServer) =>
+  a.name === b.name && a.url === b.url && a.capability === b.capability
 export function managedPluginHttpServers(servers: readonly ManagedPluginMcpServer[] = []) {
   const result: Record<string, { type: 'http'; url: string; headers: Record<string, string> }> = {}
   for (const server of servers) {

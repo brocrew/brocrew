@@ -5,7 +5,7 @@ import type { AgentRuntime, ResumeOptions, SessionHandle, StartOptions } from '.
 import { ResumeError } from './runtime'
 import { wrapUnknown, type RuntimeEvent } from './events'
 import type { ManagedPluginMcpServer } from './managed-plugin-mcp'
-import { managedPluginHttpServers } from './managed-plugin-mcp'
+import { managedPluginHttpServers, sameManagedRoute } from './managed-plugin-mcp'
 import { AsyncQueue } from './internal/async-queue'
 import { ManagedPluginOwnership } from './managed-plugin-ownership'
 import { RejectedSessionLaunch } from './rejected-session-launch'
@@ -362,11 +362,7 @@ export function withManagedPluginAttachments(
                     (one) =>
                       !one.retained &&
                       attachment.servers.some(
-                        (old) =>
-                          old.name === one.name &&
-                          old.url === one.url &&
-                          old.capability === one.capability &&
-                          old.pluginId === one.pluginId,
+                        (old) => sameManagedRoute(old, one) && old.pluginId === one.pluginId,
                       ),
                   ) ?? []
                 if (health.length && inner.managedPluginHealth && !refreshing) {
@@ -581,10 +577,7 @@ export function withManagedPluginAttachments(
                   throw new StoppedBeforeSend()
                 // A marker-only change updates what the turn waits on without reopening it.
                 if (next && signature(next) === signature(attachment)) attachment = next
-                if (next)
-                  inner.awaitManagedPlugins?.(
-                    next.servers.filter((one) => !one.retained).map((one) => one.name),
-                  )
+                if (next) inner.awaitManagedPlugins?.(next.servers.filter((one) => !one.retained))
                 pending = undefined
                 if (freshRepairPending) throw new StoppedBeforeSend()
                 dispatched = true
