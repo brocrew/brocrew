@@ -25,6 +25,7 @@ import { HIDDEN_LAUNCH_ARG, pidsLaunchedOn } from './lib/hidden-launch.mjs'
 import { createOwnedProcessLifecycle } from './lib/owned-process.mjs'
 import { descendantsOf, tearDownAndRemove } from './lib/owned-teardown.mjs'
 import { whoHoldsPort } from './lib/port-probe.mjs'
+import { RendererCdp } from './lib/renderer-cdp.mjs'
 
 const REPO_ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 const flag = process.argv.indexOf('--desktop')
@@ -59,51 +60,6 @@ async function waitFor(probe, withinMs, what) {
     await sleep(200)
   }
   throw new Error(`${what} did not come within ${String(withinMs / 1000)} s`)
-}
-
-/** ⚑ A minimal DevTools client — every call bounded at 10 s (a stalled call is NOT PERFORMED). */
-async function devtools(url) {
-  const socket = new WebSocket(url)
-  await new Promise((done, fail) => {
-    const timer = setTimeout(
-      () => fail(new Error('the DevTools socket did not open in 10 s')),
-      10_000,
-    )
-    socket.onopen = () => {
-      clearTimeout(timer)
-      done()
-    }
-    socket.onerror = () => fail(new Error('the DevTools socket failed to open'))
-  })
-  let next = 0
-  const waiting = new Map()
-  socket.onmessage = (message) => {
-    const body = JSON.parse(String(message.data))
-    const answer = waiting.get(body.id)
-    if (answer !== undefined) answer(body)
-  }
-  const call = (method, params = {}) =>
-    new Promise((done, fail) => {
-      const id = ++next
-      const timer = setTimeout(() => {
-        waiting.delete(id)
-        fail(new Error(`${method}: no answer in 10 s`))
-      }, 10_000)
-      waiting.set(id, (body) => {
-        clearTimeout(timer)
-        waiting.delete(id)
-        if (body.error) fail(new Error(`${method}: ${body.error.message}`))
-        else done(body.result)
-      })
-      socket.send(JSON.stringify({ id, method, params }))
-    })
-  const evaluate = async (expression) => {
-    const result = await call('Runtime.evaluate', { expression, returnByValue: true })
-    if (result.exceptionDetails)
-      throw new Error(`evaluate: ${JSON.stringify(result.exceptionDetails)}`)
-    return result.result.value
-  }
-  return { call, evaluate, close: () => socket.close() }
 }
 
 async function launch(userDataDir) {
@@ -175,10 +131,10 @@ async function launch(userDataDir) {
       )
     }
     lifecycle.refreshDescendants()
-    const session = await devtools(page.webSocketDebuggerUrl)
+    const session = await RendererCdp.connect(page.webSocketDebuggerUrl, { boundMs: 10_000 })
     await waitFor(
       () =>
-        session.evaluate(
+        session.evaluateExpression(
           `(() => { const box = document.querySelector('${COMPOSER}'); return box !== null && !box.disabled })()`,
         ),
       30_000,
@@ -200,18 +156,18 @@ async function launch(userDataDir) {
  * @returns when the words went in, for the quit arm's gap.
  */
 async function type(session, text) {
-  await session.evaluate(`localStorage.setItem('${LS_KEY}', ${JSON.stringify(text)})`)
-  await session.evaluate(`document.querySelector('${COMPOSER}').focus()`)
+  await session.evaluateExpression(`localStorage.setItem('${LS_KEY}', ${JSON.stringify(text)})`)
+  await session.evaluateExpression(`document.querySelector('${COMPOSER}').focus()`)
   await session.call('Input.insertText', { text })
   const typedAt = Date.now()
-  const landed = await session.evaluate(`document.querySelector('${COMPOSER}').value`)
+  const landed = await session.evaluateExpression(`document.querySelector('${COMPOSER}').value`)
   if (landed !== text)
     throw new Error(`typing did not land: the composer reads ${JSON.stringify(landed)}`)
   return typedAt
 }
 
 async function readBack(session) {
-  return session.evaluate(`(() => {
+  return session.evaluateExpression(`(() => {
     const box = document.querySelector('${COMPOSER}')
     return {
       text: box.value,
