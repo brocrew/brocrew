@@ -26,7 +26,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: ${{ fromJSON(github.event_name == 'workflow_dispatch' && '["windows","mac"]' || '["windows"]') }}
+        os: ['windows']
     runs-on: ${{ matrix.os == 'windows' && 'windows-2022' || vars.MAC_RUNNER || 'macos-15' }}
     timeout-minutes: ${{ matrix.os == 'windows' && 60 || 45 }}
     concurrency:
